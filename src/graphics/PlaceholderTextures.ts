@@ -278,6 +278,8 @@ function createCanvas(scene: Phaser.Scene, key: string, w: number, h: number) {
 export function generatePlaceholderTextures(scene: Phaser.Scene): void {
   const tiles = createCanvas(scene, TILESET_KEY, S * TILE_COUNT, S);
   drawTiles(tiles.context);
+  // เฟรมรายช่อง 't0'…'t16' ให้ฉากอื่น (เช่น เมนู) หยิบ tile ไปใช้เป็นภาพประกอบได้
+  for (let i = 0; i < TILE_COUNT; i++) tiles.add(`t${i}`, 0, i * S, 0, S, S);
   tiles.refresh();
 
   for (const appearance of Object.keys(APPEARANCE_PALETTE) as CharacterAppearance[]) {

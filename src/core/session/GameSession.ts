@@ -34,7 +34,7 @@ import { resolveGeoTemplate } from '../text/geoTemplate';
 import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
 
-export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary';
+export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
 export const NOTEBOOK_TABS: readonly NotebookTab[] = ['quests', 'clues', 'routes', 'records'];
 
@@ -174,6 +174,8 @@ export class GameSession {
   pinStage: 'none' | 'cursor' | 'wisdom' = 'none';
   pinFeedback: string | null = null;
   pinnedAt: TilePoint | null = null;
+  /** ตัวเลือกที่โฟกัสอยู่ในเมนูหยุดเกม */
+  pauseIndex = 0;
 
   private dialogue: ActiveDialogue | null = null;
 

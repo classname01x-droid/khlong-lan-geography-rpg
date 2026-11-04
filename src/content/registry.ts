@@ -15,18 +15,40 @@ export const DEFAULT_LEVEL_ID = sakNgamLevel.id;
  */
 export interface LevelSlot {
   id: string;
+  tambon: string;
+  missionTitle: string;
+  /** ชื่อเต็มที่ใช้แสดง (เช่น ในหน้าสรุปผล "ปลดล็อก: ...") */
   name: string;
   status: 'available' | 'planned';
   /** ลำดับชิ้นรหัสลับที่ด่านนี้มอบให้ (1–4) */
   codePieceIndex: number;
 }
 
-/** 4 ตำบล = 4 ด่าน = รหัสลับ 4 ชิ้น (ด่าน 2–4 ยังไม่สร้าง: id/ชื่อเป็นตัวยึดตำแหน่ง) */
+/**
+ * 4 ตำบลของอำเภอคลองลาน = 4 ด่าน = รหัสลับ 4 ชิ้น
+ * ด่าน 2–4 ยังไม่สร้าง (status 'planned') — id 'level-2'…'level-4' คงไว้เพื่อให้ข้อมูลบันทึกเดิมใช้ได้
+ * เมื่อสร้างเนื้อหาแล้ว: เพิ่มด่านใน LEVELS (id เดียวกัน) แล้วเปลี่ยน status เป็น 'available'
+ */
+const slot = (
+  id: string,
+  tambon: string,
+  missionTitle: string,
+  status: LevelSlot['status'],
+  codePieceIndex: number,
+): LevelSlot => ({
+  id,
+  tambon,
+  missionTitle,
+  name: `${tambon}: ${missionTitle}${status === 'planned' ? ' (อยู่ระหว่างพัฒนา)' : ''}`,
+  status,
+  codePieceIndex,
+});
+
 export const LEVEL_SEQUENCE: readonly LevelSlot[] = [
-  { id: sakNgamLevel.id, name: `${sakNgamLevel.tambon}: ${sakNgamLevel.title}`, status: 'available', codePieceIndex: 1 },
-  { id: 'level-2', name: 'ด่านที่ 2 (ตำบลถัดไป — กำลังพัฒนา)', status: 'planned', codePieceIndex: 2 },
-  { id: 'level-3', name: 'ด่านที่ 3 (กำลังพัฒนา)', status: 'planned', codePieceIndex: 3 },
-  { id: 'level-4', name: 'ด่านที่ 4 (กำลังพัฒนา)', status: 'planned', codePieceIndex: 4 },
+  slot(sakNgamLevel.id, sakNgamLevel.tambon, sakNgamLevel.title, 'available', 1),
+  slot('level-2', 'ตำบลคลองน้ำไหล', 'ภารกิจทรัพยากรชุมชน', 'planned', 2),
+  slot('level-3', 'ตำบลโป่งน้ำร้อน', 'ปริศนาทิศทางและพิกัด', 'planned', 3),
+  slot('level-4', 'ตำบลคลองลานพัฒนา', 'ปริศนาบูรณาการภูมิศาสตร์', 'planned', 4),
 ];
 
 export function getLevel(id: string): LevelDefinition {
@@ -37,4 +59,12 @@ export function getLevel(id: string): LevelDefinition {
 
 export function getLevelSlot(id: string): LevelSlot | undefined {
   return LEVEL_SEQUENCE.find((s) => s.id === id);
+}
+
+/**
+ * ด่านนี้ "มีเนื้อหาให้เล่นจริง" หรือไม่ — ใช้กันไม่ให้เข้าฉากที่ยังไม่สร้าง
+ * (ด่านที่ปลดล็อกแล้วแต่ยังไม่มีเนื้อหา จะไม่ผ่านเงื่อนไขนี้)
+ */
+export function isPlayableLevel(id: string): boolean {
+  return getLevelSlot(id)?.status === 'available' && LEVELS.some((l) => l.id === id);
 }

@@ -9,6 +9,9 @@ import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import { getSettings, SCENE } from './navigation';
+import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
+import { PauseOverlay } from '../ui/PauseOverlay';
 import type { CodePiece } from '../core/progress/ProgressStore';
 
 /**
@@ -26,6 +29,8 @@ export class UIScene extends Phaser.Scene {
   private notebook!: NotebookOverlay;
   private mapOverlay!: MapOverlay;
   private summary!: SummaryOverlay;
+  private pause!: PauseOverlay;
+  private controlsHint!: Phaser.GameObjects.Text;
   private renderedVersion = -1;
 
   constructor() {
@@ -47,6 +52,7 @@ export class UIScene extends Phaser.Scene {
     this.mapOverlay = new MapOverlay(this, this.session);
     this.notebook = new NotebookOverlay(this);
     this.summary = new SummaryOverlay(this);
+    this.pause = new PauseOverlay(this, PAUSE_ITEMS, (i) => (this.scene.get(SCENE.level) as WorldScene).pauseAction(i));
     this.toastText = this.add
       .text(GAME_WIDTH / 2, 104, '', { ...textStyle(18, COLORS.accent), stroke: '#10141f', strokeThickness: 4 })
       .setOrigin(0.5)
@@ -100,6 +106,9 @@ export class UIScene extends Phaser.Scene {
         (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,
         (this.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
       );
+      const hintShown = getSettings(this).settings.showControlsHint;
+      this.controlsHint.setVisible(hintShown);
+      this.pause.render(s, hintShown);
     } else if (s.mode === 'map') {
       this.mapOverlay.updatePlayer();
     }
@@ -124,11 +133,12 @@ export class UIScene extends Phaser.Scene {
       .text(ox + ow / 2, 18, '', { ...textStyle(14), align: 'center', wordWrap: { width: ow - 16 } })
       .setOrigin(0.5, 0);
 
-    this.add
+    // ซ่อน/แสดงได้จาก ตั้งค่า (เมนูหลัก) หรือเมนูหยุดเกม (Esc)
+    this.controlsHint = this.add
       .text(
         GAME_WIDTH / 2,
         GAME_HEIGHT - 10,
-        'WASD/ลูกศร: เดิน · E/Space: คุย · R: วัดระยะ · G: ตาราง · M: แผนที่ · N: สมุดภาคสนาม',
+        'WASD/ลูกศร: เดิน · E: คุย · R: วัดระยะ · G: ตาราง · M: แผนที่ · N: สมุด · Esc: หยุดเกม',
         { ...textStyle(14, COLORS.text), backgroundColor: '#10141fcc', padding: { x: 10, y: 4, top: 6 } },
       )
       .setOrigin(0.5, 1);

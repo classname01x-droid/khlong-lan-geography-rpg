@@ -27,7 +27,7 @@ export class SummaryOverlay {
       lineSpacing: 6,
     }).setOrigin(0.5, 0);
     const hint = scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 60, 'กด Space หรือ Enter เพื่อสำรวจต่อ (อ่านย้อนหลังได้ในสมุดภาคสนาม)', textStyle(14, COLORS.textDim))
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 60, 'Space / Enter: สำรวจต่อ · Esc: ไปหน้าเลือกด่าน (อ่านย้อนหลังได้ในสมุดภาคสนาม)', textStyle(14, COLORS.textDim))
       .setOrigin(0.5, 1);
     this.root = scene.add
       .container(0, 0, [dim, g, title, this.text, this.skills, this.reward, hint])

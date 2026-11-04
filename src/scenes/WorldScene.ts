@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/constants';
-import { getLevel, getLevelSlot } from '../content/registry';
+import { DEFAULT_LEVEL_ID, getLevel, getLevelSlot, isPlayableLevel } from '../content/registry';
 import type { NpcDefinition } from '../content/types';
-import { browserStorage, ProgressStore } from '../core/progress/ProgressStore';
+import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
 import { GameSession, NOTEBOOK_TABS, type SessionSnapshot } from '../core/session/GameSession';
 import { buildWorld } from '../core/world/MapBuilder';
@@ -13,6 +13,10 @@ import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY }
 import { PIN_PROBLEM_TEXT, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import { getProgress, getSettings, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
+
+/** ตัวเลือกในเมนูหยุดเกม (Esc) — ลำดับต้องตรงกับ PauseOverlay */
+export const PAUSE_ITEMS = ['เล่นต่อ', 'คำแนะนำการควบคุม', 'กลับหน้าเลือกด่าน', 'กลับเมนูหลัก'] as const;
 
 const S = TILE_SIZE_PX;
 const DEPTH = { characters: 20, labels: 40, grid: 60, fog: 100 } as const;
@@ -49,13 +53,25 @@ export class WorldScene extends Phaser.Scene {
   private walk: ScriptedWalk | null = null;
   private progress!: ProgressStore;
   private resetArmedAt = 0;
+  private startData: Partial<LevelStartData> = {};
+  /** false ระหว่างที่ create ยังไม่เสร็จ หรือเมื่อถูกส่งกลับหน้าเลือกด่าน */
+  private ready = false;
 
   constructor() {
     super('WorldScene');
   }
 
-  create(): void {
-    const level = getLevel(this.registry.get(REGISTRY_LEVEL_ID));
+  create(data?: Partial<LevelStartData>): void {
+    this.ready = false;
+    this.startData = data ?? {};
+    const levelId = this.startData.levelId ?? (this.registry.get(REGISTRY_LEVEL_ID) as string | undefined) ?? DEFAULT_LEVEL_ID;
+    // กันการเข้าด่านที่ยังไม่มีเนื้อหา (เช่น ด่าน 2 ที่ปลดล็อกแล้วแต่ยังไม่สร้าง)
+    if (!isPlayableLevel(levelId)) {
+      this.time.delayedCall(0, () => goToWorldMap(this));
+      return;
+    }
+    this.registry.set(REGISTRY_LEVEL_ID, levelId);
+    const level = getLevel(levelId);
     const grid = buildWorld(level.map);
     this.session = new GameSession(level, grid, defaultScale);
     this.registry.set(REGISTRY_SESSION, this.session);
@@ -163,7 +179,7 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown', (ev: KeyboardEvent) => this.onKey(ev));
 
     // ---- ความคืบหน้า: เล่นต่อจากที่บันทึกไว้ (เพิ่ม ?new=1 ใน URL เพื่อเริ่มใหม่) ----
-    this.progress = new ProgressStore(browserStorage(), level.id);
+    this.progress = getProgress(this);
     this.tryResume();
 
     this.updateFog(true);
@@ -179,7 +195,9 @@ export class WorldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('pagehide', onHide));
 
     // เริ่มด่านใหม่ (restart) → ให้ UI สร้างใหม่ตาม session ใหม่ด้วย
-    if (this.scene.isActive('UIScene')) this.scene.get('UIScene').scene.restart();
+    if (this.scene.isActive(SCENE.ui)) this.scene.get(SCENE.ui).scene.restart();
+    else this.scene.launch(SCENE.ui);
+    this.ready = true;
   }
 
   /* =========================================================
@@ -188,7 +206,7 @@ export class WorldScene extends Phaser.Scene {
 
   private tryResume(): void {
     const s = this.session;
-    if (new URLSearchParams(window.location.search).has('new')) {
+    if (this.startData.mode === 'fresh') {
       this.progress.clearInProgress(s.level.id);
       return;
     }
@@ -231,7 +249,7 @@ export class WorldScene extends Phaser.Scene {
     if (now - this.resetArmedAt < 2500) {
       this.progress.clearInProgress(this.session.level.id);
       this.cancelWalk();
-      this.scene.restart();
+      this.scene.restart({ levelId: this.session.level.id, mode: 'fresh' } satisfies LevelStartData);
       return;
     }
     this.resetArmedAt = now;
@@ -240,8 +258,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
+    if (!this.ready) return;
     const s = this.session;
-    if (!s.completed) s.elapsedMs += delta;
+    if (!s.completed && s.mode !== 'pause') s.elapsedMs += delta;
 
     const v = this.player.handleInput(s.mode === 'explore', this.scriptedDirection(delta));
     if (v.lengthSq() > 0) s.updateFacing(v.x, v.y);
@@ -275,6 +294,14 @@ export class WorldScene extends Phaser.Scene {
           this.gridOverlay.setVisible(s.showGrid);
         } else if (code === 'KeyM') this.openMap();
         else if (code === 'KeyN') this.openNotebook();
+        else if (code === 'Escape') this.openPause();
+        return;
+
+      case 'pause':
+        if (code === 'Escape') this.pauseAction(0);
+        else if (code === 'ArrowUp' || code === 'KeyW') this.movePause(-1);
+        else if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.movePause(1);
+        else if (confirm) this.pauseAction(s.pauseIndex);
         return;
 
       case 'dialogue': {
@@ -303,9 +330,57 @@ export class WorldScene extends Phaser.Scene {
         return;
 
       case 'summary':
-        if (confirm || code === 'Escape') this.setMode('explore');
+        if (confirm) this.setMode('explore');
+        else if (code === 'Escape') this.leave('worldMap');
         return;
     }
+  }
+
+  /* ---------------- เมนูหยุดเกม (Esc) ---------------- */
+
+  private openPause(): void {
+    this.session.pauseIndex = 0;
+    this.cancelWalk();
+    this.player.setVelocity(0, 0);
+    this.setMode('pause');
+  }
+
+  private movePause(delta: number): void {
+    const n = PAUSE_ITEMS.length;
+    this.session.pauseIndex = (this.session.pauseIndex + delta + n) % n;
+    this.bumpUi();
+  }
+
+  /** เรียกจากคีย์บอร์ด หรือจากการคลิกปุ่มใน UIScene */
+  pauseAction(index: number): void {
+    if (this.session.mode !== 'pause') return;
+    this.session.pauseIndex = index;
+    switch (PAUSE_ITEMS[index]) {
+      case 'เล่นต่อ':
+        this.setMode('explore');
+        return;
+      case 'คำแนะนำการควบคุม': {
+        const settings = getSettings(this);
+        settings.update({ showControlsHint: !settings.settings.showControlsHint });
+        this.bumpUi();
+        return;
+      }
+      case 'กลับหน้าเลือกด่าน':
+        this.leave('worldMap');
+        return;
+      case 'กลับเมนูหลัก':
+        this.leave('menu');
+        return;
+    }
+  }
+
+  /** ออกจากด่าน: บันทึกก่อน แล้วไปหน้าที่เลือก (บันทึกค้างไว้เล่นต่อได้) */
+  private leave(to: 'menu' | 'worldMap'): void {
+    this.cancelWalk();
+    if (this.session.mode === 'pause') this.session.mode = 'explore';
+    this.autosave();
+    if (to === 'menu') goToMainMenu(this);
+    else goToWorldMap(this);
   }
 
   private setMode(mode: GameSession['mode']): void {
@@ -496,6 +571,8 @@ export class WorldScene extends Phaser.Scene {
         elapsedMs: Math.round(sum.elapsedMs),
         skills: sum.skills,
         quests: sum.quests,
+        evidenceFound: s.evidence.length,
+        evidenceTotal: s.level.evidence?.length ?? 0,
         codePiece: ending?.codePiece ?? null,
       },
       s.level.unlocks,

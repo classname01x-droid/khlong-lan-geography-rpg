@@ -29,6 +29,9 @@ export interface LevelResult {
   codePiece: CodePiece | null;
   /** จำนวนภารกิจที่สำเร็จ แยกตามประเภท (เพิ่มใน v2) */
   quests?: Record<string, { done: number; total: number }>;
+  /** จำนวนหลักฐานที่พบ / ทั้งหมด (เพิ่มใน v0.4 — ข้อมูลเก่าไม่มีค่านี้) */
+  evidenceFound?: number;
+  evidenceTotal?: number;
 }
 
 export interface ProgressData {
@@ -37,6 +40,8 @@ export interface ProgressData {
   unlocked: string[];
   codePieces: Record<string, CodePiece>;
   inProgress: Record<string, unknown>;
+  /** ด่านที่เล่นล่าสุด (ใช้กับปุ่ม "เล่นต่อ" — ข้อมูลเก่าอาจไม่มี) */
+  lastLevelId?: string;
 }
 
 export const PROGRESS_KEY = 'khlonglan-geo-rpg:progress';
@@ -133,6 +138,25 @@ export class ProgressStore {
 
   saveInProgress(levelId: string, snapshot: unknown): void {
     this.memory.inProgress[levelId] = snapshot;
+    this.memory.lastLevelId = levelId;
+    this.write();
+  }
+
+  /** มีข้อมูลบันทึกจริงหรือไม่ (ด่านที่ผ่านแล้ว หรือการเล่นกลางด่าน) */
+  hasAnySave(): boolean {
+    return Object.keys(this.memory.completed).length > 0 || Object.keys(this.memory.inProgress).length > 0;
+  }
+
+  /** ด่านที่ควร "เล่นต่อ": ด่านล่าสุดที่ยังเล่นค้าง หรือด่านค้างด่านแรกที่พบ (ข้อมูลเก่าไม่มี lastLevelId) */
+  continueLevelId(): string | null {
+    const ids = Object.keys(this.memory.inProgress);
+    if (this.memory.lastLevelId && ids.includes(this.memory.lastLevelId)) return this.memory.lastLevelId;
+    return ids[0] ?? null;
+  }
+
+  /** ลบความคืบหน้าทั้งหมด (ใช้กับ "เริ่มเกมใหม่" หลังผู้เล่นยืนยันแล้ว) */
+  resetAll(): void {
+    this.memory = emptyProgress(this.firstLevelId);
     this.write();
   }
 
