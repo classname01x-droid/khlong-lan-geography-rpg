@@ -3,6 +3,7 @@ import { GAME_HEIGHT, GAME_WIDTH } from './config/constants';
 import { BootScene } from './scenes/BootScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { ChapterScene } from './scenes/ChapterScene';
+import { EndingScene } from './scenes/EndingScene';
 import { WorldMapScene } from './scenes/WorldMapScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
@@ -22,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, MainMenuScene, WorldMapScene, ChapterScene, WorldScene, UIScene],
+  scene: [BootScene, MainMenuScene, WorldMapScene, ChapterScene, EndingScene, WorldScene, UIScene],
 };
 
 const game = new Phaser.Game(config);

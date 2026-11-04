@@ -13,7 +13,8 @@ import type {
 /**
  * ภารกิจด่านคลองลานพัฒนา (ด่านสุดท้าย) — บูรณาการ:
  *   ด่าน 1 มาตราส่วน ทิศ ระยะเส้นตรง/ตามถนน · ด่าน 2 สัญลักษณ์ ความสูง ทิศน้ำไหล · ด่าน 3 พิกัด E/N และหมุดอ้างอิง
- * ต้นแบบรอบนี้: ฉาก 1–3 เล่นได้ · ฉาก 4–7 มีข้อมูลปริศนาและตรรกะตรวจแล้ว แต่ยังไม่มีหน้าจอ/บทสนทนา
+ * เล่นได้ครบ 7 ฉาก: ภารกิจ → หมุดอ้างอิง/ระยะทาง → ภูมิประเทศ/ทิศน้ำไหล → พิกัด E/N → กระดานวิเคราะห์ (C)
+ *   → ยืนยันภาคสนาม + ปักหมุด + บันทึกภูมิปัญญา → รายงานครูเนม (รหัสชิ้นที่ 4) → บทที่ 5
  *
  * หมายเหตุ: แหล่งเรียนรู้และเนื้อหาภูมิปัญญาในด่านนี้เป็น "ข้อมูลจำลอง" ทั้งหมด
  */
@@ -65,6 +66,38 @@ export const lanQuizzes: QuizDefinition[] = [
   },
 ];
 
+/** ฉาก 4: คำนวณพิกัดจากหมุดอ้างอิง (ตัวเลือกคำนวณจากหมุดและบันทึก) */
+lanQuizzes.push(
+  {
+    id: 'grid-n',
+    speaker: 'ลุงจำรัส (ผู้เก็บบันทึกพิกัด)',
+    question: 'หมุด RP-2 อยู่ที่ {{grid:rp-2}} บันทึกบอกว่าแหล่งเรียนรู้อยู่ "เหนือ RP-2 ขึ้นไป {{ia:dn}} ม." ค่า N ของแหล่งเรียนรู้คือข้อใด?',
+    choices: [
+      { id: 'minus', label: '{{ia:nminus}}', hint: 'ไปทางเหนือ ค่า N ต้อง "เพิ่ม" ไม่ใช่ลด (แกน y ของจอเท่านั้นที่ลดลงเมื่อขึ้นด้านบน)' },
+      { id: 'n', label: '{{ia:n}}' },
+      { id: 'e', label: '{{ia:eplus}}', hint: 'ไปทางเหนือ ค่าที่เปลี่ยนคือ N — ค่า E เปลี่ยนเมื่อไปทางตะวันออก/ตะวันตกเท่านั้น' },
+    ],
+    correctChoiceId: 'n',
+    fallbackHint: 'N ของ RP-2 + ระยะที่ไปทางเหนือ',
+    correctFeedback: 'ถูกต้อง! N ของ RP-2 + {{ia:dn}} = {{ia:n}}',
+    effects: [{ type: 'flag', flag: 'grid-n-ok' }],
+  },
+  {
+    id: 'grid-e',
+    speaker: 'ลุงจำรัส (ผู้เก็บบันทึกพิกัด)',
+    question: 'ค่า E ในบันทึกเลือนอ่านได้แค่ {{ia:emask}} — จะใช้ตัวเลขนี้อย่างไร?',
+    choices: [
+      { id: 'zero', label: 'ถือว่า "?" เป็น 0 แล้วไปที่ค่านั้นเลย', hint: '"?" คือตัวเลขที่อ่านไม่ออก อาจเป็น 0–9 ก็ได้ เดาเป็น 0 อาจพาไปผิดที่' },
+      { id: 'useless', label: 'ใช้ไม่ได้เลย เพราะตัวเลขเสียหาย', hint: 'ตัวเลขที่เหลือยังใช้ตัดจุดที่ไม่ตรงออกได้ เช่น หลักร้อยและหลักหน่วยต้องตรง' },
+      { id: 'filter', label: 'ใช้ตัดจุดที่ไม่ตรงออก: ตัวเลขที่อ่านได้ต้องตรงทุกหลัก แล้วใช้หลักฐานอื่นช่วยแยกที่เหลือ' },
+    ],
+    correctChoiceId: 'filter',
+    fallbackHint: 'ตัวเลขที่อ่านได้ยังมีประโยชน์',
+    correctFeedback: 'ถูกต้อง! พิกัดที่เสียหายบางส่วนยังใช้คัดกรองได้ แต่ต้องใช้หลักฐานอื่นร่วมด้วย',
+    effects: [{ type: 'flag', flag: 'grid-read' }],
+  },
+);
+
 export const lanClues: ClueDefinition[] = [
   {
     id: 'clue-mission',
@@ -97,16 +130,17 @@ export const lanClues: ClueDefinition[] = [
     text: 'สัญลักษณ์ศาลา/อาคาร · บนเนินสูงกว่า {{ia:minelev}} ม. · อยู่ทางต้นน้ำของสะพาน',
   },
   {
-    // ฉาก 4 (อยู่ระหว่างพัฒนา): ผู้เก็บบันทึกพิกัดจะให้หลักฐานนี้
+    // ฉาก 4: ลุงจำรัสให้หลักฐานนี้
     id: 'clue-grid',
     type: 'coordinate',
     source: 'บันทึกพิกัด (ลุงจำรัส)',
-    text: 'อยู่เหนือหมุด RP-2 ขึ้นไป {{ia:dn}} ม. · ค่า E เลือนอ่านได้แค่ {{ia:emask}} ("?" = ตัวเลขที่เสียหาย)',
+    text: 'อยู่เหนือหมุด RP-2 ขึ้นไป {{ia:dn}} ม. (N = {{ia:n}}) · ค่า E เลือนอ่านได้แค่ {{ia:emask}} ("?" = ตัวเลขที่เสียหาย)',
   },
 ];
 
 export const lanEvidence: EvidenceDefinition[] = [
   { id: 'damaged-map', name: 'แผนที่ภูมิปัญญาที่เสียหาย', description: 'แผนที่ 1:10,000 ที่ข้อมูลบางส่วนเลือน (ข้อมูลจำลอง)' },
+  { id: 'grid-record', name: 'บันทึกพิกัดจากแผนที่ที่เสียหาย', description: 'N จากหมุด RP-2 และค่า E ที่อ่านได้บางหลัก' },
   { id: 'survey-a', name: 'บันทึกสำรวจจุด A', description: 'สิ่งที่พบจริงที่จุด A' },
   { id: 'survey-b', name: 'บันทึกสำรวจจุด B', description: 'สิ่งที่พบจริงที่จุด B' },
   { id: 'survey-c', name: 'บันทึกสำรวจจุด C', description: 'สิ่งที่พบจริงที่จุด C' },
@@ -134,12 +168,12 @@ const readRp = (n: 1 | 2 | 3, at: { x: number; y: number }): InspectPoint => ({
   ],
 });
 
-/** ฉาก 6 (อยู่ระหว่างพัฒนา): สำรวจจุดจริง — เปิดหลังวิเคราะห์ (ฉาก 5) */
+/** ฉาก 5: สำรวจจุดจริงก่อนตัดสินบนกระดานวิเคราะห์ (ต้องสำรวจจุดที่เลือกก่อนจึงยืนยันได้) */
 const survey = (id: 'a' | 'b' | 'c', at: { x: number; y: number }, text: string): InspectPoint => ({
   id: `survey-${id}`,
   at,
   radiusTiles: 2.5,
-  when: { flags: ['analysis-open'], notFlags: [`surveyed-${id}`] },
+  when: { minStep: 5, notFlags: [`surveyed-${id}`] },
   nodes: [
     {
       speaker: `สมุดภาคสนาม — จุด ${id.toUpperCase()}`,
@@ -172,6 +206,7 @@ export const lanIntegratedAnalysis: IntegratedSiteAnalysisDefinition = {
   distance: { fromId: 'bridge', direction: 'NE', straightMeters: 310, roadMeters: 430, toleranceMeters: 30 },
   terrain: { symbol: 'office', minElevationMeters: 160, waterwayId: 'stream-main', relation: 'upstream', ofId: 'bridge' },
   grid: { fromId: 'rp-2', dN: 250, eMask: '5,?40', toleranceMeters: 20 },
+  symbolLabels: { office: 'ศาลา/อาคาร', temple: 'วัด' },
   candidates: [
     { landmarkId: 'site-a', label: 'จุด A', evidenceId: 'survey-a' },
     { landmarkId: 'site-b', label: 'จุด B', evidenceId: 'survey-b' },
@@ -182,9 +217,18 @@ export const lanIntegratedAnalysis: IntegratedSiteAnalysisDefinition = {
   requiredClueIds: ['clue-distance', 'clue-terrain', 'clue-grid'],
   availableWhen: { minStep: 5 },
   successFlag: 'analysis-done',
+  // ฉาก 6: กด E ที่จุดที่วิเคราะห์ได้ → ตรวจหลักฐาน 3 ชนิดอีกครั้ง ณ ที่จริง แล้วบันทึกข้อมูลภูมิปัญญา
+  verify: {
+    radiusTiles: 3,
+    when: { flags: ['analysis-done'] },
+    evidenceId: 'wisdom-record',
+    flag: 'site-verified',
+    recordText:
+      'ศูนย์เรียนรู้ภูมิปัญญาชุมชน (ข้อมูลจำลอง) — สอนการทำฝายชะลอน้ำและการปลูกพืชตามแนวระดับบนที่ลาด (เรื่องสมมติเพื่อการเรียนรู้)',
+  },
 };
 
-/** ฉาก 6 (อยู่ระหว่างพัฒนา): ปักหมุด + บันทึกข้อมูลภูมิปัญญา */
+/** ฉาก 6: ปักหมุด — ต้องยืนใกล้ ตำแหน่งตรงจุดที่วิเคราะห์ได้ ประเภทถูก และมีบันทึกข้อมูลภูมิปัญญา (จากการตรวจยืนยัน) */
 export const lanPinTask: PinTaskDefinition = {
   targetId: 'site-analysis',
   toleranceTiles: 2,
@@ -208,7 +252,7 @@ export const lanPinTask: PinTaskDefinition = {
   successFlag: 'pin-verified',
 };
 
-/** ฉาก 7 (อยู่ระหว่างพัฒนา): รายงานครูเนมและเข้าสู่ฉากจบเกม — รหัสชิ้นที่ 4 เก็บในข้อมูลด่าน เปลี่ยนได้ภายหลัง */
+/** ฉาก 7: รายงานครูเนม — รหัสชิ้นที่ 4 เก็บในข้อมูลด่าน (เปลี่ยนได้ภายหลัง) แล้วเข้าสู่บทที่ 5 */
 export const lanEnding: EndingDefinition = {
   messages: [
     {
@@ -217,13 +261,25 @@ export const lanEnding: EndingDefinition = {
     },
     {
       speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'เธอใช้ครบทุกทักษะ: มาตราส่วนและระยะทาง · สัญลักษณ์ ความสูง ทิศน้ำไหล · พิกัด E/N และจุดอ้างอิง',
+      text: 'ระยะทาง: จากสะพานเส้นตรงราว {{ia:straight}} ม. แต่ตามถนนราว {{ia:road}} ม. — สองค่านี้ต่างกันเสมอเมื่อถนนต้องอ้อม',
     },
-    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นสุดท้าย และแผนที่ภูมิปัญญาครบ 4 ตำบล (ข้อมูลจำลอง) ให้เธอ' },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'ภูมิประเทศ: น้ำไหลจากที่สูงไปที่ต่ำ ต้นน้ำจึงอยู่ทางเหนือของสะพาน และสัญลักษณ์แผนที่แยกศาลา/อาคารออกจากวัดได้',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'พิกัด: N ของหมุด RP-2 + {{ia:dn}} ม. = {{ia:n}} และตัวเลข E ที่อ่านได้บางส่วนยังใช้คัดกรองได้',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'หลักฐานแต่ละชนิดชี้ได้มากกว่าหนึ่งจุด ต้องใช้ทั้งสามร่วมกันจึงเหลือจุดเดียว — นี่คือหัวใจของการบูรณาการ',
+    },
+    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 4 ให้ ครบ 4 ชิ้นแล้ว! กลับมาพบครูที่โรงเรียนบ้านสักงามเพื่อไขปริศนาสุดท้ายนะ' },
   ],
   // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
   codePiece: { index: 4, total: 4, value: 'ลาน' },
-  rewardItem: 'แผนที่ภูมิปัญญา 4 ตำบล',
+  rewardItem: 'แผนที่ตำบลคลองลานพัฒนา',
   completeFlag: 'mission-complete',
 };
 
@@ -238,10 +294,10 @@ export const lanQuests: QuestDefinition[] = [
       { text: 'รับภารกิจแผนที่ลับจากครูเนม', done: { type: 'step', order: 1 } },
       { text: 'สำรวจหมุดอ้างอิงและคำนวณระยะทาง', done: { type: 'step', order: 2 } },
       { text: 'ตรวจสัญลักษณ์ภูมิประเทศและทิศทางน้ำไหล', done: { type: 'step', order: 3 } },
-      { text: 'ตรวจสอบพิกัด E/N จากบันทึก (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 4 } },
-      { text: 'วิเคราะห์จุดเป้าหมายทั้งสามแห่ง (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 5 } },
-      { text: 'ปักหมุดและบันทึกข้อมูลภูมิปัญญา (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 6 } },
-      { text: 'ส่งรายงานและรับรหัสชิ้นสุดท้าย (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 7 } },
+      { text: 'ตรวจสอบพิกัด E/N จากบันทึก', done: { type: 'step', order: 4 } },
+      { text: 'วิเคราะห์จุดเป้าหมายทั้งสามแห่ง (กด C)', done: { type: 'step', order: 5 } },
+      { text: 'ยืนยันสถานที่ ปักหมุด และบันทึกข้อมูลภูมิปัญญา', done: { type: 'step', order: 6 } },
+      { text: 'ส่งรายงานและรับรหัสชิ้นที่ 4', done: { type: 'step', order: 7 } },
     ],
   },
   {
@@ -308,33 +364,33 @@ export const lanStory: StoryStep[] = [
   {
     order: 4,
     title: 'ตรวจสอบพิกัด E/N จากบันทึก',
-    objective: '(อยู่ระหว่างพัฒนา) ฟังบันทึกพิกัดจากลุงจำรัส แล้วคำนวณ N จากหมุด RP-2',
-    landmarkId: 'rp-2',
-    status: 'planned',
+    objective: 'คุยกับลุงจำรัสในชุมชน ฟังบันทึกพิกัด แล้วคำนวณ N จากหมุด RP-2 และอ่านค่า E ที่เลือน',
+    landmarkId: 'village',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'grid-read' },
   },
   {
     order: 5,
     title: 'วิเคราะห์จุดเป้าหมายทั้งสามแห่ง',
-    objective: '(อยู่ระหว่างพัฒนา) เปรียบเทียบจุด A, B, C กับหลักฐานทั้ง 3 ชนิด',
-    landmarkId: 'village',
-    status: 'planned',
+    objective: 'เดินสำรวจจุด A, B, C (กด E) แล้วกด C เปิดกระดานวิเคราะห์หลักฐาน เลือกจุดที่ตรงหลักฐานครบ 3 ชนิด',
+    landmarkId: 'bridge',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'analysis-done' },
   },
   {
     order: 6,
-    title: 'สำรวจ ปักหมุด และบันทึกภูมิปัญญา',
-    objective: '(อยู่ระหว่างพัฒนา)',
+    title: 'ยืนยันสถานที่และบันทึกข้อมูล',
+    objective: 'เดินไปจุดที่วิเคราะห์ได้ กด E ตรวจยืนยันและบันทึกภูมิปัญญา แล้วเปิดแผนที่ (M) ปักหมุด เลือกประเภทสถานที่',
     landmarkId: 'site-b',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'pin-verified' },
   },
   {
     order: 7,
-    title: 'ส่งรายงานและฉากจบเกม',
-    objective: '(อยู่ระหว่างพัฒนา)',
+    title: 'ส่งรายงานและรับรหัสชิ้นที่ 4',
+    objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
     landmarkId: 'center',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];

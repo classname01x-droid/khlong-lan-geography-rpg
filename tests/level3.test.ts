@@ -766,7 +766,7 @@ describe('บันทึก/โหลด และการปลดล็อ�
         skills: sum.skills,
         evidenceFound: s.evidence.length,
         evidenceTotal: L3.evidence!.length,
-        codePiece: L3.ending!.codePiece,
+        codePiece: L3.ending!.codePiece!,
       },
       L3.unlocks,
     );

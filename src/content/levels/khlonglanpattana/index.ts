@@ -14,9 +14,9 @@ import {
 import { khlongLanPattanaNpcs } from './npcs';
 
 /**
- * ด่านที่ 4 (ด่านสุดท้าย, ต้นแบบ): ปริศนาแผนที่ลับแห่งคลองลานพัฒนา
+ * ด่านที่ 4 (ตำบลสุดท้าย): ปริศนาแผนที่ลับแห่งคลองลานพัฒนา
  * ใช้ id 'level-4' ที่จองไว้ → ปลดล็อกเมื่อจบด่าน 3 (pongNamRonLevel.unlocks = 'level-4' เดิม)
- * รอบนี้เล่นได้ฉาก 1–3 · ฉาก 4–7 มีข้อมูลและตรรกะตรวจ (ยังไปไม่ถึงตอนจบ จึงยังไม่ได้รหัสชิ้นที่ 4)
+ * เล่นได้ครบ 7 ฉาก · จบแล้วได้รหัสชิ้นที่ 4 และเข้าสู่บทที่ 5 (ปริศนาสุดท้าย)
  */
 export const khlongLanPattanaLevel: LevelDefinition = {
   id: 'level-4',
@@ -62,5 +62,7 @@ export const khlongLanPattanaLevel: LevelDefinition = {
   integratedSiteAnalysis: lanIntegratedAnalysis,
   pinTask: lanPinTask,
   ending: lanEnding,
+  // จบบท 4 → ปลดล็อกบทที่ 5 (ปริศนาสุดท้าย)
+  unlocks: 'finale',
   skills: ['scale', 'straight-vs-route', 'direction', 'elevation', 'map-symbols', 'grid-reference', 'relative-position', 'evidence-synthesis'],
 };

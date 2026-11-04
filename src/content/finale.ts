@@ -1,7 +1,7 @@
 import { LEVEL_SEQUENCE, LEVELS } from './registry';
 
 /**
- * ข้อมูลฉากจบเกม — แผนที่ภูมิปัญญา 4 ตำบล (หน้าจอจบเกมยังอยู่ระหว่างพัฒนา)
+ * ข้อมูลฉากจบเกม — แผนที่ภูมิปัญญา 4 ตำบล (แสดงใน EndingScene และบทที่ 5)
  * รหัสลับแต่ละชิ้นดึงจากข้อมูลตอนจบของแต่ละด่าน (level.ending.codePiece) ไม่เขียนซ้ำที่นี่
  *
  * หมายเหตุ: สถานที่และภูมิปัญญาเป็นข้อมูลจำลองในเกม ต้องตรวจสอบกับชุมชนจริงก่อนนำไปสอน
@@ -15,7 +15,7 @@ export interface FinaleEntry {
 }
 
 export const FINALE_ENTRIES: readonly FinaleEntry[] = [
-  { levelId: 'sakngam', site: 'บ้านช่างผ้าปัก (ข้อมูลจำลอง)', learning: 'มาตราส่วน ทิศ 8 ทิศ ระยะเส้นตรงกับระยะตามเส้นทาง' },
+  { levelId: 'sakngam', site: 'แหล่งผ้าปักบ้านไหนเจียว (ข้อมูลจำลอง)', learning: 'มาตราส่วน ทิศ 8 ทิศ ระยะเส้นตรงกับระยะตามเส้นทาง' },
   { levelId: 'level-2', site: 'ตาน้ำต้นลำห้วย (ข้อมูลจำลอง)', learning: 'สัญลักษณ์แผนที่ ระดับความสูง ทิศทางน้ำไหล' },
   { levelId: 'level-3', site: 'บ่อน้ำร้อนธรรมชาติ (ข้อมูลจำลอง)', learning: 'พิกัดกริด E/N จุดกำเนิด ตำแหน่งสัมพัทธ์' },
   { levelId: 'level-4', site: 'ศูนย์เรียนรู้ภูมิปัญญาชุมชน (ข้อมูลจำลอง)', learning: 'บูรณาการหลักฐาน: ระยะทาง ภูมิประเทศ และพิกัด' },
@@ -39,7 +39,7 @@ export function finaleRows(): FinaleRow[] {
       site: entry?.site ?? '-',
       learning: entry?.learning ?? '-',
       codeIndex: slot.codePieceIndex,
-      code: level?.ending?.codePiece.value ?? null,
+      code: level?.ending?.codePiece?.value ?? null,
     };
   });
 }

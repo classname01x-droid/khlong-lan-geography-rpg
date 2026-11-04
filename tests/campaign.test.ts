@@ -3,7 +3,7 @@ import { khlongNamLaiLevel as L2 } from '../src/content/levels/khlongnamlai';
 import { khlongLanPattanaLevel as L4 } from '../src/content/levels/khlonglanpattana';
 import { pongNamRonLevel as L3 } from '../src/content/levels/pongnamron';
 import { sakNgamLevel as L1 } from '../src/content/levels/sakngam';
-import { canEnterLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
+import { ALL_LEVELS, canEnterLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
 import { CHAPTER_INTROS, CHAPTERS, FINALE_CHAPTER_ID, getChapterIntro } from '../src/content/story/chapters';
 import {
   canPlayLevel,
@@ -58,7 +58,8 @@ describe('ลำดับภารกิจหลัก 5 บท', () => {
     expect(CHAPTERS.map((c) => c.order)).toEqual([1, 2, 3, 4, 5]);
     // ลำดับบทสอดคล้องกับการปลดล็อกของด่าน (level.unlocks)
     expect([L1.unlocks, L2.unlocks, L3.unlocks]).toEqual(['level-2', 'level-3', 'level-4']);
-    expect(CHAPTERS.find((c) => c.id === FINALE_CHAPTER_ID)!.playable).toBe(false);
+    expect(L4.unlocks).toBe(FINALE_CHAPTER_ID);
+    expect(CHAPTERS.find((c) => c.id === FINALE_CHAPTER_ID)!.playable).toBe(true);
   });
 
   it('เริ่มเกมใหม่: บทปัจจุบัน = บทที่ 1 และเป้าหมายต่อไป = บทที่ 2', () => {
@@ -159,11 +160,12 @@ describe('เล่นต่อ (ภารกิจหลักล่าสุ�
 });
 
 describe('บทที่ยังไม่ถูกสร้าง', () => {
-  it('จบบท 4 → บท 5 (ไขปริศนาสุดท้าย) ยังไม่มีเนื้อหา → "ภารกิจถัดไปอยู่ระหว่างพัฒนา" และเก็บสถานะไว้', () => {
+  it('จบบท 4 → บท 5 (ปริศนาสุดท้าย) เปิดด้วยฉากเชื่อมเรื่อง และบท 1–4 เล่นซ้ำไม่ได้', () => {
     const s = fresh();
     for (const id of ['sakngam', 'level-2', 'level-3', 'level-4']) finish(s, id);
     expect(cur(s)).toBe(FINALE_CHAPTER_ID);
-    expect(continueTarget(CHAPTERS, s.data)).toMatchObject({ kind: 'in-development', chapter: { id: FINALE_CHAPTER_ID } });
+    expect(continueTarget(CHAPTERS, s.data)).toMatchObject({ kind: 'begin', chapter: { id: FINALE_CHAPTER_ID } });
+    expect(canPlayLevel(CHAPTERS, s.data, FINALE_CHAPTER_ID)).toBe(true);
     expect(IN_DEVELOPMENT_MESSAGE).toBe('ภารกิจถัดไปอยู่ระหว่างพัฒนา');
     expect(s.collectedCodePieces().map((c) => c.value)).toEqual(['ลาย', 'น้ำ', 'พิกัด', 'ลาน']);
     for (const id of ['sakngam', 'level-2', 'level-3', 'level-4']) expect(canPlayLevel(CHAPTERS, s.data, id)).toBe(false);
@@ -178,9 +180,8 @@ describe('บทที่ยังไม่ถูกสร้าง', () => {
     expect(s.isCompleted('sakngam')).toBe(true);
   });
 
-  it('ฉากที่ยังไม่สร้างภายในบท (ด่าน 4 ฉาก 4) ถูกระบุเป็น planned ให้ UI แสดงข้อความ', () => {
-    const planned = L4.story.filter((st) => st.status === 'planned').map((st) => st.order);
-    expect(planned).toEqual([4, 5, 6, 7]);
+  it('ทุกฉากของบท 1–5 สร้างแล้ว (ไม่มีฉาก planned เหลือ)', () => {
+    for (const L of ALL_LEVELS) expect(L.story.filter((st) => st.status === 'planned').map((st) => st.order), L.id).toEqual([]);
   });
 });
 

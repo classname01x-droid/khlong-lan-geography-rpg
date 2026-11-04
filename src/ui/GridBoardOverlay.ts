@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import { buildGridBoard } from '../core/site/gridBoard';
+import { buildIntegratedBoard } from '../core/site/integratedBoard';
 import type { GameSession } from '../core/session/GameSession';
 import { wrapThaiText } from './textWrap';
 import { COLORS, FONT_FAMILY, textStyle } from './theme';
@@ -24,12 +25,14 @@ export class GridBoardOverlay {
   readonly root: Phaser.GameObjects.Container;
   private readonly g: Phaser.GameObjects.Graphics;
   private readonly content: Phaser.GameObjects.Container;
+  private readonly title: Phaser.GameObjects.Text;
 
   constructor(private readonly scene: Phaser.Scene) {
     const dim = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.94).setOrigin(0);
-    const title = scene.add
-      .text(GAME_WIDTH / 2, 10, 'กระดานวิเคราะห์พิกัด — จุดใดตรงกับหลักฐานครบทั้ง 3 ชนิด?', textStyle(20, COLORS.accent))
+    this.title = scene.add
+      .text(GAME_WIDTH / 2, 10, '', textStyle(20, COLORS.accent))
       .setOrigin(0.5, 0);
+    const title = this.title;
     this.g = scene.add.graphics();
     this.content = scene.add.container(0, 0);
     this.root = scene.add.container(0, 0, [dim, title, this.g, this.content]).setDepth(22).setVisible(false);
@@ -54,7 +57,12 @@ export class GridBoardOverlay {
       this.root.setVisible(false);
       return;
     }
-    const view = buildGridBoard(s);
+    // ด่านพิกัด (บท 3) และด่านหลักฐานรวม (บท 4) ใช้หน้าจอเดียวกัน ต่างกันที่ข้อมูล
+    const integrated = !!s.level.integratedSiteAnalysis;
+    this.title.setText(
+      integrated ? 'กระดานวิเคราะห์หลักฐาน — จุดใดตรงกับหลักฐานครบทั้ง 3 ชนิด?' : 'กระดานวิเคราะห์พิกัด — จุดใดตรงกับหลักฐานครบทั้ง 3 ชนิด?',
+    );
+    const view = integrated ? buildIntegratedBoard(s) : buildGridBoard(s);
     this.root.setVisible(true);
     this.g.clear();
     this.content.removeAll(true);

@@ -1,4 +1,4 @@
-import { isPlayableLevel, LEVEL_SEQUENCE } from '../registry';
+import { FINALE_LEVEL, isPlayableLevel, LEVEL_SEQUENCE } from '../registry';
 import type { ChapterSlot } from '../../core/campaign/Campaign';
 
 /**
@@ -20,8 +20,16 @@ export const CHAPTERS: readonly ChapterSlot[] = [
     title: s.missionTitle,
     playable: isPlayableLevel(s.id),
   })),
-  // บทที่ 5 ยังไม่มีฉาก (ไม่ใช่ด่าน) → แสดง "ภารกิจถัดไปอยู่ระหว่างพัฒนา"
-  { id: FINALE_CHAPTER_ID, levelId: null, order: 5, tambon: 'อำเภอคลองลาน', title: 'ไขปริศนาสุดท้าย', playable: false },
+  // บทที่ 5 (บทสรุป ที่โรงเรียนบ้านสักงาม) — เข้าได้เมื่อจบบท 1–4 และมีรหัสครบ 4 ชิ้น
+  {
+    id: FINALE_CHAPTER_ID,
+    levelId: FINALE_LEVEL.id,
+    order: 5,
+    tambon: FINALE_LEVEL.tambon,
+    title: FINALE_LEVEL.title,
+    playable: true,
+    requiresCodesFrom: LEVEL_SEQUENCE.map((s) => s.id),
+  },
 ];
 
 export interface ChapterLine {
@@ -87,8 +95,9 @@ export const CHAPTER_INTROS: readonly ChapterIntro[] = [
     heading: 'บทที่ 5',
     fromChapterId: 'level-4',
     lines: [
-      { speaker: NEM, text: 'รหัสครบทั้ง 4 ชิ้นแล้ว: {{code:sakngam}} · {{code:level-2}} · {{code:level-3}} · {{code:level-4}}' },
-      { speaker: NEM, text: 'ถึงเวลาไขปริศนาสุดท้ายของอำเภอคลองลาน และประกอบแผนที่ภูมิปัญญาให้ครบทั้ง 4 ตำบล' },
+      { speaker: NEM, text: 'เยี่ยมมาก! สำรวจครบทั้ง 4 ตำบลแล้ว รหัสลับครบ 4 ชิ้น: {{code:sakngam}} · {{code:level-2}} · {{code:level-3}} · {{code:level-4}}' },
+      { speaker: NEM, text: 'แต่รหัสยังเป็นแค่คำที่กระจัดกระจาย ต้องนำหลักฐานจากทุกตำบลมาประกอบให้ถูกที่ จึงจะเปิดแผนที่ภูมิปัญญาฉบับสมบูรณ์ได้' },
+      { speaker: NEM, text: 'กลับมาพบครูที่โรงเรียนบ้านสักงาม ครูจัดลานจัดแสดงแผนที่ไว้รอแล้ว' },
     ],
   },
 ];

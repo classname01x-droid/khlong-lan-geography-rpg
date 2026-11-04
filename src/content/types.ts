@@ -240,7 +240,13 @@ export interface PinTaskDefinition {
 export interface EndingDefinition {
   /** ข้อความที่ครูส่งผ่านสมุดภาคสนาม */
   messages: DialogueLine[];
-  codePiece: { index: number; total: number; value: string };
+  /** รหัสลับที่ได้จากบทนี้ (บทสรุปไม่มี) */
+  codePiece?: { index: number; total: number; value: string };
+  /**
+   * (ไม่บังคับ) เริ่มตอนจบเองเมื่อจบบทสนทนาและเงื่อนไขนี้เป็นจริง (ใช้กับบทที่ไม่มีการปักหมุด)
+   * — ตอนจบเริ่มไม่ได้ถ้าเงื่อนไขยังไม่ครบ
+   */
+  startWhen?: Condition;
   rewardItem: string;
   completeFlag: string;
 }
@@ -346,6 +352,13 @@ export interface IntegratedSiteAnalysisDefinition {
   terrain: { symbol: MapSymbol; minElevationMeters: number; waterwayId: string; relation: 'upstream' | 'downstream'; ofId: string };
   /** N = N ของหมุด fromId + dN · ค่า E อ่านได้บางหลัก (eMask เช่น "5,?40") */
   grid: { fromId: string; dN: number; eMask: string; toleranceMeters: number };
+  /** ชื่อภาษาไทยของสัญลักษณ์แผนที่ที่ใช้ในปริศนา (ใช้อธิบายผล) */
+  symbolLabels: Record<string, string>;
+  /**
+   * (ไม่บังคับ) ตรวจยืนยันภาคสนามหลังวิเคราะห์ (กด E ที่จุดเป้าหมาย): ระบบคำนวณหลักฐาน 3 ชนิด ณ จุดนั้นให้ดูทีละข้อ
+   * ผ่านครบจึงได้หลักฐาน evidenceId + flag และบันทึกข้อมูลภูมิปัญญา (recordText — ข้อมูลจำลอง)
+   */
+  verify?: { radiusTiles: number; when: Condition; evidenceId: string; flag: string; recordText: string };
   candidates: Array<{ landmarkId: string; label: string; evidenceId?: string }>;
   correctLandmarkId?: string;
   placeType: string;

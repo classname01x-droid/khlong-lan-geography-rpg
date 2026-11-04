@@ -142,6 +142,16 @@ export interface GridChoiceResult {
   notSurveyed: string[];
 }
 
+export interface IntegratedChoiceResult {
+  ok: boolean;
+  blocked?: 'not-available' | 'missing-evidence' | 'already-solved';
+  chosenId: string | null;
+  reports: Record<string, IntegratedReport>;
+  facts: Record<string, SiteFacts>;
+  missingClues: string[];
+  notSurveyed: string[];
+}
+
 export interface CompareResult {
   ok: boolean;
   blocked?: 'not-available' | 'missing-evidence' | 'already-solved';
@@ -236,6 +246,10 @@ export class GameSession {
   lastCompare: CompareResult | null = null;
   /** ผลการเลือกจุดเป้าหมายในหน้าตรวจพิกัดครั้งล่าสุด */
   lastGridChoice: GridChoiceResult | null = null;
+  /** รหัสลับที่เก็บได้จากแต่ละบท (WorldScene ตั้งจาก ProgressStore) — ใช้ในบทสรุป */
+  campaignCodes: Record<string, string> = {};
+  /** ผลการเลือกจุดในกระดานวิเคราะห์หลักฐานรวมครั้งล่าสุด (ด่านสุดท้าย) */
+  lastIntegratedChoice: IntegratedChoiceResult | null = null;
   /** จุดที่เลือกไว้ในกระดานวิเคราะห์พิกัด (ยังไม่ยืนยัน) */
   gridSelection: number | null = null;
   /** ประวัติการยืนยันคำตอบในกระดานวิเคราะห์พิกัด (เปิดอ่านย้อนหลังได้ และบันทึกลงข้อมูลเล่นต่อ) */
@@ -274,6 +288,8 @@ export class GameSession {
     // {{gridrecord}} = พิกัดตามที่เขียนในบันทึกสำรวจของด่าน (ข้อมูลเดียวกับที่ใช้ตรวจจุดเป้าหมาย)
     const record = this.level.gridSiteAnalysis?.record;
     if (record) text = text.replaceAll('{{gridrecord}}', GridSystem.format(record));
+    // {{code:<levelId>}} = รหัสลับที่ผู้เล่นเก็บได้จริงจากบทนั้น (ตั้งจากข้อมูลบันทึก — ยังไม่ได้ = "?")
+    text = text.replace(/\{\{code:([\w-]+)\}\}/g, (_m, id: string) => this.campaignCodes[id] ?? '?');
     // {{road:a>b}} = ระยะตามถนน (คำนวณจากถนนในโลกเกม) · {{ia:...}} = ค่าจากหลักฐานรวมของด่าน
     text = text.replace(ROAD_TEMPLATE_PATTERN, (match, a: string, b: string) => {
       const m = this.roadMetersBetweenLandmarks(a, b);
@@ -397,6 +413,7 @@ export class GameSession {
     if (!ending || this.completed) return false;
     // ห้ามข้ามเงื่อนไขจบด่าน: ด่านที่มีการปักหมุดต้องปักหมุดผ่านก่อน (รหัสลับได้จากตอนจบเท่านั้น)
     if (this.level.pinTask && !this.pinSolved) return false;
+    if (ending.startWhen && !this.matches(ending.startWhen)) return false;
     for (const m of ending.messages) this.messages.push({ speaker: m.speaker, text: this.resolveText(m.text) });
     this.startDialogue(ending.messages, 'ending', null, null);
     return true;
@@ -444,6 +461,9 @@ export class GameSession {
       this.mode = 'summary';
       return 'mission-complete';
     }
+    // บทที่จบด้วยบทสนทนา (ไม่มีปักหมุด): ครบเงื่อนไขแล้วต่อเข้าตอนจบทันที
+    const ending = this.level.ending;
+    if (ending?.startWhen && !this.completed && this.matches(ending.startWhen) && this.startEnding()) return 'continue';
     this.mode = 'explore';
     return 'ended';
   }
@@ -934,6 +954,14 @@ export class GameSession {
       dn: ia.grid.dN.toLocaleString('en-US'),
       emask: `E ${ia.grid.eMask}`,
       n: n === null ? '?' : `N ${n.toLocaleString('en-US')}`,
+      // ตัวเลือกลวงของคำถามฉาก 4: ลบแทนบวก / ไปบวกที่ค่า E แทน N
+      nminus: n === null ? '?' : `N ${(n - 2 * ia.grid.dN).toLocaleString('en-US')}`,
+      eplus: (() => {
+        const rp = this.landmarkPoints[ia.grid.fromId];
+        if (!rp || !this.coords) return '?';
+        const g = this.coords.tileToGrid(rp);
+        return GridSystem.format({ e: g.e + ia.grid.dN, n: g.n });
+      })(),
     };
     return text.replace(/\{\{ia:(\w+)\}\}/g, (m, k: string) => values[k] ?? m);
   }
@@ -980,19 +1008,33 @@ export class GameSession {
    * ผู้เล่นเลือกจุดเป้าหมายในหน้าตรวจพิกัด — ตัดสินจากการตรวจหลักฐาน 3 ชนิดของทุกจุด (ไม่ได้กำหนดคำตอบตายตัว)
    * ต้องสำรวจจุดที่เลือกด้วยตัวเองก่อน (มีหลักฐานการสำรวจ) จึงจะตัดสินได้
    */
+  /**
+   * เงื่อนไขร่วมของการเลือกจุดเป้าหมาย (ใช้ทั้งด่านพิกัดและด่านหลักฐานรวม):
+   * ต้องเปิดแล้ว · ยังไม่ผ่าน · มีเบาะแสครบ · ได้สำรวจจุดที่เลือกด้วยตัวเอง (ไม่นับผิดถ้ายังไม่ครบ)
+   */
+  private siteChoiceGate(
+    def: { candidates: Array<{ landmarkId: string; evidenceId?: string }>; requiredClueIds: string[]; availableWhen: Condition; successFlag: string } | undefined,
+    index: number,
+  ): { chosen: { landmarkId: string; evidenceId?: string } | undefined; missingClues: string[]; notSurveyed: string[]; blocked?: GridChoiceResult['blocked'] } {
+    const chosen = def?.candidates[index];
+    const missingClues = (def?.requiredClueIds ?? []).filter((id) => !this.clues.includes(id));
+    const notSurveyed = chosen?.evidenceId && !this.evidence.includes(chosen.evidenceId) ? [chosen.landmarkId] : [];
+    let blocked: GridChoiceResult['blocked'];
+    if (!def || !chosen || !this.matches(def.availableWhen)) blocked = 'not-available';
+    else if (this.flags.has(def.successFlag)) blocked = 'already-solved';
+    else if (missingClues.length > 0 || notSurveyed.length > 0) blocked = 'missing-evidence';
+    return { chosen, missingClues, notSurveyed, blocked };
+  }
+
   chooseGridSite(index: number): GridChoiceResult {
     const ga = this.level.gridSiteAnalysis;
     const rows = this.evaluateGridSites();
-    const chosen = ga?.candidates[index];
     const reports = Object.fromEntries(rows.map((r) => [r.landmarkId, r.report]));
-    const missingClues = (ga?.requiredClueIds ?? []).filter((id) => !this.clues.includes(id));
-    const notSurveyed = chosen?.evidenceId && !this.evidence.includes(chosen.evidenceId) ? [chosen.landmarkId] : [];
-    const base = { chosenId: chosen?.landmarkId ?? null, reports, missingClues, notSurveyed };
-    if (!ga || !chosen || !this.isGridCheckOpen()) return (this.lastGridChoice = { ok: false, blocked: 'not-available', ...base });
-    if (this.gridCheckSolved) return (this.lastGridChoice = { ok: true, blocked: 'already-solved', ...base });
-    if (missingClues.length > 0 || notSurveyed.length > 0) {
-      return (this.lastGridChoice = { ok: false, blocked: 'missing-evidence', ...base });
-    }
+    const gate = this.siteChoiceGate(ga, index);
+    const chosen = gate.chosen;
+    const base = { chosenId: chosen?.landmarkId ?? null, reports, missingClues: gate.missingClues, notSurveyed: gate.notSurveyed };
+    if (gate.blocked) return (this.lastGridChoice = { ok: gate.blocked === 'already-solved', blocked: gate.blocked, ...base });
+    if (!ga || !chosen) return (this.lastGridChoice = { ok: false, blocked: 'not-available', ...base });
     const ok = chosen.landmarkId === this.siteTargetId();
     if (ok) {
       this.flags.add(ga.successFlag);
@@ -1002,6 +1044,110 @@ export class GameSession {
     this.gridAttempts.push({ landmarkId: chosen.landmarkId, ok });
     this.updateQuests();
     return (this.lastGridChoice = { ok, ...base });
+  }
+
+  /**
+   * ผู้เล่นเลือกจุดในกระดานวิเคราะห์หลักฐานรวม (ด่านสุดท้าย) — ตัดสินด้วย evaluateIntegratedSite ของทุกจุด
+   * ไม่ได้กำหนดคำตอบตายตัว · เงื่อนไขเดียวกับด่านพิกัด (siteChoiceGate)
+   */
+  chooseIntegratedSite(index: number): IntegratedChoiceResult {
+    const ia = this.level.integratedSiteAnalysis;
+    const rows = this.evaluateIntegratedSites();
+    const reports = Object.fromEntries(rows.map((r) => [r.landmarkId, r.report]));
+    const facts = Object.fromEntries(rows.map((r) => [r.landmarkId, r.facts]));
+    const gate = this.siteChoiceGate(ia, index);
+    const chosen = gate.chosen;
+    const base = { chosenId: chosen?.landmarkId ?? null, reports, facts, missingClues: gate.missingClues, notSurveyed: gate.notSurveyed };
+    if (gate.blocked) return (this.lastIntegratedChoice = { ok: gate.blocked === 'already-solved', blocked: gate.blocked, ...base });
+    if (!ia || !chosen) return (this.lastIntegratedChoice = { ok: false, blocked: 'not-available', ...base });
+    const ok = chosen.landmarkId === this.siteTargetId();
+    if (ok) {
+      this.flags.add(ia.successFlag);
+      this.skills.add('evidence-synthesis');
+    } else this.mistakes.compare++;
+    this.gridAttempts.push({ landmarkId: chosen.landmarkId, ok });
+    this.updateQuests();
+    return (this.lastIntegratedChoice = { ok, ...base });
+  }
+
+  /** การวิเคราะห์จุดเป้าหมายของด่านนี้ (พิกัด หรือ หลักฐานรวม) — ใช้กับกระดานวิเคราะห์ (C) */
+  get analysisSolved(): boolean {
+    const def = this.level.integratedSiteAnalysis ?? this.level.gridSiteAnalysis;
+    return !!def && this.flags.has(def.successFlag);
+  }
+
+  isAnalysisOpen(): boolean {
+    const def = this.level.integratedSiteAnalysis ?? this.level.gridSiteAnalysis;
+    return !!def && this.matches(def.availableWhen);
+  }
+
+  chooseAnalysisSite(index: number): { ok: boolean; blocked?: GridChoiceResult['blocked'] } {
+    return this.level.integratedSiteAnalysis ? this.chooseIntegratedSite(index) : this.chooseGridSite(index);
+  }
+
+  clearAnalysisChoice(): void {
+    this.lastGridChoice = null;
+    this.lastIntegratedChoice = null;
+    this.gridSelection = null;
+  }
+
+  /** จุดเป้าหมายที่ตรวจยืนยันภาคสนามได้จากช่องนี้ (ด่านหลักฐานรวม ฉาก 6) */
+  integratedVerifyAt(tile: TilePoint): string | null {
+    const ia = this.level.integratedSiteAnalysis;
+    const v = ia?.verify;
+    if (!ia || !v || this.flags.has(v.flag) || !this.matches(v.when)) return null;
+    for (const c of ia.candidates) {
+      const at = this.landmarkPoints[c.landmarkId];
+      if (at && Math.hypot(at.x - tile.x, at.y - tile.y) <= v.radiusTiles) return c.landmarkId;
+    }
+    return null;
+  }
+
+  /**
+   * ตรวจยืนยันภาคสนามด้วยหลักฐานรวม: ① ระยะทาง (เส้นตรง/ตามถนน) ② ภูมิประเทศ/สัญลักษณ์ ③ พิกัด
+   * คำนวณจากโลกเกม ณ จุดนั้น · ผ่านครบจึงบันทึกข้อมูลภูมิปัญญา (หลักฐาน + flag) — ไม่ผ่านบอกเฉพาะข้อที่ไม่ตรง
+   */
+  startIntegratedVerify(landmarkId: string): boolean {
+    const ia = this.level.integratedSiteAnalysis;
+    const v = ia?.verify;
+    const cand = ia?.candidates.find((c) => c.landmarkId === landmarkId);
+    const row = this.evaluateIntegratedSites().find((r) => r.landmarkId === landmarkId);
+    const ev = this.integratedEvidence();
+    if (!ia || !v || !cand || !row || !ev || !this.coords) return false;
+    const f = row.facts;
+    const r = row.report.reasons;
+    const m10 = (m: number) => (Math.round(m / 10) * 10).toLocaleString('en-US');
+    const mark = (ok: boolean) => (ok ? '✓ ตรง' : '✗ ไม่ตรง');
+    const name = (id: string) => this.level.landmarks.find((l) => l.id === id)?.name ?? id;
+    const sym = (s: string | null) => (s ? (ia.symbolLabels[s] ?? s) : 'ไม่มีสัญลักษณ์');
+    const speaker = `สมุดภาคสนาม — ตรวจยืนยัน${cand.label}`;
+    const allOk = row.failed.length === 0;
+    const nodes: DialogueNode[] = [
+      {
+        speaker,
+        text: `① ระยะทาง: จาก${name(ia.distance.fromId)} จุดนี้อยู่ทาง${THAI_DIRECTION[f.direction]} เส้นตรง ~${m10(f.straightMeters)} ม. · ตามถนน ${f.roadMeters === null ? 'ไม่มีถนนเชื่อม' : `~${m10(f.roadMeters)} ม.`} · บันทึก: ทาง${THAI_DIRECTION[ev.distance.direction]} ~${ev.distance.straightMeters} / ~${ev.distance.roadMeters} ม. → ${mark(!row.failed.includes('distance'))}`,
+      },
+      {
+        speaker,
+        text: `② ภูมิประเทศ: สัญลักษณ์${sym(f.symbol)} · สูง ${Math.round(f.elevationMeters)} ม. · อยู่ทาง${f.waterRelation === 'upstream' ? 'ต้นน้ำ' : f.waterRelation === 'downstream' ? 'ปลายน้ำ' : 'ระดับเดียวกับ'}${name(ia.terrain.ofId)} · บันทึก: ${sym(ev.terrain.symbol)} สูงกว่า ${ev.terrain.minElevationMeters} ม. ทาง${ev.terrain.relation === 'upstream' ? 'ต้นน้ำ' : 'ปลายน้ำ'} → ${mark(!row.failed.includes('terrain'))}`,
+      },
+      {
+        speaker,
+        text: `③ พิกัด: ตรงนี้คือ ${GridSystem.format({ e: f.e, n: f.n })} (คุณยืนที่ ${GridSystem.format(this.coords.tileToGrid(this.playerTile))}) · บันทึก: N ${ev.grid.nMeters.toLocaleString('en-US')} · E ${ev.grid.eMask} → ${mark(!r.includes('n') && !r.includes('e-mask'))}`,
+      },
+      allOk
+        ? {
+            speaker,
+            text: `ยืนยันแล้ว: ตรงหลักฐานครบทั้ง 3 ชนิด · บันทึกข้อมูลภูมิปัญญา: ${v.recordText} — เปิดแผนที่ (M) แล้วปักหมุดที่จุดนี้`,
+            effects: [
+              { type: 'evidence', evidenceId: v.evidenceId },
+              { type: 'flag', flag: v.flag },
+            ],
+          }
+        : { speaker, text: `${cand.label} ยังไม่ตรงหลักฐานทุกข้อ (ดูข้อที่มีเครื่องหมาย ✗) — กลับไปดูกระดานวิเคราะห์หลักฐาน (C)` },
+    ];
+    this.startDialogue(nodes, 'npc', null, null);
+    return true;
   }
 
   /** พิกัดในบันทึกหลังแปลงตามวิธีนับของผู้บันทึก (พิกัดที่ "แก้ไขแล้ว") */

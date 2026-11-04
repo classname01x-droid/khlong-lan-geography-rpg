@@ -86,13 +86,13 @@ const grid = new GridSystem(L4.grid!, L4.map.widthTiles, L4.map.heightTiles, def
 const at = (id: string) => L4.landmarks.find((l) => l.id === id)!.at;
 
 describe('ด่าน 4: ข้อมูลพื้นฐาน มาตราส่วน และพิกัด', () => {
-  it('ใช้ id level-4 ที่จองไว้ ผ่าน validateLevel และเป็นด่านสุดท้าย', () => {
+  it('ใช้ id level-4 ที่จองไว้ ผ่าน validateLevel และเป็นตำบลสุดท้าย (จบแล้วปลดล็อกบทสรุป)', () => {
     expect(L4.id).toBe('level-4');
     expect(getLevelSlot('level-4')?.status).toBe('available');
     expect(getLevelSlot('level-4')?.codePieceIndex).toBe(4);
     expect(LEVELS.at(-1)).toBe(L4);
     expect(L3.unlocks).toBe('level-4');
-    expect(L4.unlocks).toBeUndefined();
+    expect(L4.unlocks).toBe('finale');
     expect(validateLevel(L4)).toEqual([]);
   });
 
@@ -332,18 +332,12 @@ describe('ฉาก 1–3', () => {
     expect(s.questStatus.get('side-roads')).toBe('completed');
   });
 
-  it('ฉาก 4–7 ยังไม่เปิด (ต้นแบบ): ไม่มีทางได้รหัสชิ้นที่ 4 โดยข้ามเงื่อนไข', () => {
+  it('ก่อนจบฉาก 6 เรียกตอนจบโดยตรงไม่ได้ (รหัสชิ้นที่ 4 ได้จากเงื่อนไขจบบทเท่านั้น)', () => {
     const s = playTo(4);
-    expect(L4.story.filter((st) => st.status === 'playable').map((st) => st.order)).toEqual([1, 2, 3]);
-    expect(s.currentStepOrder).toBe(4);
-    talk(s, 'record-keeper');
-    expect(s.clues).not.toContain('clue-grid');
     expect(s.isPinAvailable()).toBe(false);
-    // เรียกตอนจบโดยตรงไม่ได้ ถ้ายังไม่ได้ปักหมุด
     expect(s.startEnding()).toBe(false);
     expect(s.completed).toBe(false);
     expect(s.mode).toBe('explore');
-    // ข้อมูลรหัสชิ้นที่ 4 เก็บในข้อมูลด่าน (เปลี่ยนได้ภายหลัง)
     expect(L4.ending!.codePiece).toEqual({ index: 4, total: 4, value: 'ลาน' });
   });
 });

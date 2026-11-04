@@ -2,7 +2,14 @@ import Phaser from 'phaser';
 import { GAME_WIDTH } from '../config/constants';
 import { LEVEL_SEQUENCE, LEVELS } from '../content/registry';
 import { CHAPTERS, FINALE_CHAPTER_ID } from '../content/story/chapters';
-import { chapterStates, continueTarget, IN_DEVELOPMENT_MESSAGE, type ChapterSlot, type ChapterState } from '../core/campaign/Campaign';
+import {
+  chapterStates,
+  continueTarget,
+  IN_DEVELOPMENT_MESSAGE,
+  isCampaignComplete,
+  type ChapterSlot,
+  type ChapterState,
+} from '../core/campaign/Campaign';
 import { describeLevel, type LevelCardModel } from '../core/progress/LevelProgress';
 import { drawWorldMapArt } from '../graphics/MenuArt';
 import { fmtMeters } from '../ui/format';
@@ -48,6 +55,7 @@ export class WorldMapScene extends Phaser.Scene {
     this.navStack = [];
     const progress = getProgress(this);
     const states = chapterStates(CHAPTERS, progress.data);
+    const complete = isCampaignComplete(CHAPTERS, progress.data);
     const models = LEVEL_SEQUENCE.map((slot, i) =>
       describeLevel(slot, progress.data, i === 0, LEVELS.find((l) => l.id === slot.id)?.evidence?.length ?? null),
     );
@@ -60,7 +68,7 @@ export class WorldMapScene extends Phaser.Scene {
     const banner = this.add.graphics();
     drawPixelFrame(banner, 230, 16, 500, 56, 'wood');
     this.add
-      .text(GAME_WIDTH / 2, 26, 'แผนที่การเดินทาง — อำเภอคลองลาน', {
+      .text(GAME_WIDTH / 2, 26, complete ? 'แผนที่การเดินทาง — สำรวจครบทั้ง 4 ตำบล ✓' : 'แผนที่การเดินทาง — อำเภอคลองลาน', {
         fontFamily: FONT_FAMILY,
         fontSize: '24px',
         color: PIXEL.light,
@@ -78,22 +86,28 @@ export class WorldMapScene extends Phaser.Scene {
     const pieces = LEVEL_SEQUENCE.map((s) => progress.data.codePieces[s.id]?.value ?? '?').join(' · ');
     this.add.text(36, 566, `รหัสลับ: ${pieces}`, this.style(17, PIXEL.ink));
     const finale = CHAPTERS.find((c) => c.id === FINALE_CHAPTER_ID)!;
-    const finaleText =
-      states[finale.id] === 'current'
-        ? `บทที่ 5 ${finale.title}: ${IN_DEVELOPMENT_MESSAGE}`
-        : `บทที่ 5 ${finale.title}: ต้องมีรหัสครบ 4 ชิ้น`;
+    const finaleText = complete
+      ? 'บทที่ 5 ปริศนาสุดท้าย: สำเร็จแล้ว — แผนที่ภูมิปัญญาฉบับสมบูรณ์'
+      : states[finale.id] === 'current'
+        ? `บทที่ 5 พร้อมแล้ว: ${finale.tambon} (รหัสครบ 4 ชิ้น)`
+        : 'บทที่ 5 ปริศนาสุดท้าย: ต้องจบบท 1–4 และมีรหัสครบ 4 ชิ้น';
     this.notice = this.add.text(36, 596, finaleText, this.style(13, PIXEL.inkSoft));
 
     const target = continueTarget(CHAPTERS, progress.data);
     const label =
-      target.kind === 'resume'
-        ? `เล่นต่อ: บทที่ ${target.chapter.order}`
-        : target.kind === 'begin'
-          ? `เดินทางต่อ: บทที่ ${target.chapter.order}`
-          : IN_DEVELOPMENT_MESSAGE;
+      target.kind === 'complete'
+        ? 'ดูสรุปการเดินทาง'
+        : target.kind === 'resume'
+          ? `เล่นต่อ: บทที่ ${target.chapter.order}`
+          : target.kind === 'begin'
+            ? `เดินทางต่อ: บทที่ ${target.chapter.order}`
+            : target.kind === 'blocked'
+              ? 'รหัสลับยังไม่ครบ'
+              : IN_DEVELOPMENT_MESSAGE;
     const go = new PixelButton(this, 504, 566, label, { width: 290, height: 52, fontSize: 17, onClick: () => this.go() });
-    go.setEnabled(target.kind !== 'in-development');
+    go.setEnabled(target.kind !== 'in-development' && target.kind !== 'blocked');
     if (target.kind === 'in-development') this.notice.setText(`บทที่ ${target.chapter.order}: ${IN_DEVELOPMENT_MESSAGE} — ความคืบหน้าถูกบันทึกไว้แล้ว`).setColor(PIXEL.warn);
+    if (target.kind === 'blocked') this.notice.setText(`บทที่ ${target.chapter.order}: ต้องมีรหัสลับครบ 4 ชิ้นก่อน (ยังขาด ${target.missingCodes.length} ชิ้น)`).setColor(PIXEL.bad);
     const back = new PixelButton(this, 806, 566, 'เมนูหลัก', { width: 136, height: 52, fontSize: 17, onClick: () => goToMainMenu(this) });
 
     this.navStack.push(new MenuNavigator([go, back], () => goToMainMenu(this)));

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/constants';
 import { DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../content/registry';
-import { IN_DEVELOPMENT_MESSAGE } from '../core/campaign/Campaign';
+import { IN_DEVELOPMENT_MESSAGE, isCampaignComplete } from '../core/campaign/Campaign';
+import { CHAPTERS, getChapter } from '../content/story/chapters';
 import type { NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
@@ -14,7 +15,7 @@ import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY }
 import { pinProblemText, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
-import { canStartLevel, continueStory, getSettings, getProgress, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
+import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
 /** ตัวเลือกในเมนูหยุดเกม (Esc) — ลำดับต้องตรงกับ PauseOverlay */
 export const PAUSE_ITEMS = ['เล่นต่อ', 'คำแนะนำการควบคุม', 'แผนที่การเดินทาง', 'กลับเมนูหลัก'] as const;
@@ -75,6 +76,10 @@ export class WorldScene extends Phaser.Scene {
     const level = getLevel(levelId);
     const grid = buildWorld(level.map);
     this.session = new GameSession(level, grid, defaultScale);
+    // รหัสลับที่เก็บได้จริงจากบันทึก (ใช้ในบทสรุป {{code:...}})
+    this.session.campaignCodes = Object.fromEntries(
+      Object.entries(getProgress(this).data.codePieces).map(([id, c]) => [id, c.value]),
+    );
     this.registry.set(REGISTRY_SESSION, this.session);
     this.registry.remove(REGISTRY_UNLOCKED);
     this.npcs = [];
@@ -299,25 +304,29 @@ export class WorldScene extends Phaser.Scene {
         else if (code === 'Escape') this.openPause();
         return;
 
-      case 'gridcheck':
+      case 'gridcheck': {
+        // กระดานวิเคราะห์ (บท 3: พิกัด · บท 4: หลักฐานรวม) — เลือกก่อน ยังไม่ตัดสิน ต้องกด Enter ยืนยัน
+        const count = (s.level.integratedSiteAnalysis ?? s.level.gridSiteAnalysis)?.candidates.length ?? 0;
         if (code === 'Escape' || code === 'KeyC') {
-          s.lastGridChoice = null;
-          s.gridSelection = null;
+          s.clearAnalysisChoice();
           this.setMode('explore');
-        } else if (choice >= 0 && choice < (s.level.gridSiteAnalysis?.candidates.length ?? 0)) {
-          // เลือกก่อน ยังไม่ตัดสิน — ต้องกด Enter ยืนยัน
-          if (!s.gridCheckSolved) {
+        } else if (choice >= 0 && choice < count) {
+          if (!s.analysisSolved) {
+            s.clearAnalysisChoice();
             s.gridSelection = choice;
-            s.lastGridChoice = null;
             this.bumpUi();
           }
-        } else if ((code === 'Enter' || code === 'NumpadEnter' || code === 'Space') && s.gridSelection !== null && !s.gridCheckSolved) {
+        } else if ((code === 'Enter' || code === 'NumpadEnter' || code === 'Space') && s.gridSelection !== null && !s.analysisSolved) {
           const pick = s.gridSelection;
-          this.withStepToasts(() => s.chooseGridSite(pick));
-          if (s.lastGridChoice?.ok) s.gridSelection = pick;
+          let ok = false;
+          this.withStepToasts(() => {
+            ok = s.chooseAnalysisSite(pick).ok;
+          });
+          if (ok) s.gridSelection = pick;
           this.bumpUi();
         }
         return;
+      }
 
       case 'compare':
         if (code === 'Escape' || code === 'KeyC') {
@@ -371,14 +380,18 @@ export class WorldScene extends Phaser.Scene {
   private openCompare(): void {
     const s = this.session;
     // ด่านที่ใช้พิกัดกริด: C = กระดานวิเคราะห์พิกัด (ด่านที่มีแผนที่ฐานยังใช้หน้าเปรียบเทียบเดิม)
-    if (s.level.gridSiteAnalysis) {
-      if (s.currentStepOrder < 4 && !s.gridCheckSolved) {
-        s.toast('กระดานวิเคราะห์พิกัดจะเปิดหลังฟังเบาะแสจากผู้เก็บบันทึก');
+    if (s.level.gridSiteAnalysis || s.level.integratedSiteAnalysis) {
+      // บท 3 เปิดตั้งแต่ฉาก 4 · บท 4 เปิดตั้งแต่ฉาก 5 (ตาม availableWhen ของข้อมูลด่าน)
+      if (!s.isAnalysisOpen() && !s.analysisSolved) {
+        s.toast(
+          s.level.integratedSiteAnalysis
+            ? 'กระดานวิเคราะห์หลักฐานจะเปิดหลังได้หลักฐานพิกัดจากลุงจำรัส'
+            : 'กระดานวิเคราะห์พิกัดจะเปิดหลังฟังเบาะแสจากผู้เก็บบันทึก',
+        );
         return;
       }
       s.pinStage = 'none';
-      s.lastGridChoice = null;
-      s.gridSelection = null;
+      s.clearAnalysisChoice();
       this.setMode('gridcheck');
       return;
     }
@@ -487,6 +500,14 @@ export class WorldScene extends Phaser.Scene {
       this.cancelWalk();
       this.player.setVelocity(0, 0);
       this.withStepToasts(() => this.session.startGridVerify(site));
+      return;
+    }
+    // บท 4 ฉาก 6: ตรวจยืนยันด้วยหลักฐานรวมและบันทึกข้อมูลภูมิปัญญา
+    const site4 = this.session.integratedVerifyAt(this.session.playerTile);
+    if (site4) {
+      this.cancelWalk();
+      this.player.setVelocity(0, 0);
+      this.withStepToasts(() => this.session.startIntegratedVerify(site4));
     }
   }
 
@@ -653,9 +674,12 @@ export class WorldScene extends Phaser.Scene {
       s.level.unlocks,
     );
     const slot = s.level.unlocks ? getLevelSlot(s.level.unlocks) : undefined;
-    this.registry.set(REGISTRY_UNLOCKED, slot?.name ?? null);
+    const chapter = s.level.unlocks ? getChapter(s.level.unlocks) : undefined;
+    this.registry.set(REGISTRY_UNLOCKED, slot?.name ?? (chapter ? `บทที่ ${chapter.order}: ${chapter.title}` : null));
     this.registry.set(REGISTRY_CODE_PIECES, this.progress.collectedCodePieces());
     s.toast('บันทึกการผ่านด่านแล้ว');
+    // จบบทสรุป = จบเกม → ฉากสรุปการเดินทาง
+    if (isCampaignComplete(CHAPTERS, this.progress.data)) this.time.delayedCall(400, () => goToEnding(this));
   }
 
   /* =========================================================

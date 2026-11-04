@@ -271,12 +271,12 @@ describe('จบด่าน 2 และปลดล็อกด่าน 3', ()
 
     const store = new ProgressStore(new MemoryStorage(), 'sakngam');
     store.completeLevel(
-      { levelId: 'sakngam', completedAt: 'x', distanceMeters: 1, cluesFound: 6, cluesTotal: 6, mistakes: 0, elapsedMs: 1, skills: [], codePiece: sakNgamLevel.ending!.codePiece },
+      { levelId: 'sakngam', completedAt: 'x', distanceMeters: 1, cluesFound: 6, cluesTotal: 6, mistakes: 0, elapsedMs: 1, skills: [], codePiece: sakNgamLevel.ending!.codePiece! },
       'level-2',
     );
     const sum = s.summary();
     store.completeLevel(
-      { levelId: 'level-2', completedAt: 'x', distanceMeters: sum.distanceMeters, cluesFound: sum.cluesFound, cluesTotal: sum.cluesTotal, mistakes: sum.mistakes, elapsedMs: 0, skills: sum.skills, codePiece: L2.ending!.codePiece },
+      { levelId: 'level-2', completedAt: 'x', distanceMeters: sum.distanceMeters, cluesFound: sum.cluesFound, cluesTotal: sum.cluesTotal, mistakes: sum.mistakes, elapsedMs: 0, skills: sum.skills, codePiece: L2.ending!.codePiece! },
       L2.unlocks,
     );
     expect(store.collectedCodePieces().map((c) => c.value)).toEqual(['ลาย', 'น้ำ']);

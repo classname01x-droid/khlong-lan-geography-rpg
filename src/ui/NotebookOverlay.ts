@@ -253,7 +253,9 @@ export class NotebookOverlay {
       this.y += 6;
       this.line('รางวัล', 17, '#5a3a1e', 0, 4);
       this.line(
-        `• รหัสลับชิ้นที่ ${ending.codePiece.index}/${ending.codePiece.total}: "${ending.codePiece.value}"   • ${ending.rewardItem}`,
+        ending.codePiece
+          ? `• รหัสลับชิ้นที่ ${ending.codePiece.index}/${ending.codePiece.total}: "${ending.codePiece.value}"   • ${ending.rewardItem}`
+          : `• ${ending.rewardItem}`,
         15,
         '#1f6b2a',
         20,

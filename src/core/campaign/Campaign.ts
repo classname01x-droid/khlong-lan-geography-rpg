@@ -19,6 +19,8 @@ export interface ChapterSlot {
   title: string;
   /** มีเนื้อหาให้เล่นจริงหรือไม่ */
   playable: boolean;
+  /** (ไม่บังคับ) ต้องมีรหัสลับจากบทเหล่านี้ครบก่อนจึงเข้าได้ (บทสรุป: รหัสครบ 4 ชิ้น) */
+  requiresCodesFrom?: string[];
 }
 
 /** explored = สำรวจแล้ว · current = ภารกิจปัจจุบัน · next = เป้าหมายต่อไป · locked = ยังไปไม่ถึง */
@@ -28,6 +30,16 @@ export const IN_DEVELOPMENT_MESSAGE = 'ภารกิจถัดไปอย�
 
 const isDone = (c: ChapterSlot, p: ProgressData) => c.levelId !== null && c.levelId in p.completed;
 
+/** จบเกมแล้ว = ผ่านครบทุกบท (รวมบทสรุป) */
+export function isCampaignComplete(chapters: readonly ChapterSlot[], p: ProgressData): boolean {
+  return chapters.every((c) => isDone(c, p));
+}
+
+/** รหัสลับที่บทนี้ต้องการแต่ยังไม่มี (ว่าง = ครบ) */
+export function missingCodes(c: ChapterSlot, p: ProgressData): string[] {
+  return (c.requiresCodesFrom ?? []).filter((id) => !p.codePieces[id] && !p.completed[id]?.codePiece);
+}
+
 /** บทปัจจุบัน = บทแรกที่ยังไม่ผ่าน (ถ้าผ่านครบทุกบทแล้ว = บทสุดท้าย) */
 export function currentChapter(chapters: readonly ChapterSlot[], p: ProgressData): ChapterSlot {
   return chapters.find((c) => !isDone(c, p)) ?? chapters[chapters.length - 1];
@@ -36,6 +48,10 @@ export function currentChapter(chapters: readonly ChapterSlot[], p: ProgressData
 export function chapterStates(chapters: readonly ChapterSlot[], p: ProgressData): Record<string, ChapterState> {
   const cur = currentChapter(chapters, p);
   const out: Record<string, ChapterState> = {};
+  if (isCampaignComplete(chapters, p)) {
+    for (const c of chapters) out[c.id] = 'explored';
+    return out;
+  }
   for (const c of chapters) {
     if (c.id === cur.id) out[c.id] = 'current';
     else if (isDone(c, p)) out[c.id] = 'explored';
@@ -47,8 +63,9 @@ export function chapterStates(chapters: readonly ChapterSlot[], p: ProgressData)
 
 /** เข้าเล่นด่านนี้ได้หรือไม่ (ทุกทางเข้า: เมนู แผนที่การเดินทาง URL) — ต้องเป็นด่านของบทปัจจุบันและมีเนื้อหา */
 export function canPlayLevel(chapters: readonly ChapterSlot[], p: ProgressData, levelId: string): boolean {
+  if (isCampaignComplete(chapters, p)) return false; // จบเกมแล้ว: ไม่ย้อนเล่นบทใด
   const cur = currentChapter(chapters, p);
-  return cur.playable && cur.levelId === levelId;
+  return cur.playable && cur.levelId === levelId && missingCodes(cur, p).length === 0;
 }
 
 export type ContinueTarget =
@@ -57,11 +74,18 @@ export type ContinueTarget =
   /** ยังไม่เริ่มบทนี้ → ฉากเชื่อมเรื่อง แล้วเริ่มบท */
   | { kind: 'begin'; chapter: ChapterSlot }
   /** บทนี้ยังไม่มีเนื้อหา */
-  | { kind: 'in-development'; chapter: ChapterSlot };
+  | { kind: 'in-development'; chapter: ChapterSlot }
+  /** เงื่อนไขของบทยังไม่ครบ (เช่น รหัสลับไม่ครบ 4 ชิ้น) */
+  | { kind: 'blocked'; chapter: ChapterSlot; missingCodes: string[] }
+  /** จบเกมแล้ว → สรุปการเดินทาง */
+  | { kind: 'complete' };
 
 export function continueTarget(chapters: readonly ChapterSlot[], p: ProgressData): ContinueTarget {
+  if (isCampaignComplete(chapters, p)) return { kind: 'complete' };
   const chapter = currentChapter(chapters, p);
   if (!chapter.playable || !chapter.levelId) return { kind: 'in-development', chapter };
+  const missing = missingCodes(chapter, p);
+  if (missing.length) return { kind: 'blocked', chapter, missingCodes: missing };
   if (p.inProgress[chapter.levelId]) return { kind: 'resume', chapter, levelId: chapter.levelId };
   return { kind: 'begin', chapter };
 }

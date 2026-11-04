@@ -141,14 +141,32 @@ export const khlongLanPattanaNpcs: NpcDefinition[] = [
         nodes: [{ speaker: JAM, text: 'ลุงเก็บบันทึกพิกัดของตำบลไว้ ถ้าตรวจระยะทางและลำน้ำครบแล้ว ค่อยมาดูพิกัดกับลุงนะ' }],
       },
       {
-        // ฉาก 4 อยู่ระหว่างพัฒนา — ข้อมูลหลักฐานพิกัด (clue-grid) เตรียมไว้ใน mission.ts แล้ว
-        ambient: true,
+        when: { minStep: 4, maxStep: 4 },
         nodes: [
+          { speaker: JAM, text: 'ลุงอ่านส่วนที่ยังเหลือบนแผนที่ที่เสียหายได้หนึ่งบรรทัด เป็นพิกัดที่บอกเทียบกับหมุด RP-2' },
           {
             speaker: JAM,
-            text: '(ฉาก 4 อยู่ระหว่างพัฒนา) ลุงกำลังอ่านพิกัดที่เลือนจากแผนที่ที่เสียหาย เทียบกับหมุด RP-2 อยู่ — กลับมาใหม่ในรุ่นถัดไปนะ',
+            text: 'เขียนว่า "เหนือหมุด RP-2 ขึ้นไป {{ia:dn}} ม." ส่วนค่า E เลือนจนอ่านได้แค่ {{ia:emask}}',
+            effects: [{ type: 'evidence', evidenceId: 'grid-record' }],
           },
+          { quiz: 'grid-n' },
+          {
+            speaker: JAM,
+            text: 'จดไว้ในสมุดนะ',
+            effects: [{ type: 'clue', clueId: 'clue-grid' }],
+          },
+          { quiz: 'grid-e' },
+          { speaker: JAM, text: 'ตอนนี้มีหลักฐานครบสามชนิดแล้ว ไปสำรวจจุด A, B, C ด้วยตัวเอง แล้วกด C เปิดกระดานวิเคราะห์หลักฐาน' },
         ],
+      },
+      {
+        when: { minStep: 5, maxStep: 5 },
+        ambient: true,
+        nodes: [{ speaker: JAM, text: 'จุดที่ถูกต้องต้องตรงทั้งระยะทาง ภูมิประเทศ และพิกัด — ตรงแค่บางอย่างยังไม่พอนะ' }],
+      },
+      {
+        ambient: true,
+        nodes: [{ speaker: JAM, text: 'ขอบใจมากหลาน แผนที่ของตำบลเราจะได้สมบูรณ์เสียที' }],
       },
     ],
   },
