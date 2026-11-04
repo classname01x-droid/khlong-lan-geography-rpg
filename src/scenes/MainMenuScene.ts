@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { canEnterLevel, DEFAULT_LEVEL_ID } from '../content/registry';
+import { CHAPTERS } from '../content/story/chapters';
 import { drawMenuBackground } from '../graphics/MenuArt';
 import { MenuNavigator } from '../ui/pixel/MenuNavigator';
 import { Modal } from '../ui/pixel/Modal';
@@ -9,7 +9,7 @@ import { drawPixelFrame } from '../ui/pixel/PixelFrame';
 import { PIXEL } from '../ui/pixel/theme';
 import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
-import { getProgress, getSettings, goToWorldMap, SCENE, startLevel } from './navigation';
+import { beginChapter, continueStory, getProgress, getSettings, goToWorldMap, SCENE } from './navigation';
 
 const CONTROLS: Array<[string, string]> = [
   ['W A S D / ปุ่มลูกศร', 'เดิน (เดินทแยงได้)'],
@@ -19,13 +19,13 @@ const CONTROLS: Array<[string, string]> = [
   ['N', 'สมุดภาคสนาม: ภารกิจ เบาะแส วิเคราะห์เส้นทาง หลักฐาน'],
   ['G', 'เปิด/ปิดเส้นตาราง (1 ช่อง = 10 ม.)'],
   ['1 2 3', 'เลือกคำตอบ / เลือกเส้นทาง / เลือกประเภทภูมิปัญญา'],
-  ['Esc', 'เมนูหยุดเกม (กลับหน้าเลือกด่าน / เมนูหลัก)'],
+  ['Esc', 'เมนูหยุดเกม (แผนที่การเดินทาง / เมนูหลัก)'],
 ];
 
 const text = (scene: Phaser.Scene, x: number, y: number, s: string, size: number, color: string = PIXEL.ink) =>
   scene.add.text(x, y, s, { fontFamily: FONT_FAMILY, fontSize: `${size}px`, color, lineSpacing: 5, padding: { top: 4 } });
 
-/** หน้าเมนูหลัก: เริ่มเกมใหม่ · เล่นต่อ · เลือกด่าน · วิธีเล่น · ตั้งค่า */
+/** หน้าเมนูหลัก: เริ่มเกมใหม่ · เล่นต่อ · แผนที่การเดินทาง · วิธีเล่น · ตั้งค่า */
 export class MainMenuScene extends Phaser.Scene {
   private navStack: MenuNavigator[] = [];
   private continueButton!: PixelButton;
@@ -61,7 +61,7 @@ export class MainMenuScene extends Phaser.Scene {
     const items: Array<[string, () => void]> = [
       ['เริ่มเกมใหม่', () => this.newGame()],
       ['เล่นต่อ', () => this.continueGame()],
-      ['เลือกด่าน', () => goToWorldMap(this)],
+      ['แผนที่การเดินทาง', () => goToWorldMap(this)],
       ['วิธีเล่น', () => this.showHowToPlay()],
       ['ตั้งค่า', () => this.showSettings()],
     ];
@@ -93,8 +93,9 @@ export class MainMenuScene extends Phaser.Scene {
 
   private newGame(): void {
     const progress = getProgress(this);
+    // เริ่มภารกิจตั้งแต่บทที่ 1 (ฉากเปิดเรื่องของครูเนม แล้วเข้าตำบลสักงาม)
     if (!progress.hasAnySave()) {
-      startLevel(this, DEFAULT_LEVEL_ID, 'fresh');
+      beginChapter(this, CHAPTERS[0].id);
       return;
     }
     this.pushModal(
@@ -105,7 +106,7 @@ export class MainMenuScene extends Phaser.Scene {
           label: 'ยืนยัน: ลบและเริ่มใหม่',
           action: () => {
             progress.resetAll();
-            startLevel(this, DEFAULT_LEVEL_ID, 'fresh');
+            beginChapter(this, CHAPTERS[0].id);
           },
         },
         { label: 'ยกเลิก', action: () => undefined },
@@ -113,13 +114,10 @@ export class MainMenuScene extends Phaser.Scene {
     );
   }
 
+  /** เล่นต่อ: กลับไปภารกิจหลักล่าสุด (ตำแหน่งและสถานะปริศนาเดิม) หรือรับภารกิจบทถัดไป */
   private continueGame(): void {
-    const progress = getProgress(this);
-    if (!progress.hasAnySave()) return;
-    const id = progress.continueLevelId();
-    // มีด่านที่เล่นค้าง → เข้าด่านนั้นต่อ; ไม่มี (ผ่านด่านไปแล้ว) → ไปหน้าเลือกด่าน
-    if (id && canEnterLevel(id, progress.data)) startLevel(this, id, 'resume');
-    else goToWorldMap(this);
+    if (!getProgress(this).hasAnySave()) return;
+    continueStory(this);
   }
 
   /** หน้าต่างแบบกระดาษพร้อมปุ่ม "กลับ" — ใช้กับ วิธีเล่น และ ตั้งค่า */
@@ -147,7 +145,7 @@ export class MainMenuScene extends Phaser.Scene {
       const left = 122;
       const width = GAME_WIDTH - 260;
       const goal =
-        'สำรวจ 4 ตำบลของอำเภอคลองลาน พูดคุยกับชาวบ้าน เก็บเบาะแสลงสมุดภาคสนาม แล้วใช้ ทิศทาง ระยะทาง และจุดสังเกต ร่วมกันเพื่อไขปริศนา รับรหัสลับตำบลละ 1 ชิ้น';
+        'คุณคือนักสำรวจของครูเนม ออกเดินทางตามภารกิจผ่าน 4 ตำบลของอำเภอคลองลานตามลำดับ พูดคุยกับชาวบ้าน เก็บเบาะแสลงสมุดภาคสนาม ใช้ทิศทาง ระยะทาง และจุดสังเกตไขปริศนา รับรหัสลับตำบลละ 1 ชิ้น แล้วไขปริศนาสุดท้าย';
       const scale =
         'มาตราส่วน: 1 ช่องในเกม = 10 เมตร · แผนที่ 1:10,000 → 1 ซม. บนแผนที่ = 100 เมตร (เช่น 3 ซม. = 300 ม., 4 ซม. = 400 ม.)';
       const tips = 'พื้นที่ที่ยังไม่สำรวจถูกหมอกบัง · ตอบผิดจะได้คำใบ้และลองใหม่ได้ · เกมบันทึกความคืบหน้าอัตโนมัติ';

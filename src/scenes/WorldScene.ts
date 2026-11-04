@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/constants';
-import { canEnterLevel, DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../content/registry';
+import { DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../content/registry';
+import { IN_DEVELOPMENT_MESSAGE } from '../core/campaign/Campaign';
 import type { NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
@@ -13,10 +14,10 @@ import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY }
 import { pinProblemText, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
-import { getProgress, getSettings, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
+import { canStartLevel, continueStory, getSettings, getProgress, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
 /** ตัวเลือกในเมนูหยุดเกม (Esc) — ลำดับต้องตรงกับ PauseOverlay */
-export const PAUSE_ITEMS = ['เล่นต่อ', 'คำแนะนำการควบคุม', 'กลับหน้าเลือกด่าน', 'กลับเมนูหลัก'] as const;
+export const PAUSE_ITEMS = ['เล่นต่อ', 'คำแนะนำการควบคุม', 'แผนที่การเดินทาง', 'กลับเมนูหลัก'] as const;
 
 const S = TILE_SIZE_PX;
 const DEPTH = { characters: 20, labels: 40, grid: 60, fog: 100 } as const;
@@ -65,8 +66,8 @@ export class WorldScene extends Phaser.Scene {
     this.ready = false;
     this.startData = data ?? {};
     const levelId = this.startData.levelId ?? (this.registry.get(REGISTRY_LEVEL_ID) as string | undefined) ?? DEFAULT_LEVEL_ID;
-    // กันการเข้าด่านที่ยังไม่มีเนื้อหา หรือยังไม่ปลดล็อก (เช่น เปิดด่าน 2 ก่อนจบด่าน 1)
-    if (!canEnterLevel(levelId, getProgress(this).data)) {
+    // ภารกิจหลักต่อเนื่อง: เข้าได้เฉพาะด่านของบทปัจจุบัน (กันข้ามบท/ย้อนบท/ด่านที่ยังไม่มีเนื้อหา)
+    if (!canStartLevel(this, levelId)) {
       this.time.delayedCall(0, () => goToWorldMap(this));
       return;
     }
@@ -358,7 +359,8 @@ export class WorldScene extends Phaser.Scene {
         return;
 
       case 'summary':
-        if (confirm) this.setMode('explore');
+        // จบบท → ครูเนมมอบภารกิจบทถัดไป (ฉากเชื่อมเรื่อง) · Esc → แผนที่การเดินทาง
+        if (confirm) continueStory(this);
         else if (code === 'Escape') this.leave('worldMap');
         return;
     }
@@ -418,7 +420,7 @@ export class WorldScene extends Phaser.Scene {
         this.bumpUi();
         return;
       }
-      case 'กลับหน้าเลือกด่าน':
+      case 'แผนที่การเดินทาง':
         this.leave('worldMap');
         return;
       case 'กลับเมนูหลัก':
@@ -455,6 +457,8 @@ export class WorldScene extends Phaser.Scene {
     for (const step of s.level.story) {
       if (step.order >= before && step.order < after) s.toast(`ผ่านฉากที่ ${step.order}: ${step.title}`);
     }
+    // ฉากถัดไปของบทยังไม่ถูกสร้าง → แจ้ง และเก็บสถานะไว้ (บันทึกอัตโนมัติด้านล่าง)
+    if (after !== before && s.currentStep?.status === 'planned') s.toast(`${IN_DEVELOPMENT_MESSAGE} — ความคืบหน้าถูกบันทึกไว้แล้ว`);
     this.refreshMarkers();
     this.refreshLabels();
     this.bumpUi();

@@ -15,6 +15,7 @@ import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
 import { PauseOverlay } from '../ui/PauseOverlay';
 import { CompareOverlay } from '../ui/CompareOverlay';
 import { GridBoardOverlay } from '../ui/GridBoardOverlay';
+import { IN_DEVELOPMENT_MESSAGE } from '../core/campaign/Campaign';
 import type { CodePiece } from '../core/progress/ProgressStore';
 
 /**
@@ -85,7 +86,9 @@ export class UIScene extends Phaser.Scene {
     const step = s.currentStep;
     this.objectiveText.setText(
       step
-        ? `ฉาก ${step.order}/${s.level.story.length} · ${step.title}\n${step.objective}`
+        ? step.status === 'planned'
+          ? `ฉาก ${step.order}/${s.level.story.length} · ${step.title}\n${IN_DEVELOPMENT_MESSAGE} (ความคืบหน้าถูกบันทึกไว้แล้ว)`
+          : `ฉาก ${step.order}/${s.level.story.length} · ${step.title}\n${step.objective}`
         : 'ภารกิจสำเร็จแล้ว! สำรวจต่อได้ หรือเปิดสมุดภาคสนาม (N) อ่านสรุป',
     );
     this.compassNeedleText.setText(THAI_DIRECTION[s.facing].replace('ทิศ', ''));

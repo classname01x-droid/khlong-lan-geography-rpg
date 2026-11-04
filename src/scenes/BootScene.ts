@@ -31,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     this.sound.mute = !settings.settings.soundEnabled;
 
     // ทางลัดสำหรับนักพัฒนา/การทดสอบ: ?level=<id> เข้าด่านทันที (เล่นต่อ), ?new=1 เริ่มด่านใหม่
+    // ใช้ได้เฉพาะด่านของบทปัจจุบันในภารกิจหลัก — ด่านอื่นถูกส่งไปแผนที่การเดินทาง (ข้ามบทผ่าน URL ไม่ได้)
     const params = new URLSearchParams(window.location.search);
     if (params.has('level') || params.has('new')) {
       const levelId = params.get('level') ?? DEFAULT_LEVEL_ID;
