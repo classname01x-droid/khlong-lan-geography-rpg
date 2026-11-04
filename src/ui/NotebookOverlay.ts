@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import {
   CLUE_TYPE_LABEL,
-  NOTEBOOK_TABS,
   QUEST_KIND_LABEL,
   type GameSession,
   type NotebookTab,
@@ -47,7 +46,15 @@ export class NotebookOverlay {
   private readonly footer: Phaser.GameObjects.Text;
   private y = BODY_TOP;
 
-  constructor(private readonly scene: Phaser.Scene) {
+  /**
+   * @param tabs หน้าในสมุดของด่านนี้ (ด่านที่ไม่มีการวิเคราะห์เส้นทางจะไม่มีหน้านั้น)
+   * @param tambon ชื่อตำบล — สมุดแยกเบาะแสตามด่าน (เบาะแสมาจาก session ของด่านนี้เท่านั้น)
+   */
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly tabs: readonly NotebookTab[],
+    tambon: string,
+  ) {
     const dim = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.8).setOrigin(0);
     const paper = scene.add.graphics();
     paper.fillStyle(0xf3ead2, 1).fillRoundedRect(PX, PY, PW, PH, 12);
@@ -55,7 +62,8 @@ export class NotebookOverlay {
     paper.lineStyle(1, 0xd8c9a3, 1);
     for (let ly = BODY_TOP + 24; ly < BODY_BOTTOM; ly += 26) paper.lineBetween(PX + 16, ly, PX + PW - 16, ly);
     const title = scene.add.text(PX + 28, PY + 14, 'สมุดภาคสนาม', textStyle(24, '#5a3a1e'));
-    this.tabTexts = NOTEBOOK_TABS.map((tab, i) =>
+    const sub = scene.add.text(PX + 30, PY + 50, tambon, textStyle(13, '#7a6448'));
+    this.tabTexts = tabs.map((tab, i) =>
       scene.add.text(PX + 200 + i * 160, PY + 20, TAB_LABEL[tab], {
         ...textStyle(16, '#5a3a1e'),
         padding: { x: 10, y: 4, top: 6 },
@@ -67,7 +75,7 @@ export class NotebookOverlay {
     this.body = scene.add.container(0, 0);
     this.footer = scene.add.text(INNER_X, BODY_BOTTOM + 6, '', textStyle(15, '#7a2e1e'));
     this.root = scene.add
-      .container(0, 0, [dim, paper, title, ...this.tabTexts, tabHint, this.body, this.footer])
+      .container(0, 0, [dim, paper, title, sub, ...this.tabTexts, tabHint, this.body, this.footer])
       .setDepth(25)
       .setVisible(false);
   }
@@ -78,7 +86,7 @@ export class NotebookOverlay {
       return;
     }
     this.root.setVisible(true);
-    NOTEBOOK_TABS.forEach((tab, i) => {
+    this.tabs.forEach((tab, i) => {
       const active = tab === s.notebookTab;
       this.tabTexts[i]
         .setColor(active ? '#fff6d5' : '#5a3a1e')

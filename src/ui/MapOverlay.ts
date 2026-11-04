@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import type { GameSession } from '../core/session/GameSession';
 import { MAP_COLOR_OBJECT, MAP_COLOR_TERRAIN } from '../graphics/tileIndex';
-import type { MapSymbol, TilePoint } from '../core/world/types';
-import { waterwayTiles } from '../core/world/Waterway';
+import type { MapSymbol } from '../core/world/types';
 import { drawMapSymbol, SYMBOL_LABEL } from './mapSymbols';
+import { drawBaseSheet, drawFlowArrow } from './sheetRenderer';
 import { wrapThaiText } from './textWrap';
 import { COLORS, FONT_FAMILY, textStyle } from './theme';
 
@@ -26,7 +26,7 @@ export class MapOverlay {
   private readonly hint: Phaser.GameObjects.Text;
   private readonly geom: { x: number; y: number; cell: number };
   private open = false;
-  private drawnSheet: 'current' | 'old' = 'current';
+  private drawnSheet = 'current';
   private readonly title: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, private readonly s: GameSession) {
@@ -106,7 +106,7 @@ export class MapOverlay {
     }
     if (!this.open || this.drawnSheet !== s.mapSheet) {
       this.drawnSheet = s.mapSheet;
-      if (s.mapSheet === 'old' && s.isOldMapAvailable()) this.drawOldMap();
+      if (s.mapSheet !== 'current' && s.availableSheets().some((m) => m.id === s.mapSheet)) this.drawSheet(s.mapSheet);
       else this.drawBase();
       this.open = true;
     }
@@ -122,9 +122,11 @@ export class MapOverlay {
     this.hint.setText(
       s.pinStage === 'wisdom'
         ? 'Esc: กลับไปเลื่อนหมุด'
-        : s.isOldMapAvailable()
-          ? 'Tab: สลับแผนที่สำรวจ/แผนที่เก่า · M หรือ Esc: ปิด'
-          : 'กด M หรือ Esc เพื่อปิด',
+        : s.availableSheets().length >= 2
+          ? 'Tab: สลับแผนที่ (สำรวจ → A → B) · C: เปรียบเทียบ · M/Esc: ปิด'
+          : s.availableSheets().length === 1
+            ? 'Tab: สลับแผนที่ · M หรือ Esc: ปิด'
+            : 'กด M หรือ Esc เพื่อปิด',
     );
 
     const lines: string[] = [];
@@ -233,7 +235,7 @@ export class MapOverlay {
   }
 
   /** คำอธิบายสัญลักษณ์ (เฉพาะสัญลักษณ์ที่ปรากฏบนแผ่นนี้) */
-  private drawLegend(items: Array<MapSymbol | 'contour' | 'spot'>): void {
+  private drawLegend(items: Array<MapSymbol | 'contour' | 'spot' | 'flow'>): void {
     if (items.length === 0) return;
     const scene = this.root.scene;
     const g = this.graphics;
@@ -249,70 +251,42 @@ export class MapOverlay {
         g.lineStyle(1.5, 0xf0c27a, 1).lineBetween(x + 1, cy + 3, x + 17, cy - 3);
       } else if (item === 'spot') {
         g.fillStyle(0xf4efe1, 1).fillTriangle(cx - 4, cy + 3, cx + 4, cy + 3, cx, cy - 4);
+      } else if (item === 'flow') {
+        g.fillStyle(0xf4efe1, 0.9).fillCircle(cx, cy, 8);
+        drawFlowArrow(g, cx, cy + 3, 'N', 6);
       } else {
         g.fillStyle(0xf4efe1, 0.9).fillCircle(cx, cy, 8);
         drawMapSymbol(g, item, cx, cy);
       }
-      const label = item === 'contour' ? 'เส้นชั้นความสูง 10 ม.' : item === 'spot' ? 'ระดับความสูง (ม.)' : SYMBOL_LABEL[item];
+      const label =
+        item === 'contour'
+          ? 'เส้นชั้นความสูง 10 ม.'
+          : item === 'spot'
+            ? 'ระดับความสูง (ม.)'
+            : item === 'flow'
+              ? 'ทิศน้ำไหล (ตามแผนที่)'
+              : SYMBOL_LABEL[item];
       this.labels.add(scene.add.text(x + 22, y, label, textStyle(11, COLORS.text)));
       y += 21;
     }
   }
 
-  /** แผ่นที่สอง: แผนที่เก่า (วาดมือ) — แสดงทั้งแผ่น ไม่ขึ้นกับหมอก แต่ไม่มีเส้นชั้นความสูง */
-  private drawOldMap(): void {
+  /** แผนที่ฐาน (กระดาษ) — แสดงทั้งแผ่น ไม่ขึ้นกับหมอก และไม่มีเส้นชั้นความสูง */
+  private drawSheet(sheetId: string): void {
     const s = this.s;
-    const old = s.level.oldMap!;
-    const scene = this.root.scene;
-    const { x: mx, y: my, cell } = this.geom;
-    const g = this.graphics;
-    const { width, height } = s.grid;
-    this.title.setText(old.title);
-    g.clear();
+    const sheet = s.level.baseMaps!.find((m) => m.id === sheetId)!;
+    const { x, y, cell } = this.geom;
+    this.title.setText(sheet.title);
+    this.graphics.clear();
     this.labels.removeAll(true);
-    g.fillStyle(0xe9dcb8, 1).fillRect(mx, my, width * cell, height * cell);
-    for (let i = 0; i < 400; i++) {
-      g.fillStyle(0xd6c49a, 0.6).fillRect(mx + ((i * 37) % (width * cell)), my + ((i * 53) % (height * cell)), 2, 2);
-    }
-    // เส้นตาราง/เลขพิกัดชุดเดียวกับแผนที่สำรวจ — เทียบตำแหน่งได้ตรงกัน
-    g.lineStyle(1, 0x8a6d3b, 0.35);
-    for (let x = 0; x <= width; x += 10) {
-      g.lineBetween(mx + x * cell, my, mx + x * cell, my + height * cell);
-      this.labels.add(scene.add.text(mx + x * cell, my - 4, `${x}`, textStyle(11, COLORS.textDim)).setOrigin(0.5, 1));
-    }
-    for (let y = 0; y <= height; y += 10) {
-      g.lineBetween(mx, my + y * cell, mx + width * cell, my + y * cell);
-      this.labels.add(scene.add.text(mx - 6, my + y * cell, `${y}`, textStyle(11, COLORS.textDim)).setOrigin(1, 0.5));
-    }
-    const tileCenter = (p: TilePoint) => [mx + (p.x + 0.5) * cell, my + (p.y + 0.5) * cell] as const;
-    for (const line of old.lines) {
-      if (line.style === 'stream') {
-        g.fillStyle(0x2f7fd0, 1);
-        for (const p of waterwayTiles(line.points)) g.fillRect(mx + p.x * cell, my + p.y * cell, cell + 1, cell + 1);
-        continue;
-      }
-      const tiles = waterwayTiles(line.points);
-      tiles.forEach((p, i) => {
-        if (line.style === 'trail' && i % 3 === 2) return; // ทางเดินเก่า = เส้นประ
-        const [cx, cy] = tileCenter(p);
-        g.fillStyle(line.style === 'road' ? 0x6b4a2a : 0x8a5a2b, 1).fillRect(cx - 2, cy - 2, line.style === 'road' ? 5 : 3, line.style === 'road' ? 5 : 3);
-      });
-    }
-    const legend: MapSymbol[] = [];
-    for (const m of old.marks) {
-      const [cx, cy] = tileCenter(m.at);
-      drawMapSymbol(g, m.symbol, cx, cy);
-      if (!legend.includes(m.symbol)) legend.push(m.symbol);
-      const side = m.labelAt ?? 'above';
-      const [lx, ly, ox, oy] =
-        side === 'left' ? [cx - 10, cy, 1, 0.5] : side === 'right' ? [cx + 10, cy, 0, 0.5] : side === 'below' ? [cx, cy + 10, 0.5, 0] : [cx, cy - 10, 0.5, 1];
-      this.labels.add(scene.add.text(lx, ly, m.label, textStyle(12, '#3a2a1a')).setOrigin(ox, oy));
-    }
-    g.lineStyle(3, 0x5a3a1e, 1).strokeRect(mx, my, width * cell, height * cell);
-    this.labels.add(
-      scene.add.text(mx + 8, my + height * cell - 22, old.note, textStyle(12, '#5a3a1e')),
-    );
-    this.drawLegend(legend);
+    const legend = drawBaseSheet(this.root.scene, this.graphics, this.labels, sheet, {
+      x,
+      y,
+      cell,
+      width: s.grid.width,
+      height: s.grid.height,
+    });
+    this.drawLegend(sheet.flowArrows?.length ? [...legend, 'flow'] : legend);
   }
 
   updatePlayer(): void {

@@ -1,5 +1,6 @@
 import type { MapDefinition, MapSymbol, TilePoint, TileRect } from '../core/world/types';
 import type { WaterwayDefinition } from '../core/world/Waterway';
+import type { Direction8 } from '../core/direction/Compass';
 
 /**
  * รูปแบบข้อมูลเนื้อหาด่าน — ด่านใหม่ (ตำบลอื่น) เขียนเป็นข้อมูลตามรูปแบบนี้
@@ -95,6 +96,11 @@ export interface InspectPoint {
   radiusTiles: number;
   when: Condition;
   nodes: DialogueNode[];
+  /**
+   * (ไม่บังคับ) ตรวจเนื้อหา: จุดนี้ต้องเป็นจุดสูงสุดของภูมิประเทศภายในรัศมีนี้ (ช่อง)
+   * — ใช้กับปริศนา "หายอดเนิน" เพื่อให้ตำแหน่งสอดคล้องกับเส้นชั้นความสูงเสมอ
+   */
+  expectHighestWithin?: number;
 }
 
 /* ---------------- ระบบภารกิจ (Quest) ---------------- */
@@ -208,8 +214,13 @@ export interface RouteAnalysisDefinition {
 /* ---------------- ปักหมุด และตอนจบ ---------------- */
 
 export interface PinTaskDefinition {
-  /** จุดสังเกตที่ต้องปักหมุด */
-  targetId: string;
+  /**
+   * จุดสังเกตที่ต้องปักหมุด — หรือ 'site-analysis' ให้ระบบใช้สถานที่ที่ผ่านหลักฐานทุกข้อ
+   * (คำนวณจากระดับความสูงและแผนที่ฐาน ไม่ได้กำหนดตายตัว)
+   */
+  targetId: string | 'site-analysis';
+  /** (ไม่บังคับ) ผู้เล่นต้องยืนห่างจากตำแหน่งที่ปักไม่เกินค่านี้ (ช่อง) — "ต้องเดินไปถึงจริง" */
+  mustStandWithinTiles?: number;
   /** รัศมีที่ยอมรับ (ช่อง) */
   toleranceTiles: number;
   wisdomPrompt: string;
@@ -231,27 +242,57 @@ export interface EndingDefinition {
 
 /* ---------------- แผนที่สองแผ่น และสถานที่ผู้ต้องสงสัย ---------------- */
 
-export interface OldMapDefinition {
+/**
+ * แผนที่ฐาน (แผ่นกระดาษ) ที่ผู้เล่นได้รับ — ใช้พิกัดและมาตราส่วนเดียวกับแผนที่ด่าน (1 ช่อง = 10 ม.)
+ * อาจมีข้อมูลผิดโดยตั้งใจ: ระบบตรวจด้วย checkSheet() เทียบกับโลกเกม ไม่ได้กำหนดว่าแผ่นใดถูก
+ */
+export interface BaseMapDefinition {
+  id: string;
   title: string;
-  /** หมายเหตุบนแผนที่ (เช่น วาดมือ ไม่มีเส้นชั้นความสูง) */
+  /** หมายเหตุบนแผนที่ */
   note: string;
-  /** ต้องมีหลักฐานนี้ก่อนจึงจะเปิดดูแผนที่เก่าได้ */
+  /** ต้องมีหลักฐานนี้ก่อนจึงจะเปิดดูแผ่นนี้ได้ */
   requiredEvidenceId: string;
-  /** ใช้ระบบพิกัดและมาตราส่วนเดียวกับแผนที่ด่าน (1 ช่อง = 10 ม.) */
   lines: Array<{ style: 'stream' | 'road' | 'trail'; points: TilePoint[] }>;
-  /** labelAt: ตำแหน่งป้ายชื่อเทียบกับสัญลักษณ์ (ค่าเริ่มต้น above) — กันป้ายทับกันเมื่อของอยู่ใกล้กัน */
-  marks: Array<{ symbol: MapSymbol; at: TilePoint; label: string; labelAt?: 'above' | 'below' | 'left' | 'right' }>;
+  /** labelAt: ตำแหน่งป้ายชื่อ · refersTo: จุดสังเกตที่สัญลักษณ์นี้อ้างถึง (ใช้ตรวจตำแหน่ง) */
+  marks: Array<{
+    symbol: MapSymbol;
+    at: TilePoint;
+    label: string;
+    labelAt?: 'above' | 'below' | 'left' | 'right';
+    refersTo?: string;
+  }>;
+  /** ลูกศรทิศน้ำไหลที่พิมพ์บนแผนที่ */
+  flowArrows?: Array<{ at: TilePoint; toward: Direction8 }>;
+}
+
+/** หน้าจอเปรียบเทียบแผนที่ฐาน — ผู้เล่นเลือกแผ่นที่ถูกต้องตามหลักฐาน 3 ชนิด */
+export interface MapComparisonDefinition {
+  /** ลำน้ำที่ใช้ตรวจลูกศรทิศน้ำไหล */
+  waterwayId: string;
+  toleranceTiles: number;
+  /** จุดสังเกตที่ต้อง "ตรวจพบจริง" (ค้นพบด้วยการเดินไปถึง) ก่อนตัดสิน */
+  requiredObservations: string[];
+  /** เบาะแสที่ต้องมีก่อนตัดสิน (เช่น ข้อมูลระดับความสูง) */
+  requiredClueIds: string[];
+  /** เปิดให้ตัดสินเมื่อเงื่อนไขนี้เป็นจริง */
+  availableWhen: Condition;
+  successFlag: string;
 }
 
 export interface SiteAnalysisDefinition {
   /** ลำน้ำที่ใช้หาต้นน้ำ */
   waterwayId: string;
-  /** สัญลักษณ์บนแผนที่เก่าที่เป้าหมายต้องมี */
+  /** สัญลักษณ์บนแผนที่ฐานที่ผ่านการตรวจ ที่เป้าหมายต้องมี */
   requiredSymbol: MapSymbol;
   toleranceTiles: number;
-  /** id จุดสังเกตของสถานที่ผู้ต้องสงสัยทั้งหมด (รวมเป้าหมายจริง) */
-  candidates: string[];
-  correctLandmarkId: string;
+  /** สถานที่ผู้ต้องสงสัยทั้งหมด (รวมเป้าหมายจริง) — evidenceId: หลักฐานที่ได้เมื่อสำรวจถึงจุดนั้น */
+  candidates: Array<{ landmarkId: string; label: string; evidenceId?: string }>;
+  /**
+   * (ไม่บังคับ) เป้าหมายที่ผู้ออกแบบตั้งใจ — ถ้าระบุ validateLevel จะตรวจว่าตรงกับผลคำนวณ
+   * ระบบเกมใช้ผลคำนวณเสมอ (สถานที่เดียวที่ผ่านหลักฐานทุกข้อ)
+   */
+  correctLandmarkId?: string;
 }
 
 /* ---------------- โครงเรื่อง ---------------- */
@@ -259,7 +300,11 @@ export interface SiteAnalysisDefinition {
 export type StoryStepStatus = 'prototype' | 'planned' | 'playable';
 
 /** เงื่อนไขผ่านฉาก */
-export type StepCondition = { type: 'talk'; npcId: string } | { type: 'flag'; flag: string };
+export type StepCondition =
+  | { type: 'talk'; npcId: string }
+  | { type: 'flag'; flag: string }
+  /** ผ่านเมื่อเป้าหมายย่อยทุกข้อเป็นจริง (ใช้เงื่อนไขชุดเดียวกับภารกิจ) */
+  | { type: 'all'; of: ObjectiveCondition[] };
 
 export interface StoryStep {
   order: number;
@@ -294,12 +339,21 @@ export interface LevelDefinition {
   waterways?: WaterwayDefinition[];
   /** จุดระดับความสูงที่พิมพ์บนแผนที่สำรวจ (ค่าความสูงคำนวณจาก elevation) */
   spotHeights?: TilePoint[];
-  /** แผนที่แผ่นที่สอง (เช่น แผนที่เก่าของชุมชน) สำหรับเปรียบเทียบ */
-  oldMap?: OldMapDefinition;
+  /** ลำดับจุดบนลำน้ำที่เนื้อหาอธิบายว่า "ต่อเนื่องกัน" (ตรวจว่าเรียงตามทิศน้ำไหลที่คำนวณได้) */
+  flowSequence?: { waterwayId: string; landmarkIds: string[] };
+  /** แผนที่ฐาน (กระดาษ) ที่ผู้เล่นเปิดดูสลับกับแผนที่สำรวจได้ */
+  baseMaps?: BaseMapDefinition[];
+  /** หน้าจอเปรียบเทียบแผนที่ฐาน */
+  mapComparison?: MapComparisonDefinition;
   /** สถานที่ผู้ต้องสงสัย (เป้าหมายจริง + สถานที่หลอก) */
   siteAnalysis?: SiteAnalysisDefinition;
   /** ทักษะที่แสดงในหน้าสรุปผล (ไม่ระบุ = ชุดทักษะของด่าน 1) */
   skills?: string[];
   /** id ด่านที่ปลดล็อกเมื่อผ่านด่านนี้ */
   unlocks?: string;
+  /**
+   * รุ่นของเนื้อหาด่าน — เพิ่มเมื่อโครงเรื่องเปลี่ยนจนบันทึกกลางด่านรุ่นเก่าใช้ไม่ได้
+   * (บันทึกรุ่นไม่ตรงจะไม่ถูกโหลด และเริ่มด่านใหม่แทน · ไม่กระทบผลการผ่านด่าน)
+   */
+  contentVersion?: number;
 }

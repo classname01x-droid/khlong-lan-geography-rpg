@@ -5,6 +5,7 @@ import type {
   DialogueNode,
   DialogueVariant,
   Effect,
+  BaseMapDefinition,
   InspectPoint,
   Landmark,
   LevelDefinition,
@@ -36,8 +37,9 @@ import type { WorldGrid } from '../world/WorldGrid';
 import { ElevationModel } from '../world/Elevation';
 import { analyzeWaterway, type WaterwayAnalysis } from '../world/Waterway';
 import { evaluateSite, type SiteCheck, type SiteEvidence } from '../site/SiteAnalysis';
+import { checkSheet, type SheetReport, type TruthLandmark } from '../map/BaseMapCheck';
 
-export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause';
+export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
 export const NOTEBOOK_TABS: readonly NotebookTab[] = ['quests', 'clues', 'routes', 'records'];
 
@@ -61,10 +63,12 @@ export type QuestCounts = Record<QuestKind, { done: number; total: number }>;
 export interface SessionSnapshot {
   version: 1;
   levelId: string;
+  /** รุ่นเนื้อหาด่านตอนบันทึก (ไม่มี = ด่านที่ไม่เคยกำหนดรุ่น) */
+  contentVersion?: number;
   flags: string[];
   clues: string[];
   evidence: string[];
-  mistakes: { quiz: number; route: number; pin: number };
+  mistakes: { quiz: number; route: number; pin: number; compare?: number };
   skills: string[];
   firedTriggers: string[];
   seenVariants: string[];
@@ -112,7 +116,16 @@ export interface RouteChoiceResult {
   blocked?: 'missing-clues' | 'already-solved' | 'no-route';
 }
 
-export type PinProblem = 'unexplored' | 'location' | 'wisdom' | 'evidence';
+export type PinProblem = 'unexplored' | 'location' | 'wisdom' | 'evidence' | 'far';
+
+export interface CompareResult {
+  ok: boolean;
+  blocked?: 'not-available' | 'missing-evidence' | 'already-solved';
+  chosenId: string | null;
+  /** รายงานการตรวจของทุกฉบับ — ใช้อธิบายเหตุผล */
+  reports: Record<string, SheetReport>;
+  missing: { observations: string[]; clues: string[] };
+}
 
 export interface PinResult {
   ok: boolean;
@@ -124,7 +137,7 @@ export interface LevelSummary {
   cluesFound: number;
   cluesTotal: number;
   mistakes: number;
-  mistakesBy: { quiz: number; route: number; pin: number };
+  mistakesBy: { quiz: number; route: number; pin: number; compare: number };
   elapsedMs: number;
   skills: SkillId[];
   quests: QuestCounts;
@@ -156,7 +169,7 @@ export class GameSession {
   /** id เบาะแสตามลำดับที่ได้รับ */
   readonly clues: string[] = [];
   readonly evidence: string[] = [];
-  readonly mistakes = { quiz: 0, route: 0, pin: 0 };
+  readonly mistakes = { quiz: 0, route: 0, pin: 0, compare: 0 };
   readonly skills = new Set<SkillId>();
   readonly firedTriggers = new Set<string>();
   readonly seenVariants = new Set<string>();
@@ -190,7 +203,9 @@ export class GameSession {
   /** ตัวเลือกที่โฟกัสอยู่ในเมนูหยุดเกม */
   pauseIndex = 0;
   /** แผ่นแผนที่ที่กำลังดู: แผนที่สำรวจ (ปัจจุบัน) หรือแผนที่เก่า */
-  mapSheet: 'current' | 'old' = 'current';
+  mapSheet = 'current';
+  /** ผลการเลือกแผนที่ครั้งล่าสุด (ให้ UI แสดงคำอธิบาย) */
+  lastCompare: CompareResult | null = null;
 
   private dialogue: ActiveDialogue | null = null;
 
@@ -261,12 +276,18 @@ export class GameSession {
     return this.pendingToasts.splice(0, this.pendingToasts.length);
   }
 
+  /** หน้าในสมุดภาคสนามของด่านนี้ (หน้าวิเคราะห์เส้นทางมีเฉพาะด่านที่มีการวิเคราะห์เส้นทาง) */
+  notebookTabs(): NotebookTab[] {
+    return NOTEBOOK_TABS.filter((t) => t !== 'routes' || !!this.level.routeAnalysis);
+  }
+
   /* ---------------- ฉากและเงื่อนไข ---------------- */
 
   isStepComplete(step: StoryStep): boolean {
     const c = step.completeWhen;
     if (!c) return false;
     if (c.type === 'talk') return this.talkedTo.has(c.npcId);
+    if (c.type === 'all') return c.of.every((o) => this.objectiveDone(o));
     return this.flags.has(c.flag);
   }
 
@@ -516,15 +537,22 @@ export class GameSession {
     const p = this.level.pinTask;
     if (!p || !this.isPinAvailable()) return { ok: false, problems: [] };
     const problems: PinProblem[] = [];
-    const target = this.landmarkPoints[p.targetId];
+    const targetId = this.pinTargetId();
+    const target = targetId ? this.landmarkPoints[targetId] : null;
+    if (p.mustStandWithinTiles !== undefined && Math.hypot(tile.x - this.playerTile.x, tile.y - this.playerTile.y) > p.mustStandWithinTiles) {
+      problems.push('far');
+    }
     if (!this.fog.isExplored(tile.x, tile.y)) problems.push('unexplored');
-    else if (Math.hypot(tile.x - target.x, tile.y - target.y) > p.toleranceTiles) problems.push('location');
+    else if (!target || Math.hypot(tile.x - target.x, tile.y - target.y) > p.toleranceTiles) problems.push('location');
     if (p.wisdomChoices[wisdomIndex]?.id !== p.correctWisdomId) problems.push('wisdom');
+    const siteEvidenceId = this.level.siteAnalysis?.candidates.find((c) => c.landmarkId === targetId)?.evidenceId;
+    const required = [...p.requiredEvidenceIds, ...(siteEvidenceId ? [siteEvidenceId] : [])];
     const hasEvidence =
-      p.requiredEvidenceIds.every((id) => this.evidence.includes(id)) && this.discoveredLandmarks.has(p.targetId);
+      !!targetId && required.every((id) => this.evidence.includes(id)) && this.discoveredLandmarks.has(targetId);
     if (!hasEvidence) problems.push('evidence');
 
-    if (problems.some((x) => x !== 'evidence')) this.mistakes.pin++;
+    // นับเป็นการตอบผิดเฉพาะความเข้าใจผิด (พิกัด/ประเภท) — ยังไม่ได้ไปสำรวจหรือยืนไกลเกินไม่นับ
+    if (problems.some((x) => x === 'unexplored' || x === 'location' || x === 'wisdom')) this.mistakes.pin++;
     const ok = problems.length === 0;
     if (ok) {
       this.flags.add(p.successFlag);
@@ -551,7 +579,7 @@ export class GameSession {
       distanceMeters: this.odometer.totalMeters,
       cluesFound: this.clues.length,
       cluesTotal: this.level.clues?.length ?? 0,
-      mistakes: m.quiz + m.route + m.pin,
+      mistakes: m.quiz + m.route + m.pin + m.compare,
       mistakesBy: { ...m },
       elapsedMs: this.elapsedMs,
       skills: [...this.skills],
@@ -631,32 +659,136 @@ export class GameSession {
     return counts;
   }
 
-  /* ---------------- แผนที่สองแผ่น และสถานที่ผู้ต้องสงสัย ---------------- */
+  /* ---------------- แผนที่ฐาน (หลายฉบับ) และการเปรียบเทียบ ---------------- */
 
-  /** เปิดดูแผนที่แผ่นที่สองได้หรือยัง (ต้องได้หลักฐานแผนที่ก่อน) */
-  isOldMapAvailable(): boolean {
-    const m = this.level.oldMap;
-    return !!m && this.evidence.includes(m.requiredEvidenceId);
+  /** แผนที่ฐานที่ผู้เล่นมีแล้ว (ได้หลักฐานแผนที่แล้ว) */
+  availableSheets(): BaseMapDefinition[] {
+    return (this.level.baseMaps ?? []).filter((m) => this.evidence.includes(m.requiredEvidenceId));
   }
 
-  /** หลักฐานสำหรับตรวจสถานที่ผู้ต้องสงสัย — คำนวณจากระดับความสูงและแผนที่เก่า */
+  /** สลับแผ่นที่กำลังดู: แผนที่สำรวจ → แผนที่ฐานแต่ละฉบับ → กลับแผนที่สำรวจ */
+  cycleSheet(): void {
+    const order = ['current', ...this.availableSheets().map((m) => m.id)];
+    this.mapSheet = order[(order.indexOf(this.mapSheet) + 1) % order.length] ?? 'current';
+    if (this.mapSheet !== 'current') {
+      this.flags.add(`viewed-sheet-${this.mapSheet}`);
+      this.skills.add('map-symbols');
+      if (this.availableSheets().every((m) => this.flags.has(`viewed-sheet-${m.id}`)) && this.availableSheets().length > 1) {
+        this.skills.add('map-compare');
+      }
+      this.updateQuests();
+    }
+  }
+
+  /** จุดสังเกตจริงของโลกเกม (ใช้เป็น "ความจริง" ในการตรวจแผนที่ฐาน) */
+  private truthLandmarks(): TruthLandmark[] {
+    return this.level.landmarks.map((l) => ({ id: l.id, name: l.name, at: l.at, symbol: l.symbol }));
+  }
+
+  /** ตรวจแผนที่ฐานหนึ่งฉบับด้วยหลักฐาน 3 ชนิด (คำนวณจากโลกเกม) */
+  sheetReport(sheetId: string): SheetReport | null {
+    const sheet = this.level.baseMaps?.find((m) => m.id === sheetId);
+    if (!sheet) return null;
+    const mc = this.level.mapComparison;
+    const waterwayId = mc?.waterwayId ?? this.level.siteAnalysis?.waterwayId;
+    return checkSheet(sheet.marks, sheet.flowArrows ?? [], {
+      landmarks: this.truthLandmarks(),
+      waterway: (waterwayId && this.waterways.get(waterwayId)) || null,
+      toleranceTiles: mc?.toleranceTiles ?? 3,
+    });
+  }
+
+  /** แผนที่ฐานฉบับเดียวที่ผ่านหลักฐานทุกข้อ (null = ไม่มี หรือมีมากกว่าหนึ่ง) */
+  verifiedSheetId(): string | null {
+    const ok = (this.level.baseMaps ?? []).filter((m) => this.sheetReport(m.id)!.failed.length === 0);
+    return ok.length === 1 ? ok[0].id : null;
+  }
+
+  /** หลักฐานที่ยังขาดก่อนตัดสินเปรียบเทียบแผนที่ */
+  comparisonMissing(): { observations: string[]; clues: string[] } {
+    const mc = this.level.mapComparison;
+    if (!mc) return { observations: [], clues: [] };
+    return {
+      observations: mc.requiredObservations.filter((id) => !this.discoveredLandmarks.has(id)),
+      clues: mc.requiredClueIds.filter((id) => !this.clues.includes(id)),
+    };
+  }
+
+  get comparisonSolved(): boolean {
+    const mc = this.level.mapComparison;
+    return !!mc && this.flags.has(mc.successFlag);
+  }
+
+  isComparisonOpen(): boolean {
+    const mc = this.level.mapComparison;
+    return !!mc && this.availableSheets().length >= 2 && this.matches(mc.availableWhen);
+  }
+
+  /**
+   * ผู้เล่นเลือกแผนที่ฐานที่คิดว่าถูกต้อง — ตัดสินจาก sheetReport ของทุกฉบับ (ไม่ได้กำหนดคำตอบตายตัว)
+   * คืนรายงานทุกฉบับไว้ให้ UI อธิบายเหตุผลทั้งกรณีถูกและผิด
+   */
+  chooseSheet(index: number): CompareResult {
+    const sheets = this.availableSheets();
+    const chosen = sheets[index];
+    const reports = Object.fromEntries(sheets.map((m) => [m.id, this.sheetReport(m.id)!]));
+    const missing = this.comparisonMissing();
+    const base = { chosenId: chosen?.id ?? null, reports, missing };
+    let result: CompareResult;
+    if (!chosen || !this.isComparisonOpen()) result = { ok: false, blocked: 'not-available', ...base };
+    else if (this.comparisonSolved) result = { ok: true, blocked: 'already-solved', ...base };
+    else if (missing.observations.length > 0 || missing.clues.length > 0) result = { ok: false, blocked: 'missing-evidence', ...base };
+    else {
+      const ok = chosen.id === this.verifiedSheetId();
+      if (ok) {
+        this.flags.add(this.level.mapComparison!.successFlag);
+        this.skills.add('map-compare');
+      } else this.mistakes.compare++;
+      result = { ok, ...base };
+      this.updateQuests();
+    }
+    this.lastCompare = result;
+    return result;
+  }
+
+  /* ---------------- สถานที่ผู้ต้องสงสัย ---------------- */
+
+  /** หลักฐานสำหรับตรวจสถานที่ — ระดับความสูง + แผนที่ฐานฉบับที่ผ่านการตรวจ */
   siteEvidence(): SiteEvidence | null {
     const sa = this.level.siteAnalysis;
     const w = sa && this.waterways.get(sa.waterwayId);
-    if (!sa || !w || !this.level.oldMap) return null;
+    const sheet = this.level.baseMaps?.find((m) => m.id === this.verifiedSheetId());
+    if (!sa || !w || !sheet) return null;
     return {
       source: w.source,
-      oldMapMarks: this.level.oldMap.marks.map((m) => ({ symbol: m.symbol, at: m.at })),
+      oldMapMarks: sheet.marks.map((m) => ({ symbol: m.symbol, at: m.at })),
       requiredSymbol: sa.requiredSymbol,
       toleranceTiles: sa.toleranceTiles,
     };
   }
 
-  evaluateSites(): Array<{ landmarkId: string; failed: SiteCheck[] }> {
+  evaluateSites(): Array<{ landmarkId: string; label: string; failed: SiteCheck[] }> {
     const ev = this.siteEvidence();
     const sa = this.level.siteAnalysis;
     if (!ev || !sa) return [];
-    return sa.candidates.map((id) => ({ landmarkId: id, failed: evaluateSite(this.landmarkPoints[id], ev) }));
+    return sa.candidates.map((c) => ({
+      landmarkId: c.landmarkId,
+      label: c.label,
+      failed: evaluateSite(this.landmarkPoints[c.landmarkId], ev),
+    }));
+  }
+
+  /** สถานที่เดียวที่ผ่านหลักฐานทุกข้อ (null ถ้าไม่มีหรือมีหลายแห่ง) */
+  siteTargetId(): string | null {
+    const ok = this.evaluateSites().filter((r) => r.failed.length === 0);
+    return ok.length === 1 ? ok[0].landmarkId : null;
+  }
+
+  /** เป้าหมายการปักหมุด: กำหนดในเนื้อหา หรือคำนวณจากการวิเคราะห์สถานที่ */
+  pinTargetId(): string | null {
+    const p = this.level.pinTask;
+    if (!p) return null;
+    return p.targetId === 'site-analysis' ? this.siteTargetId() : p.targetId;
   }
 
   /* ---------------- จุดตรวจค้น ---------------- */
@@ -678,6 +810,7 @@ export class GameSession {
     return {
       version: 1,
       levelId: this.level.id,
+      contentVersion: this.level.contentVersion,
       flags: [...this.flags],
       clues: [...this.clues],
       evidence: [...this.evidence],
@@ -703,6 +836,8 @@ export class GameSession {
    */
   restore(snap: SessionSnapshot): boolean {
     if (!snap || snap.version !== 1 || snap.levelId !== this.level.id) return false;
+    // เนื้อหาด่านเปลี่ยนรุ่น → บันทึกกลางด่านเดิมใช้ไม่ได้ (เริ่มด่านใหม่แทน)
+    if (snap.contentVersion !== this.level.contentVersion) return false;
     if (!this.grid.inBounds(snap.player?.x ?? -1, snap.player?.y ?? -1)) return false;
     const fog = new FogOfWar(this.grid.width, this.grid.height);
     if (!fog.importBits(snap.fog)) return false;

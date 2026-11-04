@@ -4,7 +4,7 @@ import { canEnterLevel, DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../cont
 import type { NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
-import { GameSession, NOTEBOOK_TABS, type SessionSnapshot } from '../core/session/GameSession';
+import { GameSession, type SessionSnapshot } from '../core/session/GameSession';
 import { buildWorld } from '../core/world/MapBuilder';
 import { findPath } from '../core/world/pathfinding';
 import type { TilePoint } from '../core/world/types';
@@ -294,7 +294,15 @@ export class WorldScene extends Phaser.Scene {
           this.gridOverlay.setVisible(s.showGrid);
         } else if (code === 'KeyM') this.openMap();
         else if (code === 'KeyN') this.openNotebook();
+        else if (code === 'KeyC') this.openCompare();
         else if (code === 'Escape') this.openPause();
+        return;
+
+      case 'compare':
+        if (code === 'Escape' || code === 'KeyC') {
+          s.lastCompare = null;
+          this.setMode('explore');
+        } else if (choice >= 0) this.withStepToasts(() => s.chooseSheet(choice));
         return;
 
       case 'pause':
@@ -334,6 +342,19 @@ export class WorldScene extends Phaser.Scene {
         else if (code === 'Escape') this.leave('worldMap');
         return;
     }
+  }
+
+  /* ---------------- เปรียบเทียบแผนที่ฐาน (C) ---------------- */
+
+  private openCompare(): void {
+    const s = this.session;
+    if (s.availableSheets().length < 2) {
+      if (s.level.mapComparison) s.toast('ยังไม่มีแผนที่ฐานครบสองฉบับ');
+      return;
+    }
+    s.pinStage = 'none';
+    s.lastCompare = null;
+    this.setMode('compare');
   }
 
   /* ---------------- เมนูหยุดเกม (Esc) ---------------- */
@@ -460,8 +481,9 @@ export class WorldScene extends Phaser.Scene {
 
   private switchTab(delta: number): void {
     const s = this.session;
-    const i = NOTEBOOK_TABS.indexOf(s.notebookTab);
-    s.notebookTab = NOTEBOOK_TABS[(i + delta + NOTEBOOK_TABS.length) % NOTEBOOK_TABS.length];
+    const tabs = s.notebookTabs();
+    const i = Math.max(0, tabs.indexOf(s.notebookTab));
+    s.notebookTab = tabs[(i + delta + tabs.length) % tabs.length];
     if (s.notebookTab === 'routes') s.noteSkill('straight-vs-route');
     this.bumpUi();
   }
@@ -500,11 +522,13 @@ export class WorldScene extends Phaser.Scene {
 
   private onMapKey(code: string, choice: number, confirm: boolean): void {
     const s = this.session;
-    // Tab: สลับแผนที่สำรวจ ↔ แผนที่เก่า (เมื่อมีหลักฐานแผนที่เก่าแล้ว)
-    if (code === 'Tab' && s.isOldMapAvailable() && s.pinStage !== 'wisdom') {
-      s.mapSheet = s.mapSheet === 'current' ? 'old' : 'current';
-      if (s.mapSheet === 'old') s.noteSkill('map-compare');
-      this.bumpUi();
+    // Tab: สลับแผนที่สำรวจ → แผนที่ฐานแต่ละฉบับ (เมื่อมีแผนที่ฐานแล้ว)
+    if (code === 'Tab' && s.availableSheets().length > 0 && s.pinStage !== 'wisdom') {
+      this.withStepToasts(() => s.cycleSheet());
+      return;
+    }
+    if (code === 'KeyC' && s.pinStage !== 'wisdom') {
+      this.openCompare();
       return;
     }
     if (s.pinStage === 'wisdom') {

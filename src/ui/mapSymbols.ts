@@ -17,6 +17,7 @@ export const SYMBOL_LABEL: Record<MapSymbol, string> = {
   marsh: 'หนองน้ำ',
   stones: 'ก้อนหินใหญ่',
   benchmark: 'หมุดหลักฐานระดับ',
+  farm: 'พื้นที่เกษตร',
 };
 
 const BLUE = 0x2f7fd0;
@@ -68,6 +69,14 @@ export function drawMapSymbol(g: Phaser.GameObjects.Graphics, symbol: MapSymbol,
     case 'stones':
       g.fillStyle(0x6b6b6b, 1);
       for (const [dx, dy] of [[-4, 2], [3, 2], [0, -3]]) g.fillCircle(cx + dx, cy + dy, 2.6);
+      return;
+    case 'farm':
+      g.lineStyle(1.5, 0x4f7a1f, 1);
+      for (const dx of [-5, 0, 5]) {
+        g.lineBetween(cx + dx, cy + 5, cx + dx, cy - 3);
+        g.lineBetween(cx + dx, cy - 1, cx + dx - 2, cy - 4);
+        g.lineBetween(cx + dx, cy - 1, cx + dx + 2, cy - 4);
+      }
       return;
     case 'benchmark':
       g.fillStyle(0xffffff, 1).fillTriangle(cx - 6, cy + 4, cx + 6, cy + 4, cx, cy - 6);

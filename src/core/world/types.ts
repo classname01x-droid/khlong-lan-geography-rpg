@@ -68,4 +68,5 @@ export type MapSymbol =
   | 'pond'
   | 'marsh'
   | 'stones'
-  | 'benchmark';
+  | 'benchmark'
+  | 'farm';

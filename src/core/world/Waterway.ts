@@ -11,6 +11,8 @@ export interface WaterwayDefinition {
 }
 
 export interface WaterwayAnalysis {
+  /** ช่องตามแนวลำน้ำ เรียงจากต้นน้ำไปปลายน้ำ */
+  tiles: TilePoint[];
   /** ต้นน้ำ = ปลายที่สูงกว่า */
   source: TilePoint;
   /** ปลายน้ำ = ปลายที่ต่ำกว่า */
@@ -50,6 +52,7 @@ export function analyzeWaterway(points: TilePoint[], elevation: ElevationModel):
   const mouth = tiles[tiles.length - 1];
   const monotonic = profile.every((h, i) => i === 0 || h <= profile[i - 1] + 1e-9);
   return {
+    tiles,
     source,
     mouth,
     sourceMeters: profile[0],

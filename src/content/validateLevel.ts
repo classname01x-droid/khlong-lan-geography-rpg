@@ -3,7 +3,7 @@ import { evaluateRoute, measureRoute, straightMeters } from '../core/route/Route
 import { defaultScale, type ScaleSystem } from '../core/scale/ScaleSystem';
 import { referencedPoints, referencedRoutes, referencedWaterways } from '../core/text/geoTemplate';
 import { THAI_DIRECTION } from '../core/direction/Compass';
-import { evaluateSite } from '../core/site/SiteAnalysis';
+import { GameSession } from '../core/session/GameSession';
 import { ElevationModel } from '../core/world/Elevation';
 import { analyzeWaterway, waterwayTiles, type WaterwayAnalysis } from '../core/world/Waterway';
 import { buildWorld } from '../core/world/MapBuilder';
@@ -40,7 +40,10 @@ export function validateLevel(
     if (landmarkIds.has(lm.id)) errors.push(`id จุดสังเกตซ้ำ: ${lm.id}`);
     landmarkIds.add(lm.id);
     if (!grid.inBounds(lm.at.x, lm.at.y)) errors.push(`จุดสังเกต ${lm.id} อยู่นอกแผนที่`);
-    else if (!isPointReachable(grid, reachable, lm.at)) errors.push(`จุดสังเกต ${lm.id} เดินไปไม่ถึง`);
+    // จุดสังเกตกลางผืนน้ำ (เช่น ตาน้ำ หนองน้ำ) ยอมให้ยืนดูจากริมน้ำในรัศมี 3 ช่อง (30 ม.)
+    else if (!isPointReachable(grid, reachable, lm.at, grid.getTerrain(lm.at.x, lm.at.y) === 'water' ? 3 : 1)) {
+      errors.push(`จุดสังเกต ${lm.id} เดินไปไม่ถึง`);
+    }
   }
 
   const checkText = (where: string, text: string) => {
@@ -132,6 +135,17 @@ export function validateLevel(
     }
     const cond = step.completeWhen;
     if (cond?.type === 'talk' && !npcIds.has(cond.npcId)) errors.push(`ฉาก ${step.order} อ้างถึง NPC ที่ไม่มี: ${cond.npcId}`);
+    if (cond?.type === 'all') {
+      for (const o of cond.of) {
+        const bad =
+          o.type === 'step' ||
+          (o.type === 'discover' && !landmarkIds.has(o.landmarkId)) ||
+          (o.type === 'clue' && !clueIds.has(o.clueId)) ||
+          (o.type === 'evidence' && !evidenceIds.has(o.evidenceId)) ||
+          (o.type === 'talk' && !npcIds.has(o.npcId));
+        if (bad) errors.push(`ฉาก ${step.order} มีเงื่อนไขที่อ้างถึงข้อมูลที่ไม่มี (หรืออ้างถึงฉาก): ${JSON.stringify(o)}`);
+      }
+    }
   }
 
   // ---- ความสอดคล้องของเบาะแสกับเส้นทางในแผนที่ ----
@@ -187,7 +201,12 @@ export function validateLevel(
 
   const pin = level.pinTask;
   if (pin) {
-    if (!landmarkIds.has(pin.targetId)) errors.push(`เป้าหมายปักหมุดไม่มีอยู่จริง: ${pin.targetId}`);
+    if (pin.targetId === 'site-analysis') {
+      if (!level.siteAnalysis) errors.push('ปักหมุดแบบคำนวณเป้าหมายต้องมี siteAnalysis');
+      else if (pin.correctWisdomId !== level.siteAnalysis.requiredSymbol) {
+        errors.push('ปักหมุด: ประเภทสถานที่ที่ถูกต้องต้องตรงกับสัญลักษณ์ที่เป้าหมายต้องมี');
+      }
+    } else if (!landmarkIds.has(pin.targetId)) errors.push(`เป้าหมายปักหมุดไม่มีอยู่จริง: ${pin.targetId}`);
     if (!pin.wisdomChoices.some((c) => c.id === pin.correctWisdomId)) errors.push('ปักหมุด: ไม่มีประเภทภูมิปัญญาที่ถูก');
     for (const id of pin.requiredEvidenceIds) {
       if (!evidenceIds.has(id)) errors.push(`ปักหมุด: หลักฐานที่ต้องใช้ไม่มีอยู่จริง: ${id}`);
@@ -195,39 +214,74 @@ export function validateLevel(
   }
   if (level.ending) checkNodes('ข้อความตอนจบ', level.ending.messages);
 
-  // ---- แผนที่เก่า และสถานที่ผู้ต้องสงสัย ----
-  const old = level.oldMap;
-  if (old) {
-    if (!evidenceIds.has(old.requiredEvidenceId)) errors.push(`แผนที่เก่าต้องใช้หลักฐานที่ไม่มี: ${old.requiredEvidenceId}`);
-    for (const m of old.marks) if (!grid.inBounds(m.at.x, m.at.y)) errors.push(`แผนที่เก่า: สัญลักษณ์ ${m.label} อยู่นอกแผนที่`);
-  }
+  // ---- จุดระดับความสูง / ลำดับจุดบนลำน้ำ ----
   for (const p of level.spotHeights ?? []) {
     if (!grid.inBounds(p.x, p.y)) errors.push(`จุดระดับความสูง (${p.x},${p.y}) อยู่นอกแผนที่`);
   }
   if (level.spotHeights?.length && !elevation) errors.push('มีจุดระดับความสูงแต่ไม่มีข้อมูลระดับความสูง');
+  const fs = level.flowSequence;
+  if (fs) {
+    const flow = flows.get(fs.waterwayId);
+    const at = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
+    if (!flow || !elevation) errors.push(`ลำดับจุดบนลำน้ำอ้างถึงลำน้ำที่ไม่มี: ${fs.waterwayId}`);
+    else {
+      // ทุกจุดต้องอยู่บนลำน้ำ เรียงจากต้นน้ำไปปลายน้ำ และระดับความสูงลดลงตามลำดับ
+      const idx = fs.landmarkIds.map((id) => {
+        const p = at[id];
+        if (!p) return -1;
+        const i = flow.tiles.findIndex((t) => Math.abs(t.x - p.x) <= 1 && Math.abs(t.y - p.y) <= 1);
+        if (i < 0) errors.push(`ลำดับจุดบนลำน้ำ: ${id} ไม่ได้อยู่บนลำน้ำ ${fs.waterwayId}`);
+        return i;
+      });
+      const heights = fs.landmarkIds.map((id) => (at[id] ? elevation.heightAt(at[id].x, at[id].y) : NaN));
+      for (let i = 1; i < idx.length; i++) {
+        if (idx[i] <= idx[i - 1]) errors.push(`ลำดับจุดบนลำน้ำ: ${fs.landmarkIds[i]} ไม่ได้อยู่ท้ายน้ำของ ${fs.landmarkIds[i - 1]}`);
+        if (!(heights[i] < heights[i - 1])) errors.push(`ลำดับจุดบนลำน้ำ: ${fs.landmarkIds[i]} ไม่ได้ต่ำกว่า ${fs.landmarkIds[i - 1]}`);
+      }
+    }
+  }
+
+  // ---- แผนที่ฐาน การเปรียบเทียบ สถานที่ผู้ต้องสงสัย และเป้าหมายปักหมุด ----
+  // ใช้ตรรกะเดียวกับตัวเกม (GameSession) — ไม่เขียนกติกาซ้ำ
+  const session = new GameSession(level, grid, scale);
+  for (const m of level.baseMaps ?? []) {
+    if (!evidenceIds.has(m.requiredEvidenceId)) errors.push(`แผนที่ฐาน ${m.id} ต้องใช้หลักฐานที่ไม่มี: ${m.requiredEvidenceId}`);
+    for (const mark of m.marks) {
+      if (!grid.inBounds(mark.at.x, mark.at.y)) errors.push(`แผนที่ฐาน ${m.id}: สัญลักษณ์ ${mark.label} อยู่นอกแผนที่`);
+      if (mark.refersTo && !landmarkIds.has(mark.refersTo)) errors.push(`แผนที่ฐาน ${m.id}: อ้างถึงจุดสังเกตที่ไม่มี ${mark.refersTo}`);
+    }
+  }
+  const mc = level.mapComparison;
+  if (mc) {
+    if ((level.baseMaps?.length ?? 0) < 2) errors.push('การเปรียบเทียบแผนที่ต้องมีแผนที่ฐานอย่างน้อย 2 ฉบับ');
+    for (const id of mc.requiredObservations) if (!landmarkIds.has(id)) errors.push(`การเปรียบเทียบอ้างถึงจุดสังเกตที่ไม่มี: ${id}`);
+    for (const id of mc.requiredClueIds) if (!clueIds.has(id)) errors.push(`การเปรียบเทียบอ้างถึงเบาะแสที่ไม่มี: ${id}`);
+    if (!session.verifiedSheetId()) errors.push('แผนที่ฐานต้องมีฉบับเดียวที่ผ่านหลักฐานทุกข้อ (ตอนนี้ไม่มี หรือมีมากกว่าหนึ่ง)');
+    for (const m of level.baseMaps ?? []) {
+      if (m.id !== session.verifiedSheetId() && session.sheetReport(m.id)!.failed.length === 0) {
+        errors.push(`แผนที่ฐาน ${m.id} ผ่านทุกข้อเช่นกัน ผู้เล่นจะแยกไม่ออก`);
+      }
+    }
+  }
   const sa = level.siteAnalysis;
   if (sa) {
-    const flow = flows.get(sa.waterwayId);
-    const at = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
-    if (!flow) errors.push(`สถานที่ผู้ต้องสงสัยอ้างถึงลำน้ำที่ไม่มี: ${sa.waterwayId}`);
-    if (!old) errors.push('สถานที่ผู้ต้องสงสัยต้องมีแผนที่เก่า');
-    if (!sa.candidates.includes(sa.correctLandmarkId)) errors.push('เป้าหมายจริงไม่อยู่ในรายการสถานที่ผู้ต้องสงสัย');
+    if (!flows.get(sa.waterwayId)) errors.push(`สถานที่ผู้ต้องสงสัยอ้างถึงลำน้ำที่ไม่มี: ${sa.waterwayId}`);
+    if (!level.baseMaps?.length) errors.push('สถานที่ผู้ต้องสงสัยต้องมีแผนที่ฐาน');
     if (sa.candidates.length < 3) errors.push('ต้องมีสถานที่หลอกอย่างน้อย 2 แห่ง');
-    if (flow && old) {
-      const ev = {
-        source: flow.source,
-        oldMapMarks: old.marks.map((m) => ({ symbol: m.symbol, at: m.at })),
-        requiredSymbol: sa.requiredSymbol,
-        toleranceTiles: sa.toleranceTiles,
-      };
-      for (const id of sa.candidates) {
-        if (!at[id]) {
-          errors.push(`สถานที่ผู้ต้องสงสัยไม่มีอยู่จริง: ${id}`);
-          continue;
+    for (const c of sa.candidates) {
+      if (!landmarkIds.has(c.landmarkId)) errors.push(`สถานที่ผู้ต้องสงสัยไม่มีอยู่จริง: ${c.landmarkId}`);
+      if (c.evidenceId && !evidenceIds.has(c.evidenceId)) errors.push(`สถานที่ ${c.landmarkId} อ้างถึงหลักฐานที่ไม่มี: ${c.evidenceId}`);
+    }
+    const results = session.evaluateSites();
+    const passing = results.filter((r) => r.failed.length === 0).map((r) => r.landmarkId);
+    if (passing.length !== 1) errors.push(`สถานที่ที่ผ่านหลักฐานทุกข้อต้องมีแห่งเดียว (ตอนนี้: ${passing.join(', ') || 'ไม่มี'})`);
+    if (sa.correctLandmarkId) {
+      const r = results.find((x) => x.landmarkId === sa.correctLandmarkId);
+      if (r && r.failed.length > 0) errors.push(`เป้าหมายจริง ${sa.correctLandmarkId} ขัดกับหลักฐาน: ${r.failed.join(', ')}`);
+      for (const x of results) {
+        if (x.landmarkId !== sa.correctLandmarkId && x.failed.length === 0) {
+          errors.push(`สถานที่หลอก ${x.landmarkId} ตรงกับหลักฐานทุกข้อ ผู้เล่นจะแยกไม่ออก`);
         }
-        const failed = evaluateSite(at[id], ev);
-        if (id === sa.correctLandmarkId && failed.length > 0) errors.push(`เป้าหมายจริง ${id} ขัดกับหลักฐาน: ${failed.join(', ')}`);
-        if (id !== sa.correctLandmarkId && failed.length === 0) errors.push(`สถานที่หลอก ${id} ตรงกับหลักฐานทุกข้อ ผู้เล่นจะแยกไม่ออก`);
       }
     }
   }
@@ -235,8 +289,25 @@ export function validateLevel(
   // ---- จุดตรวจค้น ----
   for (const p of level.inspectPoints ?? []) {
     if (!grid.inBounds(p.at.x, p.at.y)) errors.push(`จุดตรวจค้น ${p.id} อยู่นอกแผนที่`);
-    else if (!isPointReachable(grid, reachable, p.at)) errors.push(`จุดตรวจค้น ${p.id} เดินไปไม่ถึง`);
+    else if (!isPointReachable(grid, reachable, p.at, Math.max(1, p.radiusTiles))) errors.push(`จุดตรวจค้น ${p.id} เดินไปไม่ถึง`);
     checkNodes(`จุดตรวจค้น ${p.id}`, p.nodes);
+    if (p.expectHighestWithin) {
+      if (!elevation) errors.push(`จุดตรวจค้น ${p.id}: ต้องมีข้อมูลระดับความสูง`);
+      else {
+        // หาจุดสูงสุดจริงในรัศมี (ทีละช่อง) แล้วเทียบกับตำแหน่งที่กำหนด
+        let best = p.at;
+        const r = p.expectHighestWithin;
+        for (let y = p.at.y - r; y <= p.at.y + r; y++) {
+          for (let x = p.at.x - r; x <= p.at.x + r; x++) {
+            if (!grid.inBounds(x, y) || Math.hypot(x - p.at.x, y - p.at.y) > r) continue;
+            if (elevation.heightAt(x, y) > elevation.heightAt(best.x, best.y)) best = { x, y };
+          }
+        }
+        if (Math.hypot(best.x - p.at.x, best.y - p.at.y) > p.radiusTiles) {
+          errors.push(`จุดตรวจค้น ${p.id}: ไม่ใช่จุดสูงสุดในรัศมี ${r} ช่อง (จุดสูงสุดจริงอยู่ที่ ${best.x},${best.y})`);
+        }
+      }
+    }
   }
 
   // ---- ภารกิจ ----

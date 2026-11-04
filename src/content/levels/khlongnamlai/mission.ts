@@ -1,8 +1,11 @@
 import type {
+  BaseMapDefinition,
   ClueDefinition,
+  EndingDefinition,
   EvidenceDefinition,
   InspectPoint,
-  OldMapDefinition,
+  MapComparisonDefinition,
+  PinTaskDefinition,
   QuestDefinition,
   QuizDefinition,
   SiteAnalysisDefinition,
@@ -10,31 +13,35 @@ import type {
 } from '../../types';
 import { STREAM_POINTS } from './map';
 
-/** ภารกิจด่านคลองน้ำไหล (ต้นแบบ: เล่นได้ฉาก 1–3, ฉาก 4–6 วางโครงไว้แล้ว) */
+/**
+ * ภารกิจด่านคลองน้ำไหล (6 ฉาก) — ทักษะใหม่ต่างจากด่าน 1:
+ * สัญลักษณ์แผนที่ · ทิศทางน้ำไหลจากระดับความสูง · การเปรียบเทียบแผนที่สองฉบับกับหลักฐานจริง
+ * ตัวเลขความสูง/ระยะ/ทิศทั้งหมดใช้ตัวแปร {{...}} ที่คำนวณจากแผนที่
+ */
 
 export const namLaiQuizzes: QuizDefinition[] = [
   {
     id: 'flow',
-    speaker: 'พี่ภูมิ (อาสาสมัครสำรวจแผนที่)',
+    speaker: 'ป้าจันทร์ (ผู้ดูแลแหล่งน้ำ)',
     question:
-      'หมุดฝั่งเหนือสูง {{elev:bm-north}} ม. หมุดฝั่งใต้สูง {{elev:bm-south}} ม. (จากระดับทะเลปานกลาง) ลำห้วยคลองน้ำไหลไหลไปทางทิศใด?',
+      'จุด A สูง {{elev:site-a}} ม. · จุด B สูง {{elev:site-b}} ม. · จุด C สูง {{elev:site-c}} ม. และทั้งสามจุดอยู่บนลำห้วยเดียวกันต่อเนื่องกัน น้ำในลำห้วยไหลอย่างไร?',
     choices: [
       {
         id: 'south',
-        label: 'ไหลไปทางทิศใต้',
-        hint: 'น้ำไหลจากที่สูงไปที่ต่ำ ลองเทียบตัวเลขอีกครั้งว่าหมุดฝั่งไหนสูงกว่า (ด้านล่างของแผนที่ไม่ได้แปลว่าต่ำกว่า)',
+        label: 'ไหลจาก C → B → A (ไปทางทิศใต้)',
+        hint: 'น้ำไหลจากที่สูงไปที่ต่ำ ลองเทียบตัวเลขอีกครั้งว่าจุดไหนสูงที่สุด (จุดที่อยู่ด้านบนของแผนที่ไม่ได้แปลว่าสูงกว่า)',
       },
-      { id: 'north', label: 'ไหลไปทางทิศเหนือ' },
+      { id: 'north', label: 'ไหลจาก A → B → C (ไปทางทิศเหนือ)' },
       {
-        id: 'west',
-        label: 'ไหลไปทางทิศตะวันตก',
-        hint: 'ลองดูแนวลำห้วยบนแผนที่ — ลำห้วยทอดตัวแนวเหนือ–ใต้ แล้วเทียบระดับความสูงของสองหมุด',
+        id: 'east',
+        label: 'ไหลออกจาก B ไปทางทิศตะวันออก',
+        hint: 'ทั้งสามจุดอยู่บนลำห้วยสายเดียวกัน น้ำต้องไหลตามลำห้วยจากจุดที่สูงไปจุดที่ต่ำ',
       },
     ],
     correctChoiceId: 'north',
     fallbackHint: 'น้ำไหลจากที่สูงไปที่ต่ำเสมอ',
     correctFeedback:
-      'ถูกต้อง! ฝั่งใต้สูงกว่า ({{elev:bm-south}} ม.) ฝั่งเหนือต่ำกว่า ({{elev:bm-north}} ม.) น้ำจึงไหลไปทาง{{flow:stream-main}}',
+      'ถูกต้อง! A ({{elev:site-a}} ม.) สูงกว่า B ({{elev:site-b}} ม.) และ C ({{elev:site-c}} ม.) น้ำจึงไหล A → B → C ไปทาง{{flow:stream-main}}',
     effects: [{ type: 'flag', flag: 'flow-known' }],
     verifyFlowOf: 'stream-main',
   },
@@ -42,58 +49,126 @@ export const namLaiQuizzes: QuizDefinition[] = [
 
 export const namLaiClues: ClueDefinition[] = [
   {
-    id: 'clue-office',
-    type: 'direction',
+    id: 'clue-conflict',
+    type: 'comparison',
     source: 'ครูเนม',
-    text: 'ศาลาจัดการน้ำชุมชนอยู่ทาง{{dir:school>water-office}}ของโรงเรียน ห่างเป็นเส้นตรงประมาณ {{dist:school>water-office}} เมตร',
+    text: 'ข้อมูลแหล่งน้ำของตำบลขัดแย้งกัน: แผนที่ฐานฉบับ A และ B ระบุตาน้ำ ทิศน้ำไหล และบางจุดสังเกตไม่ตรงกัน ต้องตรวจด้วยหลักฐานจริง',
   },
   {
-    id: 'clue-symbol',
+    id: 'clue-symbols',
     type: 'symbol',
-    source: 'ป้าจันทร์',
-    text: 'บนแผนที่เก่า ตาน้ำต้นลำห้วยใช้สัญลักษณ์ ◎ (ตาน้ำ) ซึ่งต่างจากสัญลักษณ์ฝาย หนองน้ำ และบ่อขุด',
+    source: 'ครูเนม',
+    text: 'สัญลักษณ์แผนที่: เส้นน้ำเงิน = ลำน้ำ · เส้นน้ำตาล = ถนน · เส้นคู่ = สะพาน · ต้นข้าว = พื้นที่เกษตร · สามเหลี่ยม = หมุดหลักฐานระดับ · ◎ = ตาน้ำ · ขีดขวางลำน้ำ = ฝาย',
+  },
+  {
+    id: 'clue-village',
+    type: 'direction',
+    source: 'ครูเนม',
+    text: 'ชุมชนริมคลองอยู่ทาง{{dir:school>village}}ของโรงเรียน ห่างเป็นเส้นตรงประมาณ {{dist:school>village}} เมตร',
+  },
+  {
+    id: 'clue-stones',
+    type: 'landmark',
+    source: 'ยายหอม',
+    text: 'สะพานกลางหมู่บ้านข้ามลำห้วยสายเดียวของตำบล · ผู้ใหญ่สมัยก่อนเล่าว่าตาน้ำอยู่ใกล้ก้อนหินใหญ่สามก้อน',
+  },
+  {
+    id: 'clue-weir',
+    type: 'landmark',
+    source: 'ลุงเพชร',
+    text: 'ชาวบ้านเรียกฝายว่า "ต้นน้ำของนา" เพราะน้ำทุกหยดที่เข้านาต้องผ่านฝายนี้ · บ่อในไร่ขุดใหม่ เก็บน้ำฝน ไม่ได้รับน้ำจากลำห้วย',
   },
   {
     id: 'clue-elev-rule',
     type: 'elevation',
     source: 'พี่ภูมิ',
-    text: 'น้ำไหลจากที่สูงไปที่ต่ำเสมอ ต้องดูระดับความสูง (▲ บนแผนที่ หรือหมุดหลักฐานระดับ) ไม่ใช่ดูว่าอยู่ด้านบนหรือล่างของแผนที่',
+    text: 'น้ำไหลจากที่สูงไปที่ต่ำเสมอ ต้องดูระดับความสูง ไม่ใช่ดูว่าอยู่ด้านบนหรือล่างของแผนที่ · เส้นชั้นความสูงวงปิดซ้อนกัน = เนิน วงในสุด = ยอดเนิน',
+  },
+  {
+    id: 'clue-elev-abc',
+    type: 'elevation',
+    source: 'ป้าจันทร์',
+    text: 'ระดับความสูงบนลำห้วย (รทก.): จุด A {{elev:site-a}} ม. · จุด B {{elev:site-b}} ม. · จุด C {{elev:site-c}} ม.',
+  },
+  {
+    id: 'clue-connect',
+    type: 'elevation',
+    source: 'ป้าจันทร์',
+    text: 'จุด A, B และ C อยู่บนลำห้วยสายเดียวกัน ต่อเนื่องกันตามลำดับ A – B – C',
   },
   {
     id: 'clue-bm-north',
     type: 'elevation',
     source: 'หมุดหลักฐานระดับฝั่งเหนือ',
-    text: 'ระดับความสูง {{elev:bm-north}} เมตร จากระดับทะเลปานกลาง (รทก.)',
+    text: 'ระดับความสูง {{elev:bm-north}} เมตร (รทก.)',
   },
   {
     id: 'clue-bm-south',
     type: 'elevation',
     source: 'หมุดหลักฐานระดับฝั่งใต้',
-    text: 'ระดับความสูง {{elev:bm-south}} เมตร จากระดับทะเลปานกลาง (รทก.)',
+    text: 'ระดับความสูง {{elev:bm-south}} เมตร (รทก.)',
   },
   {
-    id: 'clue-farm-pond',
-    type: 'comparison',
-    source: 'ลุงเพชร',
-    text: 'บ่อน้ำในไร่ขุดขึ้นเมื่อไม่กี่ปีก่อน เก็บน้ำฝน ไม่ได้รับน้ำจากลำห้วย และแผนที่เก่าน่าจะยังไม่มีบ่อนี้',
+    id: 'clue-survey-a',
+    type: 'landmark',
+    source: 'สำรวจจุด A',
+    text: 'แอ่งน้ำใสใต้เนิน มีก้อนหินใหญ่สามก้อนอยู่ใกล้ ๆ · ป้ายวัดระดับ {{elev:site-a}} ม.',
   },
   {
-    id: 'clue-stones',
-    type: 'comparison',
+    id: 'clue-survey-b',
+    type: 'landmark',
+    source: 'สำรวจจุด B',
+    text: 'ฝายคอนกรีตกั้นลำห้วย มีประตูน้ำส่งน้ำเข้านา · ป้ายวัดระดับ {{elev:site-b}} ม.',
+  },
+  {
+    id: 'clue-survey-c',
+    type: 'landmark',
+    source: 'สำรวจจุด C',
+    text: 'หนองน้ำกว้าง น้ำเต็มตลอดปี มีต้นกกขึ้นรอบ ๆ · ป้ายวัดระดับ {{elev:site-c}} ม.',
+  },
+  {
+    id: 'clue-jar',
+    type: 'elevation',
     source: 'ยายหอม',
-    text: 'ผู้ใหญ่สมัยก่อนเล่าว่าตาน้ำต้นลำห้วยอยู่ใกล้ก้อนหินใหญ่สามก้อน',
+    text: 'ปู่ทวดฝังไหดินเผาไว้ตรง "จุดที่สูงที่สุดของเนินทางตะวันออกของหมู่บ้าน" (ใช้เส้นชั้นความสูงบนแผนที่หา)',
   },
 ];
 
 export const namLaiEvidence: EvidenceDefinition[] = [
-  {
-    id: 'old-map',
-    name: 'แผนที่เก่าของชุมชน (วาดมือ)',
-    description: 'แผนที่ที่ป้าจันทร์วาดไว้ ใช้มาตราส่วนเดียวกับแผนที่สำรวจ (1:10,000) แต่ไม่มีเส้นชั้นความสูง',
-  },
+  { id: 'map-a', name: 'แผนที่ฐานฉบับ A', description: 'แผนที่ฐานจากครูเนม (มาตราส่วน 1:10,000)' },
+  { id: 'map-b', name: 'แผนที่ฐานฉบับ B', description: 'แผนที่ฐานอีกฉบับจากครูเนม (มาตราส่วน 1:10,000)' },
+  { id: 'survey-a', name: 'บันทึกสำรวจจุด A', description: 'สิ่งที่พบและค่าระดับความสูงที่จุด A' },
+  { id: 'survey-b', name: 'บันทึกสำรวจจุด B', description: 'สิ่งที่พบและค่าระดับความสูงที่จุด B' },
+  { id: 'survey-c', name: 'บันทึกสำรวจจุด C', description: 'สิ่งที่พบและค่าระดับความสูงที่จุด C' },
+  { id: 'old-jar', name: 'ไหดินเผาโบราณ', description: 'พบบนยอดเนินทางตะวันออก ตามเรื่องเล่าของยายหอม' },
 ];
 
-/** หมุดหลักฐานระดับ (BM): เดินไปใกล้แล้วกด E เพื่ออ่านค่าความสูง (ค่าคำนวณจากแบบจำลองความสูง) */
+const SURVEY_TEXT: Record<'a' | 'b' | 'c', string> = {
+  a: 'แอ่งน้ำใสใต้เนิน มีก้อนหินใหญ่สามก้อนอยู่ใกล้ ๆ · ป้ายวัดระดับเขียนว่า {{elev:site-a}} ม.',
+  b: 'ฝายคอนกรีตกั้นลำห้วย มีประตูน้ำส่งน้ำเข้านา · ป้ายวัดระดับเขียนว่า {{elev:site-b}} ม.',
+  c: 'หนองน้ำกว้าง น้ำเต็มตลอดปี มีต้นกกขึ้นรอบ ๆ · ป้ายวัดระดับเขียนว่า {{elev:site-c}} ม.',
+};
+
+/** สำรวจจุด A/B/C (กด E ในรัศมี 3 ช่อง) — บันทึกสิ่งที่พบและค่าระดับความสูงลงสมุด */
+const survey = (id: 'a' | 'b' | 'c', at: { x: number; y: number }): InspectPoint => ({
+  id: `survey-${id}`,
+  at,
+  radiusTiles: 3,
+  when: { flags: ['flow-known'], notFlags: [`surveyed-${id}`] },
+  nodes: [
+    {
+      speaker: `สมุดภาคสนาม — จุด ${id.toUpperCase()}`,
+      text: SURVEY_TEXT[id],
+      effects: [
+        { type: 'clue', clueId: `clue-survey-${id}` },
+        { type: 'evidence', evidenceId: `survey-${id}` },
+        { type: 'flag', flag: `surveyed-${id}` },
+      ],
+    },
+  ],
+});
+
+/** จุดตรวจค้น (กด E): หมุดหลักฐานระดับ 2 หมุด · จุดสำรวจ A/B/C · ยอดเนิน (ภารกิจปริศนา) */
 export const namLaiInspectPoints: InspectPoint[] = [
   {
     id: 'bm-north-read',
@@ -127,52 +202,156 @@ export const namLaiInspectPoints: InspectPoint[] = [
       },
     ],
   },
+  survey('a', { x: 22, y: 52 }),
+  survey('b', { x: 30, y: 27 }),
+  survey('c', { x: 33, y: 2 }),
+  {
+    id: 'hill-jar',
+    at: { x: 70, y: 51 },
+    radiusTiles: 1.6,
+    when: { clues: ['clue-jar'], notFlags: ['jar-found'] },
+    expectHighestWithin: 12,
+    nodes: [
+      {
+        speaker: 'สมุดภาคสนาม',
+        text: 'ตรงยอดเนินสูง {{elev:hill-summit}} ม. มีไหดินเผาเก่าโผล่พ้นดินขึ้นมา! ตรงกับเรื่องเล่าของยายหอม',
+        effects: [
+          { type: 'evidence', evidenceId: 'old-jar' },
+          { type: 'flag', flag: 'jar-found' },
+        ],
+      },
+    ],
+  },
+];
+
+/* ---------------- แผนที่ฐานสองฉบับ ---------------- */
+
+const COMMON_LINES: BaseMapDefinition['lines'] = [
+  { style: 'stream', points: STREAM_POINTS },
+  { style: 'road', points: [{ x: 0, y: 34 }, { x: 79, y: 34 }] },
+  { style: 'road', points: [{ x: 10, y: 15 }, { x: 10, y: 34 }] },
+  { style: 'road', points: [{ x: 57, y: 36 }, { x: 57, y: 48 }] },
+];
+
+/** สัญลักษณ์ที่ทั้งสองฉบับเขียนตรงกัน (ใช้ฝึกอ่านสัญลักษณ์) */
+const COMMON_MARKS: BaseMapDefinition['marks'] = [
+  { symbol: 'school', at: { x: 13, y: 11 }, label: 'โรงเรียน', refersTo: 'school' },
+  { symbol: 'village', at: { x: 45, y: 33 }, label: 'หมู่บ้าน', refersTo: 'village', labelAt: 'above' },
+  { symbol: 'office', at: { x: 45, y: 37 }, label: 'ศาลาจัดการน้ำ', refersTo: 'water-office', labelAt: 'below' },
+  { symbol: 'temple', at: { x: 62, y: 32 }, label: 'วัด', refersTo: 'temple' },
+  { symbol: 'bridge', at: { x: 31, y: 34 }, label: 'สะพาน', refersTo: 'bridge', labelAt: 'left' },
+  { symbol: 'farm', at: { x: 58, y: 42 }, label: 'พื้นที่เกษตร', refersTo: 'farmland', labelAt: 'right' },
+  { symbol: 'benchmark', at: { x: 36, y: 12 }, label: 'BM', refersTo: 'bm-north', labelAt: 'right' },
+  { symbol: 'benchmark', at: { x: 27, y: 46 }, label: 'BM', refersTo: 'bm-south', labelAt: 'right' },
+  { symbol: 'weir', at: { x: 30, y: 27 }, label: 'B ฝาย', refersTo: 'site-b', labelAt: 'right' },
 ];
 
 /**
- * แผนที่แผ่นที่สอง: แผนที่เก่าของชุมชน (วาดมือ) — พิกัดและมาตราส่วนเดียวกับแผนที่ด่าน
- * มีของที่ "ไม่มีแล้ว" (ทางเดินเก่าไปตาน้ำ) และ "ยังไม่มี" (บ่อในไร่ ถนนเข้าไร่) ให้ผู้เล่นเปรียบเทียบ
+ * ฉบับ A และ B ต่างกันที่: สัญลักษณ์ตาน้ำ/หนองน้ำ ตำแหน่งหินสามก้อน และลูกศรทิศน้ำไหล
+ * ระบบไม่ได้บอกว่าฉบับใดถูก — checkSheet() เทียบกับโลกเกม (validateLevel ตรวจว่ามีฉบับเดียวที่ผ่านทุกข้อ)
  */
-export const namLaiOldMap: OldMapDefinition = {
-  title: 'แผนที่เก่าของชุมชน (วาดมือ)',
-  note: 'มาตราส่วน 1:10,000 · ไม่มีเส้นชั้นความสูง · ไม่ได้บอกทิศน้ำไหล',
-  requiredEvidenceId: 'old-map',
-  lines: [
-    { style: 'stream', points: STREAM_POINTS },
-    { style: 'road', points: [{ x: 0, y: 34 }, { x: 79, y: 34 }] },
-    { style: 'road', points: [{ x: 10, y: 15 }, { x: 10, y: 34 }] },
-    {
-      style: 'trail',
-      points: [
-        { x: 40, y: 36 },
-        { x: 34, y: 44 },
-        { x: 28, y: 50 },
-        { x: 24, y: 53 },
-      ],
-    },
-  ],
-  marks: [
-    { symbol: 'school', at: { x: 11, y: 8 }, label: 'โรงเรียน' },
-    { symbol: 'village', at: { x: 45, y: 30 }, label: 'หมู่บ้าน' },
-    { symbol: 'temple', at: { x: 62, y: 29 }, label: 'วัด' },
-    { symbol: 'weir', at: { x: 32, y: 22 }, label: 'ฝาย' },
-    { symbol: 'marsh', at: { x: 33, y: 3 }, label: 'หนองน้ำ', labelAt: 'right' },
-    { symbol: 'spring', at: { x: 22, y: 53 }, label: 'ตาน้ำ', labelAt: 'left' },
-    { symbol: 'stones', at: { x: 25, y: 53 }, label: 'หินสามก้อน', labelAt: 'right' },
-  ],
+export const namLaiBaseMaps: BaseMapDefinition[] = [
+  {
+    id: 'A',
+    title: 'แผนที่ฐานฉบับ A',
+    note: 'มาตราส่วน 1:10,000 · ไม่มีเส้นชั้นความสูง',
+    requiredEvidenceId: 'map-a',
+    lines: COMMON_LINES,
+    marks: [
+      ...COMMON_MARKS,
+      { symbol: 'spring', at: { x: 22, y: 52 }, label: 'A ตาน้ำ', refersTo: 'site-a', labelAt: 'left' },
+      { symbol: 'stones', at: { x: 26, y: 54 }, label: 'หินสามก้อน', refersTo: 'three-stones', labelAt: 'right' },
+      { symbol: 'marsh', at: { x: 33, y: 2 }, label: 'C หนองน้ำ', refersTo: 'site-c', labelAt: 'right' },
+    ],
+    flowArrows: [
+      { at: { x: 28, y: 40 }, toward: 'N' },
+      { at: { x: 31, y: 12 }, toward: 'N' },
+    ],
+  },
+  {
+    id: 'B',
+    title: 'แผนที่ฐานฉบับ B',
+    note: 'มาตราส่วน 1:10,000 · ไม่มีเส้นชั้นความสูง',
+    requiredEvidenceId: 'map-b',
+    lines: COMMON_LINES,
+    marks: [
+      ...COMMON_MARKS,
+      { symbol: 'marsh', at: { x: 22, y: 52 }, label: 'A หนองน้ำ', refersTo: 'site-a', labelAt: 'left' },
+      { symbol: 'spring', at: { x: 33, y: 2 }, label: 'C ตาน้ำ', refersTo: 'site-c', labelAt: 'right' },
+      { symbol: 'stones', at: { x: 36, y: 5 }, label: 'หินสามก้อน', refersTo: 'three-stones', labelAt: 'right' },
+    ],
+    flowArrows: [
+      { at: { x: 28, y: 40 }, toward: 'S' },
+      { at: { x: 31, y: 12 }, toward: 'S' },
+    ],
+  },
+];
+
+export const namLaiMapComparison: MapComparisonDefinition = {
+  waterwayId: 'stream-main',
+  toleranceTiles: 3,
+  // ต้องเดินไปเห็นจริงก่อน: หินสามก้อน และหนองน้ำที่จุด C (สองจุดที่แผนที่ทั้งสองขัดกัน)
+  requiredObservations: ['three-stones', 'site-c'],
+  requiredClueIds: ['clue-elev-abc'],
+  availableWhen: { minStep: 4 },
+  successFlag: 'maps-compared',
 };
 
 /**
- * สถานที่ผู้ต้องสงสัย: แหล่งน้ำ 4 แห่งที่ดูคล้าย "ตาน้ำต้นลำห้วย"
- * ระบบตรวจจากข้อมูลแผนที่ (validateLevel + tests): ตาน้ำผ่านหลักฐานทุกข้อ ส่วนอีก 3 แห่งไม่ผ่านอย่างน้อย 1 ข้อ
- * (หน้าจอให้ผู้เล่นเลือกสถานที่จะทำในฉาก 4–5)
+ * จุดสำรวจ A/B/C — ระบบหาเป้าหมายเองจาก: ต้นน้ำ (ระดับความสูง) + แผนที่ฐานฉบับที่ผ่านการตรวจ + สัญลักษณ์ตาน้ำ
  */
 export const namLaiSiteAnalysis: SiteAnalysisDefinition = {
   waterwayId: 'stream-main',
   requiredSymbol: 'spring',
   toleranceTiles: 3,
-  candidates: ['spring', 'weir', 'marsh', 'farm-pond'],
-  correctLandmarkId: 'spring',
+  candidates: [
+    { landmarkId: 'site-a', label: 'จุด A', evidenceId: 'survey-a' },
+    { landmarkId: 'site-b', label: 'จุด B', evidenceId: 'survey-b' },
+    { landmarkId: 'site-c', label: 'จุด C', evidenceId: 'survey-c' },
+  ],
+  correctLandmarkId: 'site-a',
+};
+
+export const namLaiPinTask: PinTaskDefinition = {
+  targetId: 'site-analysis',
+  toleranceTiles: 3,
+  mustStandWithinTiles: 5,
+  wisdomPrompt: 'สถานที่ที่ปักหมุดคือแหล่งน้ำประเภทใด',
+  wisdomChoices: [
+    { id: 'spring', label: 'ตาน้ำ (ต้นน้ำ)' },
+    { id: 'weir', label: 'ฝาย' },
+    { id: 'marsh', label: 'หนองน้ำ' },
+  ],
+  correctWisdomId: 'spring',
+  requiredEvidenceIds: [],
+  availableWhen: { flags: ['maps-compared'] },
+  successFlag: 'pin-verified',
+};
+
+export const namLaiEnding: EndingDefinition = {
+  messages: [
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'ครูได้รับหมุดตำแหน่งตาน้ำต้นลำห้วยแล้ว ถูกต้องทั้งพิกัด ประเภทสถานที่ และหลักฐานการสำรวจ!',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'สัญลักษณ์แผนที่ช่วยให้อ่านพื้นที่ได้โดยไม่ต้องเห็นของจริง แต่สัญลักษณ์อาจเขียนผิดได้ จึงต้องตรวจกับสิ่งที่พบจริงเสมอ',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'ทิศทางน้ำไหล: A {{elev:site-a}} ม. → B {{elev:site-b}} ม. → C {{elev:site-c}} ม. น้ำจึงไหลไปทาง{{flow:stream-main}} แม้จุด C จะอยู่ด้านบนของแผนที่',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'การเปรียบเทียบหลักฐาน: แผนที่ที่เชื่อถือได้ต้องสอดคล้องทั้งสัญลักษณ์ ระดับความสูง และจุดสังเกตที่เราไปตรวจด้วยตัวเอง',
+    },
+    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 2 และแผนที่ตำบลคลองน้ำไหลให้ เก็บไว้รวมกับชิ้นแรกนะ' },
+  ],
+  // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
+  codePiece: { index: 2, total: 4, value: 'น้ำ' },
+  rewardItem: 'แผนที่ตำบลคลองน้ำไหล',
+  completeFlag: 'mission-complete',
 };
 
 export const namLaiQuests: QuestDefinition[] = [
@@ -180,80 +359,119 @@ export const namLaiQuests: QuestDefinition[] = [
     id: 'main-namlai',
     kind: 'main',
     title: 'ปริศนาสายน้ำแห่งคลองน้ำไหล',
-    description: 'ตามหาตาน้ำต้นลำห้วยของชุมชน โดยใช้ระดับความสูง สัญลักษณ์แผนที่ และแผนที่สองแผ่น',
+    description: 'ตรวจสอบข้อมูลแหล่งน้ำที่ขัดแย้งกัน แล้วระบุตำแหน่งตาน้ำต้นลำห้วยด้วยหลักฐาน',
     lockedHint: '',
     objectives: [
-      { text: 'รับภารกิจจากครูเนมที่โรงเรียน', done: { type: 'step', order: 1 } },
-      { text: 'พบผู้ดูแลแหล่งน้ำ และรับแผนที่เก่า', done: { type: 'step', order: 2 } },
-      { text: 'อ่านระดับความสูง หาทิศทางน้ำไหล', done: { type: 'step', order: 3 } },
-      { text: 'เปรียบเทียบแผนที่สองแผ่น (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 4 } },
-      { text: 'ตามหาตาน้ำต้นลำห้วย (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 5 } },
-      { text: 'บันทึกตำแหน่ง รับรหัสลับชิ้นที่ 2 (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 6 } },
+      { text: 'รับแผนที่ฐานสองฉบับจากครูเนม และฝึกอ่านสัญลักษณ์', done: { type: 'step', order: 1 } },
+      { text: 'สำรวจชุมชนริมคลอง', done: { type: 'step', order: 2 } },
+      { text: 'รับข้อมูลระดับความสูงจากผู้ดูแลแหล่งน้ำ', done: { type: 'step', order: 3 } },
+      { text: 'วิเคราะห์แผนที่สองฉบับ', done: { type: 'step', order: 4 } },
+      { text: 'ค้นหาจุดสำรวจที่ตรงกับหลักฐาน และปักหมุด', done: { type: 'step', order: 5 } },
+      { text: 'ส่งผลและรับรหัสลับชิ้นที่ 2', done: { type: 'step', order: 6 } },
     ],
+  },
+  {
+    id: 'side-gauges',
+    kind: 'side',
+    title: 'อ่านป้ายวัดระดับครบสามจุด',
+    description: 'ป้าจันทร์ให้ข้อมูลระดับความสูงมาแล้ว ลองไปอ่านป้ายวัดระดับที่จุด A, B, C ด้วยตาตัวเอง',
+    unlockWhen: { flags: ['flow-known'] },
+    lockedHint: 'รับข้อมูลระดับความสูงจากผู้ดูแลแหล่งน้ำ',
+    objectives: [
+      { text: 'สำรวจจุด A', done: { type: 'flag', flag: 'surveyed-a' } },
+      { text: 'สำรวจจุด B', done: { type: 'flag', flag: 'surveyed-b' } },
+      { text: 'สำรวจจุด C', done: { type: 'flag', flag: 'surveyed-c' } },
+    ],
+    reward: { text: 'บันทึกในสมุด: ค่าที่อ่านได้จริงตรงกับข้อมูลของป้าจันทร์' },
   },
   {
     id: 'side-symbols',
     kind: 'side',
     title: 'นักอ่านสัญลักษณ์แผนที่',
-    description: 'ป้าจันทร์ให้แผนที่เก่ามาแล้ว ลองหาสถานที่จริงที่ตรงกับสัญลักษณ์บนแผนที่',
-    unlockWhen: { flags: ['got-old-map'] },
-    lockedHint: 'รับแผนที่เก่าจากผู้ดูแลแหล่งน้ำ',
+    description: 'หาสถานที่จริงที่ตรงกับสัญลักษณ์บนแผนที่ฐาน',
+    unlockWhen: { flags: ['got-base-maps'] },
+    lockedHint: 'รับแผนที่ฐานจากครูเนม',
     objectives: [
-      { text: 'เปิดดูแผนที่เก่า (M แล้วกด Tab)', done: { type: 'skill', skill: 'map-compare' } },
-      { text: 'สำรวจฝายบนลำห้วย', done: { type: 'discover', landmarkId: 'weir' } },
+      { text: 'สำรวจพื้นที่เกษตร', done: { type: 'discover', landmarkId: 'farmland' } },
       { text: 'สำรวจวัด', done: { type: 'discover', landmarkId: 'temple' } },
+      { text: 'อ่านหมุดหลักฐานระดับ (BM) อย่างน้อย 1 หมุด', done: { type: 'clue', clueId: 'clue-bm-north' } },
     ],
-    reward: { text: 'บันทึกในสมุด: สัญลักษณ์บนแผนที่เก่าตรงกับสถานที่จริงที่ยังอยู่' },
+    reward: { text: 'บันทึกในสมุด: สัญลักษณ์ที่ทั้งสองฉบับเขียนตรงกันใช้ยืนยันตำแหน่งได้' },
+  },
+  {
+    id: 'mystery-jar',
+    kind: 'mystery',
+    title: 'ไหโบราณบนยอดเนิน',
+    description: 'ใช้เส้นชั้นความสูงหา "จุดที่สูงที่สุด" ของเนินทางตะวันออก ตามเรื่องเล่าของยายหอม',
+    unlockWhen: { clues: ['clue-jar'] },
+    lockedHint: '??? — ฟังเรื่องเล่าของชาวบ้านหลังรู้ทิศทางน้ำไหลแล้ว',
+    objectives: [{ text: 'หายอดเนินด้วยเส้นชั้นความสูง แล้วกด E ตรวจค้น', done: { type: 'flag', flag: 'jar-found' } }],
+    reward: { text: 'ได้หลักฐานพิเศษ: ไหดินเผาโบราณ' },
   },
 ];
 
 export const namLaiStory: StoryStep[] = [
   {
     order: 1,
-    title: 'รับภารกิจที่โรงเรียนคลองน้ำไหล',
-    objective: 'คุยกับครูเนมเพื่อรับภารกิจ',
+    title: 'ครูเนมมอบภารกิจ',
+    objective: 'คุยกับครูเนม แล้วเปิดแผนที่ (M) กด Tab ดูแผนที่ฐานฉบับ A และ B',
     landmarkId: 'school',
     status: 'playable',
-    completeWhen: { type: 'talk', npcId: 'teacher-nem' },
+    completeWhen: {
+      type: 'all',
+      of: [
+        { type: 'talk', npcId: 'teacher-nem' },
+        { type: 'flag', flag: 'viewed-sheet-A' },
+        { type: 'flag', flag: 'viewed-sheet-B' },
+      ],
+    },
   },
   {
     order: 2,
-    title: 'พบผู้ดูแลแหล่งน้ำ',
-    objective: 'ไปศาลาจัดการน้ำชุมชน คุยกับป้าจันทร์ และรับแผนที่เก่า',
-    landmarkId: 'water-office',
+    title: 'สำรวจชุมชน',
+    objective: 'คุยกับยายหอมและลุงเพชร แล้วเดินไปดูสะพานและฝายด้วยตัวเอง',
+    landmarkId: 'village',
     status: 'playable',
-    completeWhen: { type: 'flag', flag: 'got-old-map' },
+    completeWhen: {
+      type: 'all',
+      of: [
+        { type: 'talk', npcId: 'villager-hom' },
+        { type: 'talk', npcId: 'farmer-phet' },
+        { type: 'discover', landmarkId: 'bridge' },
+        { type: 'discover', landmarkId: 'site-b' },
+      ],
+    },
   },
   {
     order: 3,
-    title: 'อ่านระดับความสูงหาทิศทางน้ำไหล',
-    objective: 'อ่านหมุดหลักฐานระดับ 2 จุด (กด E) แล้วตอบพี่ภูมิว่าลำห้วยไหลไปทางไหน',
-    landmarkId: 'bridge',
+    title: 'พบผู้ดูแลแหล่งน้ำ',
+    objective: 'คุยกับป้าจันทร์ที่ศาลาจัดการน้ำ รับข้อมูลระดับความสูง แล้วตอบว่าน้ำไหลอย่างไร',
+    landmarkId: 'water-office',
     status: 'playable',
     completeWhen: { type: 'flag', flag: 'flow-known' },
   },
   {
     order: 4,
-    title: 'เปรียบเทียบแผนที่สองแผ่น',
-    objective: '(อยู่ระหว่างพัฒนา) เทียบสัญลักษณ์บนแผนที่เก่ากับสถานที่จริง',
+    title: 'วิเคราะห์แผนที่สองฉบับ',
+    objective: 'ไปดูหินสามก้อนและจุด C ด้วยตัวเอง แล้วกด C เปรียบเทียบแผนที่ A กับ B',
     landmarkId: 'water-office',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'maps-compared' },
   },
   {
     order: 5,
-    title: 'ตามหาตาน้ำต้นลำห้วย',
-    objective: '(อยู่ระหว่างพัฒนา) เลือกแหล่งน้ำที่ตรงกับหลักฐานทุกข้อ',
-    landmarkId: 'spring',
-    status: 'planned',
-    completeWhen: { type: 'flag', flag: 'spring-found' },
+    title: 'ค้นหาจุดสำรวจ',
+    objective: 'เดินไปจุดที่ตรงกับหลักฐานทุกข้อ กด E สำรวจ แล้วเปิดแผนที่ (M) ปักหมุด',
+    landmarkId: 'site-a',
+    status: 'playable',
+    completeWhen: { type: 'flag', flag: 'pin-verified' },
   },
   {
     order: 6,
-    title: 'บันทึกตำแหน่ง รับรหัสลับชิ้นที่ 2',
-    objective: '(อยู่ระหว่างพัฒนา)',
-    landmarkId: 'spring',
-    status: 'planned',
-    completeWhen: { type: 'flag', flag: 'level2-complete' },
+    title: 'ส่งผลและรับรหัส',
+    objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
+    landmarkId: 'school',
+    status: 'playable',
+    completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];

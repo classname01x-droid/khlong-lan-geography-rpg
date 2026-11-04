@@ -34,12 +34,19 @@ export function reachableTiles(
   return seen;
 }
 
-/** จุดนั้นเดินถึงได้หรือไม่ (หรือยืนข้าง ๆ ได้ ในกรณีที่เป็นประตู/สิ่งกีดขวาง) */
-export function isPointReachable(grid: WorldGrid, reachable: Set<number>, p: TilePoint): boolean {
-  for (const [dx, dy] of [[0, 0], ...DIRS_4] as const) {
-    const x = p.x + dx;
-    const y = p.y + dy;
-    if (grid.inBounds(x, y) && reachable.has(y * grid.width + x)) return true;
+/**
+ * จุดนั้นเดินถึงได้หรือไม่ — หรือยืนได้ในรัศมี radius ช่อง (ค่าเริ่มต้น 1 = ช่องนั้นหรือช่องติดกัน 4 ทิศ)
+ * ใช้กับจุดที่เป็นประตู/สิ่งกีดขวาง หรือจุดกลางผืนน้ำที่ยืนดูจากริมน้ำได้
+ */
+export function isPointReachable(grid: WorldGrid, reachable: Set<number>, p: TilePoint, radius = 1): boolean {
+  const r = Math.ceil(radius);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (Math.hypot(dx, dy) > radius) continue;
+      const x = p.x + dx;
+      const y = p.y + dy;
+      if (grid.inBounds(x, y) && reachable.has(y * grid.width + x)) return true;
+    }
   }
   return false;
 }

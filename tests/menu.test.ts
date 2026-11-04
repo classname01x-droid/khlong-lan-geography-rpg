@@ -69,7 +69,7 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c.map((x) => x.state)).toEqual(['unlocked', 'locked', 'locked', 'locked']);
     expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
     expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
-    expect(c[1].evidenceText).toBe('หลักฐาน: 0/1');
+    expect(c[1].evidenceText).toBe('หลักฐาน: 0/6');
     expect(c[2].evidenceText).toBe('หลักฐาน: —');
   });
 

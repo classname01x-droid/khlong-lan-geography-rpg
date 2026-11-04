@@ -184,7 +184,7 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
 
     const sum = s.summary();
     expect(sum.mistakes).toBe(1);
-    expect(sum.mistakesBy).toEqual({ quiz: 0, route: 0, pin: 1 });
+    expect(sum.mistakesBy).toEqual({ quiz: 0, route: 0, pin: 1, compare: 0 });
     expect(sum.elapsedMs).toBe(125_000);
     expect(sum.cluesFound).toBe(5); // รวมเบาะแสลายผ้าผืนแรกจากป้านวล
     expect(sum.skills).toEqual(

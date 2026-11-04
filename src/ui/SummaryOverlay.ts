@@ -49,7 +49,14 @@ export class SummaryOverlay {
         `ระยะทางเดินทั้งหมด: ${fmtMeters(sum.distanceMeters)}`,
         `เบาะแสที่ค้นพบ: ${sum.cluesFound}/${sum.cluesTotal}`,
         `จำนวนครั้งที่ตอบผิด: ${sum.mistakes}`,
-        `   (ปริศนา ${sum.mistakesBy.quiz} · เส้นทาง ${sum.mistakesBy.route} · ปักหมุด ${sum.mistakesBy.pin})`,
+        `   (${[
+          `ปริศนา ${sum.mistakesBy.quiz}`,
+          s.level.routeAnalysis ? `เส้นทาง ${sum.mistakesBy.route}` : '',
+          s.level.mapComparison ? `เทียบแผนที่ ${sum.mistakesBy.compare}` : '',
+          s.level.pinTask ? `ปักหมุด ${sum.mistakesBy.pin}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')})`,
         `เวลาที่ใช้: ${fmtDuration(sum.elapsedMs)}`,
         `ภารกิจ: หลัก ${sum.quests.main.done}/${sum.quests.main.total} · รอง ${sum.quests.side.done}/${sum.quests.side.total} · ปริศนา ${sum.quests.mystery.done}/${sum.quests.mystery.total}`,
       ].join('\n'),
