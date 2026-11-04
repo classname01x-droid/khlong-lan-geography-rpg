@@ -1,18 +1,5 @@
-/** ชื่อ event ที่ใช้สื่อสารระหว่าง WorldScene → UIScene (ผ่าน game.events) */
-export const GameEvents = {
-  DialogueShow: 'dialogue:show',
-  DialogueHide: 'dialogue:hide',
-  Toast: 'ui:toast',
-  MapShow: 'map:show',
-  MapHide: 'map:hide',
-} as const;
-
-export interface DialoguePayload {
-  speaker: string;
-  text: string;
-  index: number;
-  total: number;
-}
-
+/** คีย์ใน registry ของ Phaser ที่ใช้แชร์ข้อมูลระหว่างฉาก */
 export const REGISTRY_SESSION = 'session';
 export const REGISTRY_LEVEL_ID = 'levelId';
+/** ชื่อด่านที่เพิ่งปลดล็อก (แสดงในหน้าสรุปผล) */
+export const REGISTRY_UNLOCKED = 'unlockedName';

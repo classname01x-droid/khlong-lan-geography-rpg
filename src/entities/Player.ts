@@ -50,13 +50,19 @@ export class Player extends Character {
     this.setCollideWorldBounds(true);
   }
 
-  /** อ่านปุ่มและตั้งความเร็ว; คืนเวกเตอร์ทิศที่กด */
-  handleInput(enabled: boolean): Phaser.Math.Vector2 {
+  /**
+   * อ่านปุ่มและตั้งความเร็ว; คืนเวกเตอร์ทิศที่กด
+   * @param override ทิศที่สั่งจากสคริปต์ทดสอบอัตโนมัติ (ใช้แทนคีย์บอร์ด) — ยังผ่าน physics และการชนตามปกติ
+   */
+  handleInput(enabled: boolean, override: Phaser.Math.Vector2 | null = null): Phaser.Math.Vector2 {
     const held = (ks: Phaser.Input.Keyboard.Key[]) => enabled && ks.some((k) => k.isDown);
-    const dir = new Phaser.Math.Vector2(
-      (held(this.keys.right) ? 1 : 0) - (held(this.keys.left) ? 1 : 0),
-      (held(this.keys.down) ? 1 : 0) - (held(this.keys.up) ? 1 : 0),
-    );
+    const dir =
+      enabled && override
+        ? override.clone()
+        : new Phaser.Math.Vector2(
+            (held(this.keys.right) ? 1 : 0) - (held(this.keys.left) ? 1 : 0),
+            (held(this.keys.down) ? 1 : 0) - (held(this.keys.up) ? 1 : 0),
+          );
     if (dir.lengthSq() === 0) {
       this.setVelocity(0, 0);
       this.anims.stop();

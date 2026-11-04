@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/constants';
-import { getLevel } from '../content/registry';
+import { getLevel, getLevelSlot } from '../content/registry';
 import type { NpcDefinition } from '../content/types';
+import { browserStorage, ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
-import { GameSession } from '../core/session/GameSession';
+import { GameSession, NOTEBOOK_TABS } from '../core/session/GameSession';
 import { buildWorld } from '../core/world/MapBuilder';
+import { findPath } from '../core/world/pathfinding';
+import type { TilePoint } from '../core/world/types';
 import { Character, Player } from '../entities/Player';
 import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY } from '../graphics/tileIndex';
+import { PIN_PROBLEM_TEXT, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
-import { GameEvents, REGISTRY_LEVEL_ID, REGISTRY_SESSION, type DialoguePayload } from './events';
+import { REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
 
 const S = TILE_SIZE_PX;
 const DEPTH = { characters: 20, labels: 40, grid: 60, fog: 100 } as const;
@@ -19,12 +23,21 @@ interface NpcInstance {
   marker: Phaser.GameObjects.Image;
 }
 
-interface ActiveDialogue {
-  npc: NpcInstance;
+/** การเดินอัตโนมัติสำหรับการทดสอบ (โหมด dev เท่านั้น) */
+interface ScriptedWalk {
+  path: TilePoint[];
   index: number;
+  resolve: (arrived: boolean) => void;
+  /** ตรวจว่าติดค้าง: ตำแหน่งล่าสุดที่ขยับ และเวลาที่ไม่ขยับสะสม (ms) */
+  lastX: number;
+  lastY: number;
+  stuckMs: number;
 }
 
-/** ฉากโลกเกม: แผนที่ ตัวละคร การชน กล้อง และ Fog of War */
+/**
+ * ฉากโลกเกม: แผนที่ ตัวละคร การชน กล้อง Fog of War
+ * และเป็นผู้รับ input ทั้งหมด แล้วสั่งงาน GameSession (UIScene อ่านสถานะไปแสดง)
+ */
 export class WorldScene extends Phaser.Scene {
   private session!: GameSession;
   private player!: Player;
@@ -32,8 +45,8 @@ export class WorldScene extends Phaser.Scene {
   private fogLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridOverlay!: Phaser.GameObjects.Graphics;
   private labels = new Map<string, Phaser.GameObjects.Text>();
-  private dialogue: ActiveDialogue | null = null;
   private lastTileKey = '';
+  private walk: ScriptedWalk | null = null;
 
   constructor() {
     super('WorldScene');
@@ -44,10 +57,11 @@ export class WorldScene extends Phaser.Scene {
     const grid = buildWorld(level.map);
     this.session = new GameSession(level, grid, defaultScale);
     this.registry.set(REGISTRY_SESSION, this.session);
+    this.registry.remove(REGISTRY_UNLOCKED);
     this.npcs = [];
     this.labels.clear();
-    this.dialogue = null;
     this.lastTileKey = '';
+    this.walk = null;
 
     const widthPx = grid.width * S;
     const heightPx = grid.height * S;
@@ -100,6 +114,7 @@ export class WorldScene extends Phaser.Scene {
       right: [kb.addKey(K.D), kb.addKey(K.RIGHT)],
     });
     this.session.odometer.teleport(this.player.x, this.player.y);
+    kb.addCapture([K.SPACE, K.TAB, K.UP, K.DOWN, K.LEFT, K.RIGHT]);
 
     for (const def of level.npcs) {
       const sprite = new Character(this, (def.at.x + 0.5) * S, (def.at.y + 0.5) * S - 4, def.appearance);
@@ -143,30 +158,18 @@ export class WorldScene extends Phaser.Scene {
     this.gridOverlay = this.add.graphics().setDepth(DEPTH.grid).setVisible(false);
     this.drawGrid(grid.width, grid.height);
 
-    // ---- ปุ่มคำสั่ง ----
-    kb.on('keydown-E', () => this.onAction());
-    kb.on('keydown-SPACE', () => this.onAction());
-    kb.on('keydown-ENTER', () => this.onAction());
-    kb.on('keydown-R', () => {
-      if (this.session.mode !== 'explore') return;
-      this.session.odometer.resetTrip();
-      this.toast('เริ่มวัดระยะใหม่จากจุดนี้');
-    });
-    kb.on('keydown-G', () => {
-      this.session.showGrid = !this.session.showGrid;
-      this.gridOverlay.setVisible(this.session.showGrid);
-    });
-    kb.on('keydown-M', () => this.toggleMap());
-    kb.on('keydown-ESC', () => {
-      if (this.session.mode === 'map') this.toggleMap();
-    });
+    kb.on('keydown', (ev: KeyboardEvent) => this.onKey(ev));
 
     this.updateFog(true);
+    this.refreshMarkers();
+    this.installTestHooks();
   }
 
-  override update(): void {
+  override update(_time: number, delta: number): void {
     const s = this.session;
-    const v = this.player.handleInput(s.mode === 'explore');
+    if (!s.completed) s.elapsedMs += delta;
+
+    const v = this.player.handleInput(s.mode === 'explore', this.scriptedDirection(delta));
     if (v.lengthSq() > 0) s.updateFacing(v.x, v.y);
 
     // ระยะทางจากตำแหน่งจริงหลังชน (ไม่ใช่จากความเร็ว)
@@ -175,10 +178,248 @@ export class WorldScene extends Phaser.Scene {
     this.updateFog(false);
   }
 
-  /** เรียงลำดับการวาดตามแกน y: ตัวที่อยู่ใต้กว่า (ใกล้กล้องกว่า) วาดทับ */
-  private depthForY(y: number): number {
-    return DEPTH.characters + y / (this.session.grid.height * S);
+  /* =========================================================
+   * Input — ทุกปุ่มผ่านจุดเดียว แยกตามโหมด
+   * ========================================================= */
+
+  private onKey(ev: KeyboardEvent): void {
+    const s = this.session;
+    const code = ev.code;
+    const digit = /^(Digit|Numpad)([1-9])$/.exec(code);
+    const choice = digit ? Number(digit[2]) - 1 : -1;
+    const confirm = code === 'Space' || code === 'Enter' || code === 'NumpadEnter' || code === 'KeyE';
+
+    switch (s.mode) {
+      case 'explore':
+        if (confirm) this.interact();
+        else if (code === 'KeyR') {
+          s.odometer.resetTrip();
+          s.noteSkill('odometer');
+          s.toast('เริ่มวัดระยะใหม่จากจุดนี้');
+        } else if (code === 'KeyG') {
+          s.showGrid = !s.showGrid;
+          this.gridOverlay.setVisible(s.showGrid);
+        } else if (code === 'KeyM') this.openMap();
+        else if (code === 'KeyN') this.openNotebook();
+        return;
+
+      case 'dialogue': {
+        const view = s.dialogueView;
+        if (view?.kind === 'quiz') {
+          if (choice >= 0) this.withStepToasts(() => s.answerQuiz(choice));
+        } else if (confirm) {
+          this.withStepToasts(() => {
+            const outcome = s.advanceDialogue();
+            if (outcome === 'mission-complete') this.onMissionComplete();
+          });
+        }
+        return;
+      }
+
+      case 'notebook':
+        if (code === 'KeyN' || code === 'Escape') this.setMode('explore');
+        else if (code === 'ArrowRight' || code === 'KeyD' || code === 'Tab') this.switchTab(1);
+        else if (code === 'ArrowLeft' || code === 'KeyA') this.switchTab(-1);
+        else if (choice >= 0 && s.notebookTab === 'routes') this.chooseRoute(choice);
+        return;
+
+      case 'map':
+        this.onMapKey(code, choice, confirm);
+        return;
+
+      case 'summary':
+        if (confirm || code === 'Escape') this.setMode('explore');
+        return;
+    }
   }
+
+  private setMode(mode: GameSession['mode']): void {
+    this.session.mode = mode;
+    this.bumpUi();
+  }
+
+  private bumpUi(): void {
+    this.session.uiVersion++;
+  }
+
+  /** ทำงานแล้วแจ้งเตือนฉากที่เพิ่งผ่าน */
+  private withStepToasts(fn: () => void): void {
+    const s = this.session;
+    const before = s.currentStepOrder;
+    fn();
+    const after = s.currentStepOrder;
+    for (const step of s.level.story) {
+      if (step.order >= before && step.order < after) s.toast(`ผ่านฉากที่ ${step.order}: ${step.title}`);
+    }
+    this.refreshMarkers();
+    this.bumpUi();
+  }
+
+  /* ---------------- บทสนทนา ---------------- */
+
+  private interact(): void {
+    const npc = this.findNearbyNpc();
+    if (npc) this.startTalk(npc);
+  }
+
+  private startTalk(npc: NpcInstance): void {
+    this.cancelWalk();
+    this.player.setVelocity(0, 0);
+    npc.sprite.faceTowards(this.player.x, this.player.y);
+    this.withStepToasts(() => this.session.talkTo(npc.def));
+  }
+
+  private findNearbyNpc(): NpcInstance | undefined {
+    const maxDist = INTERACT_RADIUS_TILES * S;
+    let best: NpcInstance | undefined;
+    let bestDist = Infinity;
+    for (const n of this.npcs) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y);
+      if (d <= maxDist && d < bestDist) {
+        best = n;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  private refreshMarkers(): void {
+    for (const n of this.npcs) n.marker.setVisible(this.session.hasNewDialogue(n.def));
+  }
+
+  /* ---------------- สมุดภาคสนาม ---------------- */
+
+  private openNotebook(): void {
+    this.session.routeFeedback = null;
+    this.setMode('notebook');
+    if (this.session.notebookTab === 'routes') this.session.noteSkill('straight-vs-route');
+  }
+
+  private switchTab(delta: number): void {
+    const s = this.session;
+    const i = NOTEBOOK_TABS.indexOf(s.notebookTab);
+    s.notebookTab = NOTEBOOK_TABS[(i + delta + NOTEBOOK_TABS.length) % NOTEBOOK_TABS.length];
+    if (s.notebookTab === 'routes') s.noteSkill('straight-vs-route');
+    this.bumpUi();
+  }
+
+  private chooseRoute(index: number): void {
+    const s = this.session;
+    const route = s.level.routeAnalysis?.routes[index];
+    if (!route) return;
+    this.withStepToasts(() => {
+      const r = s.chooseRoute(index);
+      if (r.blocked === 'missing-clues') {
+        s.routeFeedback = 'ต้องมีเบาะแสครบ 3 ประเภทก่อนจึงจะเลือกเส้นทางได้';
+      } else if (r.ok) {
+        s.routeFeedback = null;
+        s.toast(`เส้นทาง ${route.label} สอดคล้องกับหลักฐานทั้งหมด!`);
+      } else if (!r.blocked) {
+        const why = r.failed.length > 0 ? r.failed.map((f) => ROUTE_CHECK_TEXT[f]).join(' · ') : 'ยังไม่สอดคล้องกับหลักฐาน';
+        s.routeFeedback = `เส้นทาง ${route.label} ยังไม่ใช่: ${why} — ลองตรวจเบาะแสอีกครั้ง`;
+      }
+    });
+  }
+
+  /* ---------------- แผนที่และการปักหมุด ---------------- */
+
+  private openMap(): void {
+    const s = this.session;
+    s.pinFeedback = null;
+    if (s.isPinAvailable()) {
+      s.pinStage = 'cursor';
+      s.pinCursor = s.pinCursor ?? { ...s.playerTile };
+    } else {
+      s.pinStage = 'none';
+    }
+    this.setMode('map');
+  }
+
+  private onMapKey(code: string, choice: number, confirm: boolean): void {
+    const s = this.session;
+    if (s.pinStage === 'wisdom') {
+      if (code === 'Escape') {
+        s.pinStage = 'cursor';
+        this.bumpUi();
+      } else if (choice >= 0 && choice < (s.level.pinTask?.wisdomChoices.length ?? 0)) {
+        this.submitPin(choice);
+      }
+      return;
+    }
+    if (code === 'KeyM' || code === 'Escape') {
+      s.pinStage = 'none';
+      this.setMode('explore');
+      return;
+    }
+    if (s.pinStage !== 'cursor' || !s.pinCursor) return;
+    const move: Record<string, [number, number]> = {
+      ArrowUp: [0, -1],
+      KeyW: [0, -1],
+      ArrowDown: [0, 1],
+      KeyS: [0, 1],
+      ArrowLeft: [-1, 0],
+      KeyA: [-1, 0],
+      ArrowRight: [1, 0],
+      KeyD: [1, 0],
+    };
+    const m = move[code];
+    if (m) {
+      s.pinCursor = {
+        x: Phaser.Math.Clamp(s.pinCursor.x + m[0], 0, s.grid.width - 1),
+        y: Phaser.Math.Clamp(s.pinCursor.y + m[1], 0, s.grid.height - 1),
+      };
+      this.bumpUi();
+    } else if (confirm) {
+      s.pinStage = 'wisdom';
+      s.pinFeedback = null;
+      this.bumpUi();
+    }
+  }
+
+  private submitPin(choice: number): void {
+    const s = this.session;
+    const result = s.submitPin(s.pinCursor!, choice);
+    if (result.ok) {
+      s.pinStage = 'none';
+      s.pinFeedback = null;
+      s.toast('บันทึกตำแหน่งเข้าสมุดภาคสนามแล้ว — ครูเนมกำลังติดต่อมา');
+      this.withStepToasts(() => s.startEnding());
+      return;
+    }
+    s.pinStage = 'cursor';
+    s.pinFeedback = `ยังบันทึกไม่ได้: ${result.problems.map((p) => PIN_PROBLEM_TEXT[p]).join(' · ')}`;
+    this.bumpUi();
+  }
+
+  /* ---------------- จบภารกิจ ---------------- */
+
+  private onMissionComplete(): void {
+    const s = this.session;
+    const sum = s.summary();
+    const ending = s.level.ending;
+    const store = new ProgressStore(browserStorage(), s.level.id);
+    store.completeLevel(
+      {
+        levelId: s.level.id,
+        completedAt: new Date().toISOString(),
+        distanceMeters: Math.round(sum.distanceMeters),
+        cluesFound: sum.cluesFound,
+        cluesTotal: sum.cluesTotal,
+        mistakes: sum.mistakes,
+        elapsedMs: Math.round(sum.elapsedMs),
+        skills: sum.skills,
+        codePiece: ending?.codePiece ?? null,
+      },
+      s.level.unlocks,
+    );
+    const slot = s.level.unlocks ? getLevelSlot(s.level.unlocks) : undefined;
+    this.registry.set(REGISTRY_UNLOCKED, slot?.name ?? null);
+    s.toast('บันทึกการผ่านด่านแล้ว');
+  }
+
+  /* =========================================================
+   * หมอก และการค้นพบ
+   * ========================================================= */
 
   /** เปิดหมอกเมื่อผู้เล่นเปลี่ยนช่อง */
   private updateFog(force: boolean): void {
@@ -203,89 +444,28 @@ export class WorldScene extends Phaser.Scene {
       }
     }
 
-    for (const id of s.checkLandmarkDiscovery()) {
+    const found = s.checkLandmarkDiscovery();
+    for (const id of found) {
       this.labels.get(id)?.setVisible(true);
       const lm = s.level.landmarks.find((l) => l.id === id)!;
-      if (!force) this.toast(`ค้นพบจุดสังเกต: ${lm.name}`);
+      if (!force) s.toast(`ค้นพบจุดสังเกต: ${lm.name}`);
     }
-  }
+    if (found.length > 0) this.bumpUi();
 
-  private onAction(): void {
-    const s = this.session;
-    if (s.mode === 'dialogue') {
-      this.advanceDialogue();
-      return;
-    }
-    if (s.mode !== 'explore') return;
-    const npc = this.findNearbyNpc();
-    if (!npc) return;
-    this.player.setVelocity(0, 0);
-    npc.sprite.faceTowards(this.player.x, this.player.y);
-    s.mode = 'dialogue';
-    this.dialogue = { npc, index: 0 };
-    this.showDialogueLine();
-  }
-
-  private findNearbyNpc(): NpcInstance | undefined {
-    const maxDist = INTERACT_RADIUS_TILES * S;
-    let best: NpcInstance | undefined;
-    let bestDist = Infinity;
-    for (const n of this.npcs) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y);
-      if (d <= maxDist && d < bestDist) {
-        best = n;
-        bestDist = d;
+    // พื้นที่ที่เรียกบทสนทนาอัตโนมัติ (เช่น มาถึงศาลาชุมชน)
+    if (s.mode === 'explore') {
+      const trigger = s.triggerAt(s.playerTile);
+      const npc = trigger && this.npcs.find((n) => n.def.id === trigger.npcId);
+      if (trigger && npc) {
+        s.firedTriggers.add(trigger.id);
+        this.startTalk(npc);
       }
     }
-    return best;
   }
 
-  private showDialogueLine(): void {
-    if (!this.dialogue) return;
-    const { npc, index } = this.dialogue;
-    const line = npc.def.dialogue[index];
-    const payload: DialoguePayload = {
-      speaker: line.speaker,
-      text: this.session.resolveText(line.text),
-      index,
-      total: npc.def.dialogue.length,
-    };
-    this.game.events.emit(GameEvents.DialogueShow, payload);
-  }
-
-  private advanceDialogue(): void {
-    if (!this.dialogue) return;
-    this.dialogue.index++;
-    if (this.dialogue.index < this.dialogue.npc.def.dialogue.length) {
-      this.showDialogueLine();
-      return;
-    }
-    const { npc } = this.dialogue;
-    const s = this.session;
-    const stepBefore = s.currentStep;
-    s.talkedTo.add(npc.def.id);
-    npc.marker.setVisible(false);
-    this.dialogue = null;
-    s.mode = 'explore';
-    this.game.events.emit(GameEvents.DialogueHide);
-    if (stepBefore && s.isStepComplete(stepBefore)) {
-      this.toast(`ผ่านฉากที่ ${stepBefore.order}: ${stepBefore.title}`);
-    }
-  }
-
-  private toggleMap(): void {
-    const s = this.session;
-    if (s.mode === 'explore') {
-      s.mode = 'map';
-      this.game.events.emit(GameEvents.MapShow);
-    } else if (s.mode === 'map') {
-      s.mode = 'explore';
-      this.game.events.emit(GameEvents.MapHide);
-    }
-  }
-
-  private toast(message: string): void {
-    this.game.events.emit(GameEvents.Toast, message);
+  /** เรียงลำดับการวาดตามแกน y: ตัวที่อยู่ใต้กว่า (ใกล้กล้องกว่า) วาดทับ */
+  private depthForY(y: number): number {
+    return DEPTH.characters + y / (this.session.grid.height * S);
   }
 
   /** เส้นตาราง: เส้นบางทุก 1 ช่อง (10 ม.) เส้นหนาทุก 10 ช่อง (100 ม.) */
@@ -301,5 +481,69 @@ export class WorldScene extends Phaser.Scene {
       g.lineStyle(major ? 0.7 : 0.5, 0xffffff, major ? 0.6 : 0.3);
       g.lineBetween(0, y * S, w * S, y * S);
     }
+  }
+
+  /* =========================================================
+   * Hook สำหรับทดสอบอัตโนมัติ (เฉพาะ npm run dev)
+   * เดินด้วย physics จริง → ระยะทางที่นับได้เป็นของจริง ไม่มีการวาร์ป
+   * ========================================================= */
+
+  private installTestHooks(): void {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { __TEST__: unknown }).__TEST__ = {
+      session: this.session,
+      walkTo: (x: number, y: number) => this.walkTo({ x, y }),
+    };
+  }
+
+  private walkTo(target: TilePoint): Promise<boolean> {
+    this.cancelWalk();
+    const grid = this.session.grid;
+    // NPC ไม่อยู่ใน WorldGrid แต่ชนได้ จึงต้องหลบช่องที่ NPC ยืน
+    const npcTiles = new Set(this.npcs.map((n) => `${n.def.at.x},${n.def.at.y}`));
+    const passable = (x: number, y: number) => !grid.isBlocked(x, y) && !npcTiles.has(`${x},${y}`);
+    const path = findPath(grid, this.session.playerTile, target, passable);
+    if (!path) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      this.walk = { path, index: 1, resolve, lastX: this.player.x, lastY: this.player.y, stuckMs: 0 };
+    });
+  }
+
+  private cancelWalk(): void {
+    if (this.walk) {
+      this.walk.resolve(false);
+      this.walk = null;
+    }
+  }
+
+  private scriptedDirection(delta: number): Phaser.Math.Vector2 | null {
+    const w = this.walk;
+    if (!w) return null;
+    if (this.session.mode !== 'explore') {
+      this.cancelWalk();
+      return null;
+    }
+    if (Math.hypot(this.player.x - w.lastX, this.player.y - w.lastY) > 0.5) {
+      w.lastX = this.player.x;
+      w.lastY = this.player.y;
+      w.stuckMs = 0;
+    } else if ((w.stuckMs += delta) > 1500) {
+      this.cancelWalk();
+      return null;
+    }
+    if (w.index >= w.path.length) {
+      this.walk = null;
+      w.resolve(true);
+      return null;
+    }
+    const tile = w.path[w.index];
+    const feet = this.player.feet;
+    const dx = (tile.x + 0.5) * S - feet.x;
+    const dy = (tile.y + 0.5) * S - feet.y;
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) {
+      w.index++;
+      return this.scriptedDirection(0);
+    }
+    return new Phaser.Math.Vector2(Math.abs(dx) < 1 ? 0 : Math.sign(dx), Math.abs(dy) < 1 ? 0 : Math.sign(dy));
   }
 }

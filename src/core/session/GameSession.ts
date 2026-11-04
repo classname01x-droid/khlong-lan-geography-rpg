@@ -1,17 +1,96 @@
-import type { LevelDefinition, StoryStep } from '../../content/types';
-import { directionFromVector, type Direction8 } from '../direction/Compass';
+import type {
+  ClueDefinition,
+  ClueType,
+  Condition,
+  DialogueNode,
+  DialogueVariant,
+  Effect,
+  LevelDefinition,
+  NpcDefinition,
+  RouteDefinition,
+  StoryStep,
+  TriggerZone,
+} from '../../content/types';
+import { DialogueRunner, type DialogueView } from '../dialogue/DialogueRunner';
+import { directionFromVector, bearingDeg, bearingToDirection8, type Direction8 } from '../direction/Compass';
 import { FogOfWar } from '../fog/FogOfWar';
+import type { SkillId } from '../mission/skills';
 import { DistanceTracker } from '../movement/DistanceTracker';
+import {
+  evaluateRoute,
+  measureRoute,
+  straightMeters,
+  type RouteCheck,
+  type RouteExpectation,
+  type RouteMetrics,
+} from '../route/RouteAnalysis';
 import type { ScaleSystem } from '../scale/ScaleSystem';
 import { resolveGeoTemplate } from '../text/geoTemplate';
 import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
 
-export type SessionMode = 'explore' | 'dialogue' | 'map';
+export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary';
+export type NotebookTab = 'clues' | 'routes' | 'records';
+export const NOTEBOOK_TABS: readonly NotebookTab[] = ['clues', 'routes', 'records'];
+
+export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
+  direction: 'ทิศทาง',
+  distance: 'ระยะทาง',
+  landmark: 'จุดสังเกต',
+};
+
+const CLUE_SKILL: Record<ClueType, SkillId> = {
+  direction: 'direction',
+  distance: 'scale',
+  landmark: 'landmark',
+};
+
+export interface RouteRow {
+  def: RouteDefinition;
+  metrics: RouteMetrics;
+  /** ผู้เล่นค้นพบปลายทางแล้วหรือยัง */
+  explored: boolean;
+  /** จุดสังเกตบนเส้นทางที่ผู้เล่นค้นพบแล้ว */
+  seenLandmarks: string[];
+}
+
+export interface RouteChoiceResult {
+  ok: boolean;
+  failed: RouteCheck[];
+  blocked?: 'missing-clues' | 'already-solved' | 'no-route';
+}
+
+export type PinProblem = 'unexplored' | 'location' | 'wisdom' | 'evidence';
+
+export interface PinResult {
+  ok: boolean;
+  problems: PinProblem[];
+}
+
+export interface LevelSummary {
+  distanceMeters: number;
+  cluesFound: number;
+  cluesTotal: number;
+  mistakes: number;
+  mistakesBy: { quiz: number; route: number; pin: number };
+  elapsedMs: number;
+  skills: SkillId[];
+}
+
+type DialoguePurpose = 'npc' | 'ending';
+
+interface ActiveDialogue {
+  runner: DialogueRunner;
+  purpose: DialoguePurpose;
+  npcId: string | null;
+  variantKey: string | null;
+}
+
+export type DialogueOutcome = 'continue' | 'ended' | 'mission-complete';
 
 /**
  * สถานะของการเล่นหนึ่งรอบ (ข้อมูลล้วน ไม่มี Phaser)
- * WorldScene เป็นผู้เขียน, UIScene เป็นผู้อ่าน — ในอนาคตใช้บันทึก/โหลดเกมได้
+ * WorldScene เป็นผู้สั่งงาน, UIScene เป็นผู้อ่าน — ตรรกะภารกิจทั้งหมดอยู่ที่นี่จึงทดสอบได้ด้วย unit test
  */
 export class GameSession {
   readonly fog: FogOfWar;
@@ -20,10 +99,38 @@ export class GameSession {
   readonly talkedTo = new Set<string>();
   readonly landmarkPoints: Readonly<Record<string, TilePoint>>;
 
+  readonly flags = new Set<string>();
+  /** id เบาะแสตามลำดับที่ได้รับ */
+  readonly clues: string[] = [];
+  readonly evidence: string[] = [];
+  readonly mistakes = { quiz: 0, route: 0, pin: 0 };
+  readonly skills = new Set<SkillId>();
+  readonly firedTriggers = new Set<string>();
+  readonly seenVariants = new Set<string>();
+  /** ข้อความครูที่ได้รับผ่านสมุดภาคสนาม (อ่านซ้ำได้) */
+  readonly messages: Array<{ speaker: string; text: string }> = [];
+  /** ข้อความแจ้งเตือนที่รอให้ UI แสดง */
+  readonly pendingToasts: string[] = [];
+
+  readonly routeMetrics = new Map<string, RouteMetrics>();
+  readonly routeMeters: Record<string, number> = {};
+
   mode: SessionMode = 'explore';
+  /** เพิ่มค่าทุกครั้งที่สถานะซึ่ง UI แสดงเปลี่ยน (UI จะวาด overlay ใหม่) */
+  uiVersion = 0;
   showGrid = false;
   playerTile: TilePoint;
   facing: Direction8 = 'S';
+  elapsedMs = 0;
+  completed = false;
+  notebookTab: NotebookTab = 'clues';
+  routeFeedback: string | null = null;
+  pinCursor: TilePoint | null = null;
+  pinStage: 'none' | 'cursor' | 'wisdom' = 'none';
+  pinFeedback: string | null = null;
+  pinnedAt: TilePoint | null = null;
+
+  private dialogue: ActiveDialogue | null = null;
 
   constructor(
     readonly level: LevelDefinition,
@@ -34,16 +141,19 @@ export class GameSession {
     this.odometer = new DistanceTracker(scale);
     this.playerTile = { ...level.spawn };
     this.landmarkPoints = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
+    this.measureRoutes();
   }
+
+  /* ---------------- พื้นฐาน ---------------- */
 
   /** อัปเดตทิศที่หันจากเวกเตอร์ความเร็ว */
   updateFacing(vx: number, vy: number): void {
     this.facing = directionFromVector(vx, vy) ?? this.facing;
   }
 
-  /** แปลงตัวแปรในบทพูดเป็นตัวเลข/ทิศที่คำนวณจากแผนที่ */
+  /** แปลงตัวแปรในข้อความเป็นตัวเลข/ทิศที่คำนวณจากแผนที่ */
   resolveText(text: string): string {
-    return resolveGeoTemplate(text, this.landmarkPoints, this.scale);
+    return resolveGeoTemplate(text, this.landmarkPoints, this.scale, this.routeMeters);
   }
 
   /** ตรวจว่าจุดสังเกตใดเพิ่งถูกเปิดหมอก; คืนรายการที่เพิ่งค้นพบ */
@@ -58,14 +168,307 @@ export class GameSession {
     return found;
   }
 
+  noteSkill(skill: SkillId): void {
+    this.skills.add(skill);
+  }
+
+  toast(message: string): void {
+    this.pendingToasts.push(message);
+  }
+
+  drainToasts(): string[] {
+    return this.pendingToasts.splice(0, this.pendingToasts.length);
+  }
+
+  /* ---------------- ฉากและเงื่อนไข ---------------- */
+
   isStepComplete(step: StoryStep): boolean {
     const c = step.completeWhen;
     if (!c) return false;
-    return c.type === 'talk' && this.talkedTo.has(c.npcId);
+    if (c.type === 'talk') return this.talkedTo.has(c.npcId);
+    return this.flags.has(c.flag);
   }
 
   /** ฉากปัจจุบัน = ฉากแรกที่ยังไม่ผ่าน */
   get currentStep(): StoryStep | undefined {
     return this.level.story.find((s) => !this.isStepComplete(s));
+  }
+
+  /** ลำดับฉากปัจจุบัน (ผ่านครบแล้ว = จำนวนฉาก + 1) */
+  get currentStepOrder(): number {
+    return this.currentStep?.order ?? this.level.story.length + 1;
+  }
+
+  matches(cond: Condition | undefined): boolean {
+    if (!cond) return true;
+    const step = this.currentStepOrder;
+    if (cond.minStep !== undefined && step < cond.minStep) return false;
+    if (cond.maxStep !== undefined && step > cond.maxStep) return false;
+    if (cond.flags?.some((f) => !this.flags.has(f))) return false;
+    if (cond.notFlags?.some((f) => this.flags.has(f))) return false;
+    return true;
+  }
+
+  /* ---------------- บทสนทนา ---------------- */
+
+  pickDialogue(npc: NpcDefinition): { key: string; variant: DialogueVariant } | null {
+    const index = npc.dialogue.findIndex((v) => this.matches(v.when));
+    if (index < 0) return null;
+    return { key: `${npc.id}#${index}`, variant: npc.dialogue[index] };
+  }
+
+  /** NPC มีเรื่องใหม่ที่ยังไม่ได้ฟังหรือไม่ (ใช้แสดงเครื่องหมาย "!") */
+  hasNewDialogue(npc: NpcDefinition): boolean {
+    const pick = this.pickDialogue(npc);
+    return !!pick && !pick.variant.ambient && !this.seenVariants.has(pick.key);
+  }
+
+  get dialogueView(): DialogueView | null {
+    return this.dialogue?.runner.view ?? null;
+  }
+
+  get inDialogue(): boolean {
+    return this.dialogue !== null;
+  }
+
+  talkTo(npc: NpcDefinition): boolean {
+    const pick = this.pickDialogue(npc);
+    if (!pick) return false;
+    this.startDialogue(pick.variant.nodes, 'npc', npc.id, pick.key);
+    return true;
+  }
+
+  /** ครูติดต่อผ่านสมุดภาคสนามเพื่อสรุปภารกิจ */
+  startEnding(): boolean {
+    const ending = this.level.ending;
+    if (!ending || this.completed) return false;
+    for (const m of ending.messages) this.messages.push({ speaker: m.speaker, text: this.resolveText(m.text) });
+    this.startDialogue(ending.messages, 'ending', null, null);
+    return true;
+  }
+
+  private startDialogue(
+    nodes: DialogueNode[],
+    purpose: DialoguePurpose,
+    npcId: string | null,
+    key: string | null,
+  ): DialogueOutcome {
+    const runner = new DialogueRunner(nodes, {
+      resolveText: (t) => this.resolveText(t),
+      getQuiz: (id) => this.level.quizzes?.find((q) => q.id === id),
+      applyEffect: (e) => this.applyEffect(e),
+      onQuizAnswer: (_id, correct) => {
+        if (!correct) this.mistakes.quiz++;
+      },
+    });
+    this.dialogue = { runner, purpose, npcId, variantKey: key };
+    this.mode = 'dialogue';
+    if (runner.done) return this.finishDialogue();
+    return 'continue';
+  }
+
+  advanceDialogue(): DialogueOutcome {
+    if (!this.dialogue) return 'ended';
+    this.dialogue.runner.advance();
+    return this.dialogue.runner.done ? this.finishDialogue() : 'continue';
+  }
+
+  answerQuiz(choiceIndex: number): boolean | null {
+    if (!this.dialogue) return null;
+    return this.dialogue.runner.answer(choiceIndex);
+  }
+
+  private finishDialogue(): DialogueOutcome {
+    const d = this.dialogue!;
+    this.dialogue = null;
+    if (d.npcId) this.talkedTo.add(d.npcId);
+    if (d.variantKey) this.seenVariants.add(d.variantKey);
+    if (d.purpose === 'ending') {
+      this.completeMission();
+      this.mode = 'summary';
+      return 'mission-complete';
+    }
+    this.mode = 'explore';
+    return 'ended';
+  }
+
+  applyEffect(effect: Effect): void {
+    switch (effect.type) {
+      case 'flag':
+        this.flags.add(effect.flag);
+        return;
+      case 'clue': {
+        const clue = this.getClue(effect.clueId);
+        if (!clue || this.clues.includes(clue.id)) return;
+        this.clues.push(clue.id);
+        this.skills.add(CLUE_SKILL[clue.type]);
+        this.pendingToasts.push(`บันทึกเบาะแส [${CLUE_TYPE_LABEL[clue.type]}] ลงสมุดภาคสนามแล้ว (กด N)`);
+        return;
+      }
+      case 'evidence': {
+        const ev = this.level.evidence?.find((e) => e.id === effect.evidenceId);
+        if (!ev || this.evidence.includes(ev.id)) return;
+        this.evidence.push(ev.id);
+        this.pendingToasts.push(`ได้รับหลักฐาน: ${ev.name}`);
+        return;
+      }
+    }
+  }
+
+  getClue(id: string): ClueDefinition | undefined {
+    return this.level.clues?.find((c) => c.id === id);
+  }
+
+  /* ---------------- พื้นที่เรียกบทสนทนาอัตโนมัติ ---------------- */
+
+  /** trigger ที่ควรทำงานเมื่อยืนที่ช่องนี้ (ยังไม่เคยทำงาน และเงื่อนไขตรง) */
+  triggerAt(tile: TilePoint): TriggerZone | undefined {
+    return this.level.triggers?.find(
+      (t) =>
+        !this.firedTriggers.has(t.id) &&
+        tile.x >= t.area.x &&
+        tile.y >= t.area.y &&
+        tile.x < t.area.x + t.area.w &&
+        tile.y < t.area.y + t.area.h &&
+        this.matches(t.when),
+    );
+  }
+
+  /* ---------------- วิเคราะห์เส้นทาง ---------------- */
+
+  private measureRoutes(): void {
+    const ra = this.level.routeAnalysis;
+    if (!ra) return;
+    const origin = this.landmarkPoints[ra.originId];
+    const landmarks = this.level.landmarks.map((l) => ({ id: l.id, at: l.at }));
+    for (const r of ra.routes) {
+      const dest = this.landmarkPoints[r.to];
+      if (!origin || !dest) continue;
+      const m = measureRoute(this.grid, this.scale, origin, dest, r.via ?? [], landmarks, [ra.originId, r.to]);
+      this.routeMetrics.set(r.id, m);
+      this.routeMeters[r.id] = m.roadMeters;
+    }
+  }
+
+  /** สิ่งที่เบาะแสบอก (คำนวณจากตำแหน่งเป้าหมายจริง) */
+  routeExpectation(): RouteExpectation | null {
+    const ra = this.level.routeAnalysis;
+    if (!ra) return null;
+    const a = this.landmarkPoints[ra.originId];
+    const b = this.landmarkPoints[ra.targetId];
+    return {
+      direction: bearingToDirection8(bearingDeg(b.x - a.x, b.y - a.y)),
+      straightMeters: straightMeters(a, b, this.scale),
+      toleranceMeters: this.scale.mapCmToMeters(ra.distanceToleranceMapCm),
+      landmarkId: ra.requiredLandmarkId,
+    };
+  }
+
+  routeRows(): RouteRow[] {
+    const ra = this.level.routeAnalysis;
+    if (!ra) return [];
+    return ra.routes.map((def) => {
+      const metrics = this.routeMetrics.get(def.id)!;
+      return {
+        def,
+        metrics,
+        explored: this.discoveredLandmarks.has(def.to),
+        seenLandmarks: metrics.passes.filter((id) => this.discoveredLandmarks.has(id)),
+      };
+    });
+  }
+
+  /** สถานะเบาะแสที่จำเป็น แยกตามประเภท */
+  requiredClueStatus(): Array<{ clue: ClueDefinition; collected: boolean }> {
+    const ra = this.level.routeAnalysis;
+    if (!ra) return [];
+    return ra.requiredClueIds
+      .map((id) => this.getClue(id))
+      .filter((c): c is ClueDefinition => !!c)
+      .map((clue) => ({ clue, collected: this.clues.includes(clue.id) }));
+  }
+
+  get routeSolved(): boolean {
+    const ra = this.level.routeAnalysis;
+    return !!ra && this.flags.has(ra.successFlag);
+  }
+
+  canChooseRoute(): boolean {
+    return !!this.level.routeAnalysis && !this.routeSolved && this.requiredClueStatus().every((s) => s.collected);
+  }
+
+  chooseRoute(index: number): RouteChoiceResult {
+    const ra = this.level.routeAnalysis;
+    const route = ra?.routes[index];
+    if (!ra || !route) return { ok: false, failed: [], blocked: 'no-route' };
+    if (this.routeSolved) return { ok: false, failed: [], blocked: 'already-solved' };
+    if (!this.canChooseRoute()) return { ok: false, failed: [], blocked: 'missing-clues' };
+    this.skills.add('straight-vs-route');
+    const failed = evaluateRoute(this.routeMetrics.get(route.id)!, this.routeExpectation()!);
+    const ok = failed.length === 0 && route.id === ra.correctRouteId;
+    if (ok) this.flags.add(ra.successFlag);
+    else this.mistakes.route++;
+    return { ok, failed };
+  }
+
+  /* ---------------- ปักหมุด ---------------- */
+
+  get pinSolved(): boolean {
+    const p = this.level.pinTask;
+    return !!p && this.flags.has(p.successFlag);
+  }
+
+  isPinAvailable(): boolean {
+    const p = this.level.pinTask;
+    return !!p && !this.pinSolved && this.matches(p.availableWhen);
+  }
+
+  /**
+   * ตรวจหมุดที่ผู้เล่นปัก: พิกัด (ต้องสำรวจแล้ว และอยู่ในรัศมีที่ยอมรับ),
+   * ประเภทภูมิปัญญา, และหลักฐานการสำรวจ
+   * นับเป็นการตอบผิดเมื่อพิกัดหรือประเภทภูมิปัญญาผิด (ขาดหลักฐานอย่างเดียวไม่นับ)
+   */
+  submitPin(tile: TilePoint, wisdomIndex: number): PinResult {
+    const p = this.level.pinTask;
+    if (!p || !this.isPinAvailable()) return { ok: false, problems: [] };
+    const problems: PinProblem[] = [];
+    const target = this.landmarkPoints[p.targetId];
+    if (!this.fog.isExplored(tile.x, tile.y)) problems.push('unexplored');
+    else if (Math.hypot(tile.x - target.x, tile.y - target.y) > p.toleranceTiles) problems.push('location');
+    if (p.wisdomChoices[wisdomIndex]?.id !== p.correctWisdomId) problems.push('wisdom');
+    const hasEvidence =
+      p.requiredEvidenceIds.every((id) => this.evidence.includes(id)) && this.discoveredLandmarks.has(p.targetId);
+    if (!hasEvidence) problems.push('evidence');
+
+    if (problems.some((x) => x !== 'evidence')) this.mistakes.pin++;
+    const ok = problems.length === 0;
+    if (ok) {
+      this.flags.add(p.successFlag);
+      this.pinnedAt = { ...tile };
+      this.skills.add('grid-coordinates');
+    }
+    return { ok, problems };
+  }
+
+  /* ---------------- จบภารกิจ ---------------- */
+
+  completeMission(): LevelSummary {
+    const ending = this.level.ending;
+    if (ending) this.flags.add(ending.completeFlag);
+    this.completed = true;
+    return this.summary();
+  }
+
+  summary(): LevelSummary {
+    const m = this.mistakes;
+    return {
+      distanceMeters: this.odometer.totalMeters,
+      cluesFound: this.clues.length,
+      cluesTotal: this.level.clues?.length ?? 0,
+      mistakes: m.quiz + m.route + m.pin,
+      mistakesBy: { ...m },
+      elapsedMs: this.elapsedMs,
+      skills: [...this.skills],
+    };
   }
 }
