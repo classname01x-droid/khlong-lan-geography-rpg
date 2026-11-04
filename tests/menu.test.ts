@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sakNgamLevel } from '../src/content/levels/sakngam';
-import { getLevelSlot, isPlayableLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
+import { canEnterLevel, getLevelSlot, isPlayableLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
 import { describeLevel, levelState } from '../src/core/progress/LevelProgress';
 import { PROGRESS_KEY, ProgressStore, type LevelResult, type StorageLike } from '../src/core/progress/ProgressStore';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, SettingsStore } from '../src/core/settings/SettingsStore';
@@ -40,17 +40,24 @@ describe('ลำดับ 4 ตำบล และการกันเข้า
   it('มี 4 ตำบลตามลำดับ พร้อมชื่อภารกิจ', () => {
     expect(LEVEL_SEQUENCE.map((s) => `${s.tambon} — ${s.missionTitle}`)).toEqual([
       'ตำบลสักงาม — ปริศนาลวดลายแห่งสักงาม',
-      'ตำบลคลองน้ำไหล — ภารกิจทรัพยากรชุมชน',
+      'ตำบลคลองน้ำไหล — ปริศนาสายน้ำแห่งคลองน้ำไหล',
       'ตำบลโป่งน้ำร้อน — ปริศนาทิศทางและพิกัด',
       'ตำบลคลองลานพัฒนา — ปริศนาบูรณาการภูมิศาสตร์',
     ]);
     expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
   });
 
-  it('เข้าได้เฉพาะด่านที่มีเนื้อหาจริง', () => {
+  it('เข้าได้เฉพาะด่านที่มีเนื้อหาจริง และปลดล็อกแล้ว', () => {
     expect(isPlayableLevel('sakngam')).toBe(true);
-    expect(isPlayableLevel('level-2')).toBe(false);
+    expect(isPlayableLevel('level-2')).toBe(true); // ต้นแบบด่าน 2 มีเนื้อหาแล้ว
+    expect(isPlayableLevel('level-3')).toBe(false);
     expect(isPlayableLevel('level-4')).toBe(false);
+    const fresh = new ProgressStore(new MemoryStorage(), 'sakngam');
+    expect(canEnterLevel('sakngam', fresh.data)).toBe(true);
+    expect(canEnterLevel('level-2', fresh.data)).toBe(false); // ยังไม่จบด่าน 1
+    fresh.completeLevel(result(), 'level-2');
+    expect(canEnterLevel('level-2', fresh.data)).toBe(true);
+    expect(canEnterLevel('level-3', { ...fresh.data, unlocked: [...fresh.data.unlocked, 'level-3'] })).toBe(false);
     expect(isPlayableLevel('nope')).toBe(false);
     expect(getLevelSlot(sakNgamLevel.unlocks!)?.id).toBe('level-2');
   });
@@ -62,7 +69,8 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c.map((x) => x.state)).toEqual(['unlocked', 'locked', 'locked', 'locked']);
     expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
     expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
-    expect(c[1].evidenceText).toBe('หลักฐาน: —');
+    expect(c[1].evidenceText).toBe('หลักฐาน: 0/1');
+    expect(c[2].evidenceText).toBe('หลักฐาน: —');
   });
 
   it('ด่าน 1 เข้าได้เสมอ แม้ข้อมูลบันทึกไม่มีในรายการปลดล็อก', () => {
@@ -82,13 +90,13 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c.evidenceText).toBe('หลักฐาน: 0/2');
   });
 
-  it('จบด่าน 1: ผ่านแล้ว + รหัสลับ, ด่าน 2 ปลดล็อกแต่ห้ามเข้า, ด่าน 3–4 ยังล็อก', () => {
+  it('จบด่าน 1: ผ่านแล้ว + รหัสลับ, ด่าน 2 ปลดล็อกและเข้าได้, ด่าน 3–4 ยังล็อก', () => {
     const p = new ProgressStore(new MemoryStorage(), 'sakngam');
     p.completeLevel(result(), 'level-2');
     const c = cards(p);
-    expect(c.map((x) => x.state)).toEqual(['completed', 'in-development', 'locked', 'locked']);
-    expect(c[1].stateLabel).toBe('ปลดล็อกแล้ว — อยู่ระหว่างพัฒนา');
-    expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
+    expect(c.map((x) => x.state)).toEqual(['completed', 'unlocked', 'locked', 'locked']);
+    expect(c[1].stateLabel).toBe('ปลดล็อกแล้ว');
+    expect(c.map((x) => x.canEnter)).toEqual([true, true, false, false]);
     expect(c[0].codePiece?.value).toBe('ลาย');
     expect(c[0].evidenceText).toBe('หลักฐาน: 2/2');
     expect(c[0].hasInProgress).toBe(false);
@@ -105,7 +113,7 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c[0].state).toBe('completed');
     expect(c[0].evidenceText).toBe('หลักฐาน: ?/2');
     expect(c[0].codePiece?.value).toBe('ลาย');
-    expect(c[1].state).toBe('in-development');
+    expect(c[1].state).toBe('unlocked'); // ข้อมูลเก่าที่ปลดล็อก level-2 ไว้ → เข้าด่าน 2 ได้ทันที
     expect(p.hasAnySave()).toBe(true);
     expect(p.continueLevelId()).toBeNull(); // ไม่มีด่านค้าง → "เล่นต่อ" พาไปหน้าเลือกด่าน
   });

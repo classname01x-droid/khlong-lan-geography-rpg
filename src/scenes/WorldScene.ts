@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/constants';
-import { DEFAULT_LEVEL_ID, getLevel, getLevelSlot, isPlayableLevel } from '../content/registry';
+import { canEnterLevel, DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../content/registry';
 import type { NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
@@ -65,8 +65,8 @@ export class WorldScene extends Phaser.Scene {
     this.ready = false;
     this.startData = data ?? {};
     const levelId = this.startData.levelId ?? (this.registry.get(REGISTRY_LEVEL_ID) as string | undefined) ?? DEFAULT_LEVEL_ID;
-    // กันการเข้าด่านที่ยังไม่มีเนื้อหา (เช่น ด่าน 2 ที่ปลดล็อกแล้วแต่ยังไม่สร้าง)
-    if (!isPlayableLevel(levelId)) {
+    // กันการเข้าด่านที่ยังไม่มีเนื้อหา หรือยังไม่ปลดล็อก (เช่น เปิดด่าน 2 ก่อนจบด่าน 1)
+    if (!canEnterLevel(levelId, getProgress(this).data)) {
       this.time.delayedCall(0, () => goToWorldMap(this));
       return;
     }
@@ -500,6 +500,13 @@ export class WorldScene extends Phaser.Scene {
 
   private onMapKey(code: string, choice: number, confirm: boolean): void {
     const s = this.session;
+    // Tab: สลับแผนที่สำรวจ ↔ แผนที่เก่า (เมื่อมีหลักฐานแผนที่เก่าแล้ว)
+    if (code === 'Tab' && s.isOldMapAvailable() && s.pinStage !== 'wisdom') {
+      s.mapSheet = s.mapSheet === 'current' ? 'old' : 'current';
+      if (s.mapSheet === 'old') s.noteSkill('map-compare');
+      this.bumpUi();
+      return;
+    }
     if (s.pinStage === 'wisdom') {
       if (code === 'Escape') {
         s.pinStage = 'cursor';

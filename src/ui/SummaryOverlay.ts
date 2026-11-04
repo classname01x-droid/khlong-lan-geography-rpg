@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { ALL_SKILLS, SKILL_LABEL } from '../core/mission/skills';
+import { DEFAULT_LEVEL_SKILLS, SKILL_LABEL, type SkillId } from '../core/mission/skills';
 import type { CodePiece } from '../core/progress/ProgressStore';
 import type { GameSession } from '../core/session/GameSession';
 import { fmtDuration, fmtMeters } from './format';
@@ -55,7 +55,7 @@ export class SummaryOverlay {
       ].join('\n'),
     );
     this.skills.setText(
-      ['ทักษะภูมิศาสตร์ที่ใช้', ...ALL_SKILLS.map((k) => `${sum.skills.includes(k) ? '●' : '○'} ${SKILL_LABEL[k]}`)].join(
+      ['ทักษะภูมิศาสตร์ที่ใช้', ...((s.level.skills as SkillId[] | undefined) ?? DEFAULT_LEVEL_SKILLS).map((k) => `${sum.skills.includes(k) ? '●' : '○'} ${SKILL_LABEL[k]}`)].join(
         '\n',
       ),
     );

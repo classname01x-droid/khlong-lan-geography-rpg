@@ -33,6 +33,9 @@ import type { ScaleSystem } from '../scale/ScaleSystem';
 import { resolveGeoTemplate } from '../text/geoTemplate';
 import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
+import { ElevationModel } from '../world/Elevation';
+import { analyzeWaterway, type WaterwayAnalysis } from '../world/Waterway';
+import { evaluateSite, type SiteCheck, type SiteEvidence } from '../site/SiteAnalysis';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
@@ -80,12 +83,18 @@ export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
   direction: 'ทิศทาง',
   distance: 'ระยะทาง',
   landmark: 'จุดสังเกต',
+  elevation: 'ระดับความสูง',
+  symbol: 'สัญลักษณ์แผนที่',
+  comparison: 'เปรียบเทียบแผนที่',
 };
 
 const CLUE_SKILL: Record<ClueType, SkillId> = {
   direction: 'direction',
   distance: 'scale',
   landmark: 'landmark',
+  elevation: 'elevation',
+  symbol: 'map-symbols',
+  comparison: 'map-compare',
 };
 
 export interface RouteRow {
@@ -158,6 +167,10 @@ export class GameSession {
 
   readonly questStatus = new Map<string, QuestStatus>();
   readonly routeMetrics = new Map<string, RouteMetrics>();
+  /** แบบจำลองความสูง (null = ด่านนี้ไม่มีข้อมูลความสูง) */
+  readonly elevation: ElevationModel | null;
+  /** ผลวิเคราะห์ลำน้ำ (ต้นน้ำ/ปลายน้ำ/ทิศน้ำไหล) คำนวณจากระดับความสูง */
+  readonly waterways = new Map<string, WaterwayAnalysis>();
   readonly routeMeters: Record<string, number> = {};
 
   mode: SessionMode = 'explore';
@@ -176,6 +189,8 @@ export class GameSession {
   pinnedAt: TilePoint | null = null;
   /** ตัวเลือกที่โฟกัสอยู่ในเมนูหยุดเกม */
   pauseIndex = 0;
+  /** แผ่นแผนที่ที่กำลังดู: แผนที่สำรวจ (ปัจจุบัน) หรือแผนที่เก่า */
+  mapSheet: 'current' | 'old' = 'current';
 
   private dialogue: ActiveDialogue | null = null;
 
@@ -188,6 +203,10 @@ export class GameSession {
     this.odometer = new DistanceTracker(scale);
     this.playerTile = { ...level.spawn };
     this.landmarkPoints = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
+    this.elevation = level.map.elevation ? new ElevationModel(level.map.elevation) : null;
+    if (this.elevation) {
+      for (const w of level.waterways ?? []) this.waterways.set(w.id, analyzeWaterway(w.points, this.elevation));
+    }
     this.measureRoutes();
     this.updateQuests(true);
   }
@@ -201,7 +220,11 @@ export class GameSession {
 
   /** แปลงตัวแปรในข้อความเป็นตัวเลข/ทิศที่คำนวณจากแผนที่ */
   resolveText(text: string): string {
-    return resolveGeoTemplate(text, this.landmarkPoints, this.scale, this.routeMeters);
+    const elevation = this.elevation;
+    return resolveGeoTemplate(text, this.landmarkPoints, this.scale, this.routeMeters, {
+      heightAt: elevation ? (p) => elevation.heightAt(p.x, p.y) : undefined,
+      flow: Object.fromEntries([...this.waterways].map(([id, w]) => [id, w.flowDirection])),
+    });
   }
 
   /** ตรวจว่าจุดสังเกตใดเพิ่งถูกเปิดหมอก; คืนรายการที่เพิ่งค้นพบ */
@@ -606,6 +629,34 @@ export class GameSession {
       if (q.status === 'completed') counts[q.def.kind].done++;
     }
     return counts;
+  }
+
+  /* ---------------- แผนที่สองแผ่น และสถานที่ผู้ต้องสงสัย ---------------- */
+
+  /** เปิดดูแผนที่แผ่นที่สองได้หรือยัง (ต้องได้หลักฐานแผนที่ก่อน) */
+  isOldMapAvailable(): boolean {
+    const m = this.level.oldMap;
+    return !!m && this.evidence.includes(m.requiredEvidenceId);
+  }
+
+  /** หลักฐานสำหรับตรวจสถานที่ผู้ต้องสงสัย — คำนวณจากระดับความสูงและแผนที่เก่า */
+  siteEvidence(): SiteEvidence | null {
+    const sa = this.level.siteAnalysis;
+    const w = sa && this.waterways.get(sa.waterwayId);
+    if (!sa || !w || !this.level.oldMap) return null;
+    return {
+      source: w.source,
+      oldMapMarks: this.level.oldMap.marks.map((m) => ({ symbol: m.symbol, at: m.at })),
+      requiredSymbol: sa.requiredSymbol,
+      toleranceTiles: sa.toleranceTiles,
+    };
+  }
+
+  evaluateSites(): Array<{ landmarkId: string; failed: SiteCheck[] }> {
+    const ev = this.siteEvidence();
+    const sa = this.level.siteAnalysis;
+    if (!ev || !sa) return [];
+    return sa.candidates.map((id) => ({ landmarkId: id, failed: evaluateSite(this.landmarkPoints[id], ev) }));
   }
 
   /* ---------------- จุดตรวจค้น ---------------- */

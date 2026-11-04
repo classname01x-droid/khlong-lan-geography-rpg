@@ -1,11 +1,13 @@
+import { khlongNamLaiLevel } from './levels/khlongnamlai';
 import { sakNgamLevel } from './levels/sakngam';
+import type { ProgressData } from '../core/progress/ProgressStore';
 import type { LevelDefinition } from './types';
 
 /**
  * ทะเบียนด่านที่เล่นได้ — เพิ่มตำบลใหม่โดยสร้างโฟลเดอร์ใน content/levels/
  * แล้วนำมาใส่ในอาร์เรย์นี้ (ระบบเกมไม่ต้องแก้)
  */
-export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel];
+export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLevel];
 
 export const DEFAULT_LEVEL_ID = sakNgamLevel.id;
 
@@ -46,7 +48,8 @@ const slot = (
 
 export const LEVEL_SEQUENCE: readonly LevelSlot[] = [
   slot(sakNgamLevel.id, sakNgamLevel.tambon, sakNgamLevel.title, 'available', 1),
-  slot('level-2', 'ตำบลคลองน้ำไหล', 'ภารกิจทรัพยากรชุมชน', 'planned', 2),
+  // ด่าน 2 (ต้นแบบ) ธีม "ภารกิจทรัพยากรชุมชน" — เล่นได้เมื่อปลดล็อกจากการจบด่าน 1 เท่านั้น
+  slot(khlongNamLaiLevel.id, khlongNamLaiLevel.tambon, khlongNamLaiLevel.title, 'available', 2),
   slot('level-3', 'ตำบลโป่งน้ำร้อน', 'ปริศนาทิศทางและพิกัด', 'planned', 3),
   slot('level-4', 'ตำบลคลองลานพัฒนา', 'ปริศนาบูรณาการภูมิศาสตร์', 'planned', 4),
 ];
@@ -67,4 +70,13 @@ export function getLevelSlot(id: string): LevelSlot | undefined {
  */
 export function isPlayableLevel(id: string): boolean {
   return getLevelSlot(id)?.status === 'available' && LEVELS.some((l) => l.id === id);
+}
+
+/**
+ * เข้าด่านนี้ได้หรือไม่: ต้องมีเนื้อหา และปลดล็อกแล้ว (ด่านแรกปลดล็อกเสมอ)
+ * — ด่าน 2 จึงเข้าได้หลังจบด่าน 1 เท่านั้น ไม่ว่าจะมาจากปุ่ม URL หรือฉากใด
+ */
+export function canEnterLevel(id: string, progress: ProgressData): boolean {
+  if (!isPlayableLevel(id)) return false;
+  return id === LEVEL_SEQUENCE[0].id || progress.unlocked.includes(id);
 }

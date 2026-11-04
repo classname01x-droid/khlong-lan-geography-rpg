@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { DEFAULT_LEVEL_ID, isPlayableLevel } from '../content/registry';
+import { canEnterLevel, DEFAULT_LEVEL_ID } from '../content/registry';
 import { drawMenuBackground } from '../graphics/MenuArt';
 import { MenuNavigator } from '../ui/pixel/MenuNavigator';
 import { Modal } from '../ui/pixel/Modal';
@@ -118,7 +118,7 @@ export class MainMenuScene extends Phaser.Scene {
     if (!progress.hasAnySave()) return;
     const id = progress.continueLevelId();
     // มีด่านที่เล่นค้าง → เข้าด่านนั้นต่อ; ไม่มี (ผ่านด่านไปแล้ว) → ไปหน้าเลือกด่าน
-    if (id && isPlayableLevel(id)) startLevel(this, id, 'resume');
+    if (id && canEnterLevel(id, progress.data)) startLevel(this, id, 'resume');
     else goToWorldMap(this);
   }
 

@@ -1,4 +1,5 @@
-import type { MapDefinition, TilePoint, TileRect } from '../core/world/types';
+import type { MapDefinition, MapSymbol, TilePoint, TileRect } from '../core/world/types';
+import type { WaterwayDefinition } from '../core/world/Waterway';
 
 /**
  * รูปแบบข้อมูลเนื้อหาด่าน — ด่านใหม่ (ตำบลอื่น) เขียนเป็นข้อมูลตามรูปแบบนี้
@@ -24,6 +25,10 @@ export interface Landmark {
    * (ใช้กับปริศนาที่ผู้เล่นต้องวัดระยะหาเอง)
    */
   revealFlag?: string;
+  /** สัญลักษณ์บนแผนที่สำรวจ (ไม่ระบุ = จุดธรรมดา) */
+  symbol?: MapSymbol;
+  /** ตำแหน่งป้ายชื่อบนแผนที่สำรวจ (ค่าเริ่มต้น above) */
+  mapLabelAt?: 'above' | 'below' | 'left' | 'right';
 }
 
 /* ---------------- เงื่อนไขและผลของบทสนทนา ---------------- */
@@ -147,9 +152,14 @@ export interface QuizDefinition {
   correctFeedback: string;
   /** ผลเมื่อตอบถูก */
   effects: Effect[];
+  /**
+   * ตรวจเนื้อหา: คำตอบที่ถูกต้องต้องตรงกับทิศน้ำไหลของลำน้ำนี้ ที่คำนวณจากระดับความสูง
+   * (validateLevel จะล้มถ้าแก้แผนที่/ความสูงแล้วคำตอบไม่ตรง)
+   */
+  verifyFlowOf?: string;
 }
 
-export type ClueType = 'direction' | 'distance' | 'landmark';
+export type ClueType = 'direction' | 'distance' | 'landmark' | 'elevation' | 'symbol' | 'comparison';
 
 export interface ClueDefinition {
   id: string;
@@ -219,6 +229,31 @@ export interface EndingDefinition {
   completeFlag: string;
 }
 
+/* ---------------- แผนที่สองแผ่น และสถานที่ผู้ต้องสงสัย ---------------- */
+
+export interface OldMapDefinition {
+  title: string;
+  /** หมายเหตุบนแผนที่ (เช่น วาดมือ ไม่มีเส้นชั้นความสูง) */
+  note: string;
+  /** ต้องมีหลักฐานนี้ก่อนจึงจะเปิดดูแผนที่เก่าได้ */
+  requiredEvidenceId: string;
+  /** ใช้ระบบพิกัดและมาตราส่วนเดียวกับแผนที่ด่าน (1 ช่อง = 10 ม.) */
+  lines: Array<{ style: 'stream' | 'road' | 'trail'; points: TilePoint[] }>;
+  /** labelAt: ตำแหน่งป้ายชื่อเทียบกับสัญลักษณ์ (ค่าเริ่มต้น above) — กันป้ายทับกันเมื่อของอยู่ใกล้กัน */
+  marks: Array<{ symbol: MapSymbol; at: TilePoint; label: string; labelAt?: 'above' | 'below' | 'left' | 'right' }>;
+}
+
+export interface SiteAnalysisDefinition {
+  /** ลำน้ำที่ใช้หาต้นน้ำ */
+  waterwayId: string;
+  /** สัญลักษณ์บนแผนที่เก่าที่เป้าหมายต้องมี */
+  requiredSymbol: MapSymbol;
+  toleranceTiles: number;
+  /** id จุดสังเกตของสถานที่ผู้ต้องสงสัยทั้งหมด (รวมเป้าหมายจริง) */
+  candidates: string[];
+  correctLandmarkId: string;
+}
+
 /* ---------------- โครงเรื่อง ---------------- */
 
 export type StoryStepStatus = 'prototype' | 'planned' | 'playable';
@@ -255,6 +290,16 @@ export interface LevelDefinition {
   ending?: EndingDefinition;
   quests?: QuestDefinition[];
   inspectPoints?: InspectPoint[];
+  /** ลำน้ำที่ใช้วิเคราะห์ทิศน้ำไหล (แนวเดียวกับ feature ในแผนที่) */
+  waterways?: WaterwayDefinition[];
+  /** จุดระดับความสูงที่พิมพ์บนแผนที่สำรวจ (ค่าความสูงคำนวณจาก elevation) */
+  spotHeights?: TilePoint[];
+  /** แผนที่แผ่นที่สอง (เช่น แผนที่เก่าของชุมชน) สำหรับเปรียบเทียบ */
+  oldMap?: OldMapDefinition;
+  /** สถานที่ผู้ต้องสงสัย (เป้าหมายจริง + สถานที่หลอก) */
+  siteAnalysis?: SiteAnalysisDefinition;
+  /** ทักษะที่แสดงในหน้าสรุปผล (ไม่ระบุ = ชุดทักษะของด่าน 1) */
+  skills?: string[];
   /** id ด่านที่ปลดล็อกเมื่อผ่านด่านนี้ */
   unlocks?: string;
 }

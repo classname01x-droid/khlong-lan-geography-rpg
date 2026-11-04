@@ -69,9 +69,10 @@ describe('ProgressStore', () => {
     expect(new ProgressStore(null, 'sakngam').isUnlocked('sakngam')).toBe(true);
   });
 
-  it('ด่านสักงามปลดล็อกด่านที่มีอยู่ในลำดับด่าน (Map 2 ยังเป็น planned)', () => {
+  it('ด่านสักงามปลดล็อกด่าน 2 (คลองน้ำไหล) ซึ่งตอนนี้มีเนื้อหาต้นแบบแล้ว', () => {
     const slot = LEVEL_SEQUENCE.find((s) => s.id === sakNgamLevel.unlocks);
-    expect(slot?.status).toBe('planned');
+    expect(slot?.status).toBe('available');
+    expect(slot?.tambon).toBe('ตำบลคลองน้ำไหล');
     expect(LEVEL_SEQUENCE[0].id).toBe(sakNgamLevel.id);
   });
 

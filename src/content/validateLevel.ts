@@ -1,7 +1,11 @@
 import { bearingDeg, bearingToDirection8 } from '../core/direction/Compass';
 import { evaluateRoute, measureRoute, straightMeters } from '../core/route/RouteAnalysis';
 import { defaultScale, type ScaleSystem } from '../core/scale/ScaleSystem';
-import { referencedPoints, referencedRoutes } from '../core/text/geoTemplate';
+import { referencedPoints, referencedRoutes, referencedWaterways } from '../core/text/geoTemplate';
+import { THAI_DIRECTION } from '../core/direction/Compass';
+import { evaluateSite } from '../core/site/SiteAnalysis';
+import { ElevationModel } from '../core/world/Elevation';
+import { analyzeWaterway, waterwayTiles, type WaterwayAnalysis } from '../core/world/Waterway';
 import { buildWorld } from '../core/world/MapBuilder';
 import { isPointReachable, reachableTiles } from '../core/world/pathfinding';
 import type { WorldGrid } from '../core/world/WorldGrid';
@@ -25,6 +29,7 @@ export function validateLevel(
   const clueIds = new Set((level.clues ?? []).map((c) => c.id));
   const evidenceIds = new Set((level.evidence ?? []).map((e) => e.id));
   const routeIds = new Set((level.routeAnalysis?.routes ?? []).map((r) => r.id));
+  const waterwayIds = new Set((level.waterways ?? []).map((w) => w.id));
 
   if (grid.isBlocked(level.spawn.x, level.spawn.y)) {
     errors.push(`จุดเกิด (${level.spawn.x},${level.spawn.y}) ถูกสิ่งกีดขวางทับ`);
@@ -44,6 +49,9 @@ export function validateLevel(
     }
     for (const ref of referencedRoutes(text)) {
       if (!routeIds.has(ref)) errors.push(`${where} อ้างถึงเส้นทางที่ไม่มี: ${ref}`);
+    }
+    for (const ref of referencedWaterways(text)) {
+      if (!waterwayIds.has(ref)) errors.push(`${where} อ้างถึงลำน้ำที่ไม่มี: ${ref}`);
     }
   };
   const checkEffects = (where: string, effects: Effect[] | undefined) => {
@@ -72,10 +80,45 @@ export function validateLevel(
     npc.dialogue.forEach((v, i) => checkNodes(`บทพูด ${npc.id}#${i}`, v.nodes));
   }
 
+  // ---- ลำน้ำ: ทิศน้ำไหลต้องคำนวณจากระดับความสูงได้ และน้ำต้องไม่ไหลขึ้นเนิน ----
+  const elevation = level.map.elevation ? new ElevationModel(level.map.elevation) : null;
+  const flows = new Map<string, WaterwayAnalysis>();
+  for (const w of level.waterways ?? []) {
+    if (!elevation) {
+      errors.push(`ลำน้ำ ${w.id}: ด่านไม่มีข้อมูลระดับความสูง จึงหาทิศน้ำไหลไม่ได้`);
+      continue;
+    }
+    const a = analyzeWaterway(w.points, elevation);
+    flows.set(w.id, a);
+    if (!a.monotonic) errors.push(`ลำน้ำ ${w.id}: ระดับความสูงไม่ลดลงตลอดแนว (น้ำต้องไหลขึ้นเนิน)`);
+    if (waterwayTiles(w.points).some((p) => grid.inBounds(p.x, p.y) && grid.getTerrain(p.x, p.y) !== 'water' && grid.getTerrain(p.x, p.y) !== 'bridge')) {
+      errors.push(`ลำน้ำ ${w.id}: แนวลำน้ำไม่ตรงกับช่องน้ำในแผนที่`);
+    }
+  }
+
   for (const q of level.quizzes ?? []) {
     if (!q.choices.some((c) => c.id === q.correctChoiceId)) errors.push(`คำถาม ${q.id} ไม่มีคำตอบที่ถูก`);
     checkText(`คำถาม ${q.id}`, q.question);
+    checkText(`คำถาม ${q.id}`, q.correctFeedback);
+    for (const c of q.choices) checkText(`คำถาม ${q.id}`, c.label + (c.hint ?? ''));
     checkEffects(`คำถาม ${q.id}`, q.effects);
+    if (q.verifyFlowOf) {
+      const flow = flows.get(q.verifyFlowOf);
+      // หาชื่อทิศที่ยาวที่สุดที่อยู่ในข้อความ (กัน "ทิศเหนือ" ไปตรงกับ "ทิศตะวันตกเฉียงเหนือ")
+      const dirIn = (label: string) =>
+        Object.values(THAI_DIRECTION)
+          .filter((d) => label.includes(d))
+          .sort((a, b) => b.length - a.length)[0];
+      if (!flow) errors.push(`คำถาม ${q.id} อ้างถึงลำน้ำที่ไม่มี: ${q.verifyFlowOf}`);
+      else {
+        const expected = THAI_DIRECTION[flow.flowDirection];
+        for (const c of q.choices) {
+          const isCorrect = c.id === q.correctChoiceId;
+          if (isCorrect && dirIn(c.label) !== expected) errors.push(`คำถาม ${q.id}: คำตอบที่ถูกไม่ตรงกับทิศน้ำไหลจริง (${expected})`);
+          if (!isCorrect && dirIn(c.label) === expected) errors.push(`คำถาม ${q.id}: ตัวเลือกผิด "${c.label}" ตรงกับทิศน้ำไหลจริง`);
+        }
+      }
+    }
   }
   for (const c of level.clues ?? []) checkText(`เบาะแส ${c.id}`, c.text);
 
@@ -151,6 +194,43 @@ export function validateLevel(
     }
   }
   if (level.ending) checkNodes('ข้อความตอนจบ', level.ending.messages);
+
+  // ---- แผนที่เก่า และสถานที่ผู้ต้องสงสัย ----
+  const old = level.oldMap;
+  if (old) {
+    if (!evidenceIds.has(old.requiredEvidenceId)) errors.push(`แผนที่เก่าต้องใช้หลักฐานที่ไม่มี: ${old.requiredEvidenceId}`);
+    for (const m of old.marks) if (!grid.inBounds(m.at.x, m.at.y)) errors.push(`แผนที่เก่า: สัญลักษณ์ ${m.label} อยู่นอกแผนที่`);
+  }
+  for (const p of level.spotHeights ?? []) {
+    if (!grid.inBounds(p.x, p.y)) errors.push(`จุดระดับความสูง (${p.x},${p.y}) อยู่นอกแผนที่`);
+  }
+  if (level.spotHeights?.length && !elevation) errors.push('มีจุดระดับความสูงแต่ไม่มีข้อมูลระดับความสูง');
+  const sa = level.siteAnalysis;
+  if (sa) {
+    const flow = flows.get(sa.waterwayId);
+    const at = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
+    if (!flow) errors.push(`สถานที่ผู้ต้องสงสัยอ้างถึงลำน้ำที่ไม่มี: ${sa.waterwayId}`);
+    if (!old) errors.push('สถานที่ผู้ต้องสงสัยต้องมีแผนที่เก่า');
+    if (!sa.candidates.includes(sa.correctLandmarkId)) errors.push('เป้าหมายจริงไม่อยู่ในรายการสถานที่ผู้ต้องสงสัย');
+    if (sa.candidates.length < 3) errors.push('ต้องมีสถานที่หลอกอย่างน้อย 2 แห่ง');
+    if (flow && old) {
+      const ev = {
+        source: flow.source,
+        oldMapMarks: old.marks.map((m) => ({ symbol: m.symbol, at: m.at })),
+        requiredSymbol: sa.requiredSymbol,
+        toleranceTiles: sa.toleranceTiles,
+      };
+      for (const id of sa.candidates) {
+        if (!at[id]) {
+          errors.push(`สถานที่ผู้ต้องสงสัยไม่มีอยู่จริง: ${id}`);
+          continue;
+        }
+        const failed = evaluateSite(at[id], ev);
+        if (id === sa.correctLandmarkId && failed.length > 0) errors.push(`เป้าหมายจริง ${id} ขัดกับหลักฐาน: ${failed.join(', ')}`);
+        if (id !== sa.correctLandmarkId && failed.length === 0) errors.push(`สถานที่หลอก ${id} ตรงกับหลักฐานทุกข้อ ผู้เล่นจะแยกไม่ออก`);
+      }
+    }
+  }
 
   // ---- จุดตรวจค้น ----
   for (const p of level.inspectPoints ?? []) {

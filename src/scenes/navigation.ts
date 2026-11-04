@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { isPlayableLevel } from '../content/registry';
+import { canEnterLevel } from '../content/registry';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import type { SettingsStore } from '../core/settings/SettingsStore';
 import { REGISTRY_PROGRESS, REGISTRY_SETTINGS } from './events';
@@ -35,9 +35,9 @@ function stopGameplayUi(scene: Phaser.Scene): void {
   if (scene.scene.isActive(SCENE.ui) || scene.scene.isPaused(SCENE.ui)) scene.scene.stop(SCENE.ui);
 }
 
-/** เข้าด่าน — คืน false (และไม่เปลี่ยนหน้า) ถ้าด่านยังไม่มีเนื้อหาให้เล่น */
+/** เข้าด่าน — คืน false (และไม่เปลี่ยนหน้า) ถ้าด่านยังไม่มีเนื้อหา หรือยังไม่ปลดล็อก */
 export function startLevel(scene: Phaser.Scene, levelId: string, mode: LevelStartMode): boolean {
-  if (!isPlayableLevel(levelId)) return false;
+  if (!canEnterLevel(levelId, getProgress(scene).data)) return false;
   stopGameplayUi(scene);
   const data: LevelStartData = { levelId, mode };
   scene.scene.start(SCENE.level, data);

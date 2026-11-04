@@ -1,4 +1,4 @@
-import { bearingDeg, bearingToDirection8, THAI_DIRECTION } from '../direction/Compass';
+import { bearingDeg, bearingToDirection8, THAI_DIRECTION, type Direction8 } from '../direction/Compass';
 import type { ScaleSystem } from '../scale/ScaleSystem';
 import type { TilePoint } from '../world/types';
 
@@ -11,7 +11,16 @@ import type { TilePoint } from '../world/types';
  *   {{dir:a>b}}    ทิศของ b เมื่อมองจาก a (8 ทิศ ภาษาไทย)
  *   {{mapcm:a>b}}  ระยะเส้นตรงบนแผนที่กระดาษตามมาตราส่วน (ซม. ทศนิยม 1 ตำแหน่ง)
  *   {{route:id}}   ระยะตามเส้นทาง id (เมตร คำนวณจากถนนในแผนที่)
+ *   {{elev:a}}     ระดับความสูงที่จุดสังเกต a (เมตร คำนวณจากแบบจำลองความสูง)
+ *   {{flow:id}}    ทิศที่ลำน้ำ id ไหลไป (คำนวณจากระดับความสูง ไม่ใช่ตำแหน่งบนจอ)
  */
+export const ELEV_TEMPLATE_PATTERN = /\{\{elev:([\w-]+)\}\}/g;
+export const FLOW_TEMPLATE_PATTERN = /\{\{flow:([\w-]+)\}\}/g;
+
+export interface TerrainTemplateContext {
+  heightAt?: (p: TilePoint) => number;
+  flow?: Readonly<Record<string, Direction8>>;
+}
 export const GEO_TEMPLATE_PATTERN = /\{\{(dist|dir|mapcm):([\w-]+)>([\w-]+)(?:\*([\d.]+))?\}\}/g;
 export const ROUTE_TEMPLATE_PATTERN = /\{\{route:([\w-]+)\}\}/g;
 
@@ -34,8 +43,17 @@ export function resolveGeoTemplate(
   points: Readonly<Record<string, TilePoint>>,
   scale: ScaleSystem,
   routeMeters: Readonly<Record<string, number>> = {},
+  terrain: TerrainTemplateContext = {},
 ): string {
   return text
+    .replace(ELEV_TEMPLATE_PATTERN, (match, id: string) => {
+      const p = points[id];
+      return p && terrain.heightAt ? String(Math.round(terrain.heightAt(p))) : match;
+    })
+    .replace(FLOW_TEMPLATE_PATTERN, (match, id: string) => {
+      const d = terrain.flow?.[id];
+      return d ? THAI_DIRECTION[d] : match;
+    })
     .replace(GEO_TEMPLATE_PATTERN, (match, kind: string, from: string, to: string, factor?: string) => {
       const a = points[from];
       const b = points[to];
@@ -55,7 +73,13 @@ export function resolveGeoTemplate(
 export function referencedPoints(text: string): string[] {
   const ids: string[] = [];
   for (const m of text.matchAll(GEO_TEMPLATE_PATTERN)) ids.push(m[2], m[3]);
+  for (const m of text.matchAll(ELEV_TEMPLATE_PATTERN)) ids.push(m[1]);
   return ids;
+}
+
+/** รายชื่อลำน้ำที่ข้อความอ้างถึงด้วย {{flow:id}} */
+export function referencedWaterways(text: string): string[] {
+  return Array.from(text.matchAll(FLOW_TEMPLATE_PATTERN), (m) => m[1]);
 }
 
 /** รายชื่อเส้นทางที่ข้อความอ้างถึง */

@@ -1,4 +1,6 @@
 /** ชนิดพื้น (ชั้น ground) */
+import type { ElevationDefinition } from './Elevation';
+
 export type Terrain = 'grass' | 'flowers' | 'road' | 'water' | 'bridge' | 'rice' | 'paving';
 
 /** ชนิดวัตถุที่วางบนพื้น (ชั้น objects) — ทุกชนิดเป็นสิ่งกีดขวาง */
@@ -50,4 +52,20 @@ export interface MapDefinition {
   seed: number;
   baseTerrain: Terrain;
   features: MapFeature[];
+  /** ระดับความสูงของภูมิประเทศ (ไม่บังคับ — ด่านที่ไม่มีจะไม่แสดงเส้นชั้นความสูง) */
+  elevation?: ElevationDefinition;
 }
+
+/** สัญลักษณ์แผนที่ (ใช้ทั้งแผนที่สำรวจและแผนที่เก่า) */
+export type MapSymbol =
+  | 'school'
+  | 'temple'
+  | 'office'
+  | 'village'
+  | 'bridge'
+  | 'weir'
+  | 'spring'
+  | 'pond'
+  | 'marsh'
+  | 'stones'
+  | 'benchmark';
