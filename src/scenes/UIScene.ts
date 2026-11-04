@@ -10,6 +10,7 @@ import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
 import { getSettings, SCENE } from './navigation';
+import { GridSystem } from '../core/world/GridSystem';
 import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
 import { PauseOverlay } from '../ui/PauseOverlay';
 import { CompareOverlay } from '../ui/CompareOverlay';
@@ -70,7 +71,7 @@ export class UIScene extends Phaser.Scene {
     const explored = Math.round(s.fog.exploredRatio * 100);
     this.hudText.setText(
       [
-        `ตำแหน่ง: ช่อง X ${t.x}, Y ${t.y}`,
+        s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : `ตำแหน่ง: ช่อง X ${t.x}, Y ${t.y}`,
         `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`,
         `ระยะทางรวม: ${fmtMeters(s.odometer.totalMeters)}`,
         `ระยะที่วัด (R): ${fmtMeters(s.odometer.tripMeters)}`,

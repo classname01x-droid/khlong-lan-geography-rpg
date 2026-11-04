@@ -38,6 +38,8 @@ import { ElevationModel } from '../world/Elevation';
 import { analyzeWaterway, type WaterwayAnalysis } from '../world/Waterway';
 import { evaluateSite, type SiteCheck, type SiteEvidence } from '../site/SiteAnalysis';
 import { checkSheet, type SheetReport, type TruthLandmark } from '../map/BaseMapCheck';
+import { evaluateGridSite, type GridSiteEvidence, type GridSiteReport } from '../site/GridSiteAnalysis';
+import { GridSystem } from '../world/GridSystem';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
@@ -90,6 +92,7 @@ export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
   elevation: 'ระดับความสูง',
   symbol: 'สัญลักษณ์แผนที่',
   comparison: 'เปรียบเทียบแผนที่',
+  coordinate: 'พิกัดกริด',
 };
 
 const CLUE_SKILL: Record<ClueType, SkillId> = {
@@ -99,6 +102,7 @@ const CLUE_SKILL: Record<ClueType, SkillId> = {
   elevation: 'elevation',
   symbol: 'map-symbols',
   comparison: 'map-compare',
+  coordinate: 'grid-reference',
 };
 
 export interface RouteRow {
@@ -117,6 +121,16 @@ export interface RouteChoiceResult {
 }
 
 export type PinProblem = 'unexplored' | 'location' | 'wisdom' | 'evidence' | 'far';
+
+export interface GridChoiceResult {
+  ok: boolean;
+  blocked?: 'not-available' | 'missing-evidence' | 'already-solved';
+  chosenId: string | null;
+  reports: Record<string, GridSiteReport>;
+  missingClues: string[];
+  /** จุดที่เลือกแต่ยังไม่ได้ไปสำรวจด้วยตัวเอง */
+  notSurveyed: string[];
+}
 
 export interface CompareResult {
   ok: boolean;
@@ -182,6 +196,8 @@ export class GameSession {
   readonly routeMetrics = new Map<string, RouteMetrics>();
   /** แบบจำลองความสูง (null = ด่านนี้ไม่มีข้อมูลความสูง) */
   readonly elevation: ElevationModel | null;
+  /** ระบบพิกัดกริดจำลอง (null = ด่านนี้ไม่ใช้พิกัดกริด) */
+  readonly coords: GridSystem | null;
   /** ผลวิเคราะห์ลำน้ำ (ต้นน้ำ/ปลายน้ำ/ทิศน้ำไหล) คำนวณจากระดับความสูง */
   readonly waterways = new Map<string, WaterwayAnalysis>();
   readonly routeMeters: Record<string, number> = {};
@@ -206,6 +222,8 @@ export class GameSession {
   mapSheet = 'current';
   /** ผลการเลือกแผนที่ครั้งล่าสุด (ให้ UI แสดงคำอธิบาย) */
   lastCompare: CompareResult | null = null;
+  /** ผลการเลือกจุดเป้าหมายในหน้าตรวจพิกัดครั้งล่าสุด */
+  lastGridChoice: GridChoiceResult | null = null;
 
   private dialogue: ActiveDialogue | null = null;
 
@@ -219,6 +237,7 @@ export class GameSession {
     this.playerTile = { ...level.spawn };
     this.landmarkPoints = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
     this.elevation = level.map.elevation ? new ElevationModel(level.map.elevation) : null;
+    this.coords = level.grid ? new GridSystem(level.grid, grid.width, grid.height, scale) : null;
     if (this.elevation) {
       for (const w of level.waterways ?? []) this.waterways.set(w.id, analyzeWaterway(w.points, this.elevation));
     }
@@ -236,9 +255,13 @@ export class GameSession {
   /** แปลงตัวแปรในข้อความเป็นตัวเลข/ทิศที่คำนวณจากแผนที่ */
   resolveText(text: string): string {
     const elevation = this.elevation;
+    // {{gridrecord}} = พิกัดตามที่เขียนในบันทึกสำรวจของด่าน (ข้อมูลเดียวกับที่ใช้ตรวจจุดเป้าหมาย)
+    const record = this.level.gridSiteAnalysis?.record;
+    if (record) text = text.replaceAll('{{gridrecord}}', GridSystem.format(record));
     return resolveGeoTemplate(text, this.landmarkPoints, this.scale, this.routeMeters, {
       heightAt: elevation ? (p) => elevation.heightAt(p.x, p.y) : undefined,
       flow: Object.fromEntries([...this.waterways].map(([id, w]) => [id, w.flowDirection])),
+      grid: this.coords,
     });
   }
 
@@ -545,7 +568,9 @@ export class GameSession {
     if (!this.fog.isExplored(tile.x, tile.y)) problems.push('unexplored');
     else if (!target || Math.hypot(tile.x - target.x, tile.y - target.y) > p.toleranceTiles) problems.push('location');
     if (p.wisdomChoices[wisdomIndex]?.id !== p.correctWisdomId) problems.push('wisdom');
-    const siteEvidenceId = this.level.siteAnalysis?.candidates.find((c) => c.landmarkId === targetId)?.evidenceId;
+    const siteEvidenceId = (this.level.siteAnalysis ?? this.level.gridSiteAnalysis)?.candidates.find(
+      (c) => c.landmarkId === targetId,
+    )?.evidenceId;
     const required = [...p.requiredEvidenceIds, ...(siteEvidenceId ? [siteEvidenceId] : [])];
     const hasEvidence =
       !!targetId && required.every((id) => this.evidence.includes(id)) && this.discoveredLandmarks.has(targetId);
@@ -778,10 +803,76 @@ export class GameSession {
     }));
   }
 
-  /** สถานที่เดียวที่ผ่านหลักฐานทุกข้อ (null ถ้าไม่มีหรือมีหลายแห่ง) */
+  /** สถานที่เดียวที่ผ่านหลักฐานทุกข้อ (null ถ้าไม่มีหรือมีหลายแห่ง) — ใช้ได้ทั้งแบบลำน้ำและแบบพิกัดกริด */
   siteTargetId(): string | null {
-    const ok = this.evaluateSites().filter((r) => r.failed.length === 0);
+    const rows = this.level.siteAnalysis ? this.evaluateSites() : this.evaluateGridSites();
+    const ok = rows.filter((r) => r.failed.length === 0);
     return ok.length === 1 ? ok[0].landmarkId : null;
+  }
+
+  /* ---------------- จุดเป้าหมายแบบพิกัดกริด ---------------- */
+
+  /** หลักฐานสำหรับตรวจจุดเป้าหมาย — แปลงพิกัดในบันทึกตามวิธีนับที่ผู้บันทึกใช้ */
+  gridSiteEvidence(): GridSiteEvidence | null {
+    const ga = this.level.gridSiteAnalysis;
+    const g = this.coords;
+    const from = ga && this.landmarkPoints[ga.relative.fromId];
+    if (!ga || !g || !from) return null;
+    const recordTile = ga.recordConvention === 'top-counted' ? g.topCountedGridToTile(ga.record) : g.gridToTile(ga.record);
+    return {
+      recordTile,
+      toleranceTiles: ga.toleranceTiles,
+      relative: { from, direction: ga.relative.direction, meters: ga.relative.meters, toleranceMeters: ga.relative.toleranceMeters },
+      requiredFeatures: ga.requiredFeatures,
+    };
+  }
+
+  evaluateGridSites(): Array<{ landmarkId: string; label: string; failed: GridSiteReport['failed']; report: GridSiteReport }> {
+    const ga = this.level.gridSiteAnalysis;
+    const ev = this.gridSiteEvidence();
+    if (!ga || !ev) return [];
+    return ga.candidates.map((c) => {
+      const lm = this.level.landmarks.find((l) => l.id === c.landmarkId)!;
+      const report = evaluateGridSite(lm.at, lm.features ?? [], ev, this.scale);
+      return { landmarkId: c.landmarkId, label: c.label, failed: report.failed, report };
+    });
+  }
+
+  get gridCheckSolved(): boolean {
+    const ga = this.level.gridSiteAnalysis;
+    return !!ga && this.flags.has(ga.successFlag);
+  }
+
+  isGridCheckOpen(): boolean {
+    const ga = this.level.gridSiteAnalysis;
+    return !!ga && this.matches(ga.availableWhen);
+  }
+
+  /**
+   * ผู้เล่นเลือกจุดเป้าหมายในหน้าตรวจพิกัด — ตัดสินจากการตรวจหลักฐาน 3 ชนิดของทุกจุด (ไม่ได้กำหนดคำตอบตายตัว)
+   * ต้องสำรวจจุดที่เลือกด้วยตัวเองก่อน (มีหลักฐานการสำรวจ) จึงจะตัดสินได้
+   */
+  chooseGridSite(index: number): GridChoiceResult {
+    const ga = this.level.gridSiteAnalysis;
+    const rows = this.evaluateGridSites();
+    const chosen = ga?.candidates[index];
+    const reports = Object.fromEntries(rows.map((r) => [r.landmarkId, r.report]));
+    const missingClues = (ga?.requiredClueIds ?? []).filter((id) => !this.clues.includes(id));
+    const notSurveyed = chosen?.evidenceId && !this.evidence.includes(chosen.evidenceId) ? [chosen.landmarkId] : [];
+    const base = { chosenId: chosen?.landmarkId ?? null, reports, missingClues, notSurveyed };
+    if (!ga || !chosen || !this.isGridCheckOpen()) return (this.lastGridChoice = { ok: false, blocked: 'not-available', ...base });
+    if (this.gridCheckSolved) return (this.lastGridChoice = { ok: true, blocked: 'already-solved', ...base });
+    if (missingClues.length > 0 || notSurveyed.length > 0) {
+      return (this.lastGridChoice = { ok: false, blocked: 'missing-evidence', ...base });
+    }
+    const ok = chosen.landmarkId === this.siteTargetId();
+    if (ok) {
+      this.flags.add(ga.successFlag);
+      this.skills.add('grid-reference');
+      this.skills.add('relative-position');
+    } else this.mistakes.compare++;
+    this.updateQuests();
+    return (this.lastGridChoice = { ok, ...base });
   }
 
   /** เป้าหมายการปักหมุด: กำหนดในเนื้อหา หรือคำนวณจากการวิเคราะห์สถานที่ */

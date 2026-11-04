@@ -202,10 +202,15 @@ export function validateLevel(
   const pin = level.pinTask;
   if (pin) {
     if (pin.targetId === 'site-analysis') {
-      if (!level.siteAnalysis) errors.push('ปักหมุดแบบคำนวณเป้าหมายต้องมี siteAnalysis');
-      else if (pin.correctWisdomId !== level.siteAnalysis.requiredSymbol) {
-        errors.push('ปักหมุด: ประเภทสถานที่ที่ถูกต้องต้องตรงกับสัญลักษณ์ที่เป้าหมายต้องมี');
-      }
+      if (level.siteAnalysis) {
+        if (pin.correctWisdomId !== level.siteAnalysis.requiredSymbol) {
+          errors.push('ปักหมุด: ประเภทสถานที่ที่ถูกต้องต้องตรงกับสัญลักษณ์ที่เป้าหมายต้องมี');
+        }
+      } else if (level.gridSiteAnalysis) {
+        if (pin.correctWisdomId !== level.gridSiteAnalysis.placeType) {
+          errors.push('ปักหมุด: ประเภทสถานที่ที่ถูกต้องต้องตรงกับ placeType ของจุดเป้าหมาย');
+        }
+      } else errors.push('ปักหมุดแบบคำนวณเป้าหมายต้องมี siteAnalysis หรือ gridSiteAnalysis');
     } else if (!landmarkIds.has(pin.targetId)) errors.push(`เป้าหมายปักหมุดไม่มีอยู่จริง: ${pin.targetId}`);
     if (!pin.wisdomChoices.some((c) => c.id === pin.correctWisdomId)) errors.push('ปักหมุด: ไม่มีประเภทภูมิปัญญาที่ถูก');
     for (const id of pin.requiredEvidenceIds) {
@@ -283,6 +288,38 @@ export function validateLevel(
           errors.push(`สถานที่หลอก ${x.landmarkId} ตรงกับหลักฐานทุกข้อ ผู้เล่นจะแยกไม่ออก`);
         }
       }
+    }
+  }
+
+  // ---- จุดเป้าหมายแบบพิกัดกริด ----
+  const ga = level.gridSiteAnalysis;
+  if (ga) {
+    if (!level.grid) errors.push('จุดเป้าหมายแบบพิกัดกริดต้องกำหนด level.grid');
+    if (!landmarkIds.has(ga.relative.fromId)) errors.push(`ตำแหน่งสัมพัทธ์อ้างถึงจุดอ้างอิงที่ไม่มี: ${ga.relative.fromId}`);
+    if (ga.candidates.length < 3) errors.push('ต้องมีจุดเป้าหมายอย่างน้อย 3 แห่ง');
+    for (const id of ga.requiredClueIds) if (!clueIds.has(id)) errors.push(`จุดเป้าหมายอ้างถึงเบาะแสที่ไม่มี: ${id}`);
+    for (const f of ga.requiredFeatures) if (!ga.featureLabels[f]) errors.push(`ไม่มีชื่อภาษาไทยของ feature: ${f}`);
+    for (const c of ga.candidates) {
+      if (!landmarkIds.has(c.landmarkId)) errors.push(`จุดเป้าหมายไม่มีอยู่จริง: ${c.landmarkId}`);
+      if (c.evidenceId && !evidenceIds.has(c.evidenceId)) errors.push(`จุดเป้าหมาย ${c.landmarkId} อ้างถึงหลักฐานที่ไม่มี: ${c.evidenceId}`);
+    }
+    const ev = session.gridSiteEvidence();
+    if (ev && !grid.inBounds(ev.recordTile.x, ev.recordTile.y)) errors.push('พิกัดในบันทึก (หลังแก้แล้ว) อยู่นอกแผนที่');
+    const rows = session.evaluateGridSites();
+    const passing = rows.filter((r) => r.failed.length === 0).map((r) => r.landmarkId);
+    if (passing.length !== 1) errors.push(`จุดเป้าหมายที่ผ่านหลักฐานทุกข้อต้องมีจุดเดียว (ตอนนี้: ${passing.join(', ') || 'ไม่มี'})`);
+    // ทุกจุดต้อง "ดูเหมือนคำตอบ" อย่างน้อยหนึ่งทาง: ผ่านหลักฐานบางข้อ / ตรงกับพิกัดในบันทึกเมื่ออ่านตามตัวอักษร / มีสิ่งที่บันทึกบอกบางอย่าง
+    const literal = session.coords?.gridToTile(ga.record);
+    for (const r of rows) {
+      if (r.failed.length < 3) continue;
+      const lm = level.landmarks.find((l) => l.id === r.landmarkId);
+      const nearLiteral =
+        !!literal && !!lm && Math.hypot(lm.at.x - literal.x, lm.at.y - literal.y) <= ga.toleranceTiles;
+      const someFeature = !!lm?.features?.some((f) => ga.requiredFeatures.includes(f));
+      if (!nearLiteral && !someFeature) errors.push(`จุด ${r.landmarkId} ไม่มีอะไรที่ทำให้ดูเหมือนคำตอบเลย`);
+    }
+    if (ga.correctLandmarkId && passing[0] !== ga.correctLandmarkId) {
+      errors.push(`เป้าหมายที่ตั้งใจ (${ga.correctLandmarkId}) ไม่ตรงกับผลคำนวณ (${passing.join(', ') || 'ไม่มี'})`);
     }
   }
 

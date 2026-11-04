@@ -18,6 +18,7 @@ export const SYMBOL_LABEL: Record<MapSymbol, string> = {
   stones: 'ก้อนหินใหญ่',
   benchmark: 'หมุดหลักฐานระดับ',
   farm: 'พื้นที่เกษตร',
+  hotspring: 'บ่อน้ำร้อน',
 };
 
 const BLUE = 0x2f7fd0;
@@ -69,6 +70,14 @@ export function drawMapSymbol(g: Phaser.GameObjects.Graphics, symbol: MapSymbol,
     case 'stones':
       g.fillStyle(0x6b6b6b, 1);
       for (const [dx, dy] of [[-4, 2], [3, 2], [0, -3]]) g.fillCircle(cx + dx, cy + dy, 2.6);
+      return;
+    case 'hotspring':
+      g.fillStyle(0x6fb7e0, 1).fillEllipse(cx, cy + 3, 14, 6);
+      g.lineStyle(1.5, 0xd94b4b, 1);
+      for (const dx of [-4, 0, 4]) {
+        g.lineBetween(cx + dx, cy + 1, cx + dx - 1.5, cy - 3);
+        g.lineBetween(cx + dx - 1.5, cy - 3, cx + dx, cy - 7);
+      }
       return;
     case 'farm':
       g.lineStyle(1.5, 0x4f7a1f, 1);

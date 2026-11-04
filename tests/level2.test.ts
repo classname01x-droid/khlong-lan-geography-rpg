@@ -261,7 +261,7 @@ describe('จุดสำรวจ A/B/C และการปักหมุด
 });
 
 describe('จบด่าน 2 และปลดล็อกด่าน 3', () => {
-  it('ครูเนมสรุป → รหัสลับชิ้นที่ 2 "น้ำ" → ปลดล็อก level-3 (ยังอยู่ระหว่างพัฒนา)', () => {
+  it('ครูเนมสรุป → รหัสลับชิ้นที่ 2 "น้ำ" → ปลดล็อก level-3 (ต้นแบบ) · ด่าน 4 ยังเข้าไม่ได้', () => {
     const s = playTo(6);
     s.startEnding();
     runDialogue(s);
@@ -282,8 +282,9 @@ describe('จบด่าน 2 และปลดล็อกด่าน 3', ()
     expect(store.collectedCodePieces().map((c) => c.value)).toEqual(['ลาย', 'น้ำ']);
     expect(store.isCompleted('sakngam')).toBe(true);
     const cards = LEVEL_SEQUENCE.map((slot, i) => describeLevel(slot, store.data, i === 0, LEVELS.find((l) => l.id === slot.id)?.evidence?.length ?? null));
-    expect(cards.map((c) => c.state)).toEqual(['completed', 'completed', 'in-development', 'locked']);
-    expect(canEnterLevel('level-3', store.data)).toBe(false); // ยังไม่มีเนื้อหา
+    expect(cards.map((c) => c.state)).toEqual(['completed', 'completed', 'unlocked', 'locked']);
+    expect(canEnterLevel('level-3', store.data)).toBe(true);
+    expect(canEnterLevel('level-4', store.data)).toBe(false);
   });
 });
 

@@ -8,7 +8,9 @@ export type SkillId =
   | 'odometer'
   | 'elevation'
   | 'map-symbols'
-  | 'map-compare';
+  | 'map-compare'
+  | 'grid-reference'
+  | 'relative-position';
 
 export const SKILL_LABEL: Record<SkillId, string> = {
   direction: 'การใช้ทิศทาง 8 ทิศ',
@@ -20,6 +22,8 @@ export const SKILL_LABEL: Record<SkillId, string> = {
   elevation: 'การอ่านระดับความสูงเพื่อหาทิศทางน้ำไหล',
   'map-symbols': 'การอ่านสัญลักษณ์แผนที่',
   'map-compare': 'การเปรียบเทียบข้อมูลจากแผนที่สองแผ่น',
+  'grid-reference': 'การอ่านพิกัดกริด (E เพิ่มไปตะวันออก · N เพิ่มไปเหนือ)',
+  'relative-position': 'การบอกตำแหน่งสัมพัทธ์ด้วยทิศและระยะจากจุดอ้างอิง',
 };
 
 export const ALL_SKILLS = Object.keys(SKILL_LABEL) as SkillId[];

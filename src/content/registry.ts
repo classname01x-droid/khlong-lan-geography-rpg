@@ -1,4 +1,5 @@
 import { khlongNamLaiLevel } from './levels/khlongnamlai';
+import { pongNamRonLevel } from './levels/pongnamron';
 import { sakNgamLevel } from './levels/sakngam';
 import type { ProgressData } from '../core/progress/ProgressStore';
 import type { LevelDefinition } from './types';
@@ -7,7 +8,7 @@ import type { LevelDefinition } from './types';
  * ทะเบียนด่านที่เล่นได้ — เพิ่มตำบลใหม่โดยสร้างโฟลเดอร์ใน content/levels/
  * แล้วนำมาใส่ในอาร์เรย์นี้ (ระบบเกมไม่ต้องแก้)
  */
-export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLevel];
+export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLevel, pongNamRonLevel];
 
 export const DEFAULT_LEVEL_ID = sakNgamLevel.id;
 
@@ -50,7 +51,8 @@ export const LEVEL_SEQUENCE: readonly LevelSlot[] = [
   slot(sakNgamLevel.id, sakNgamLevel.tambon, sakNgamLevel.title, 'available', 1),
   // ด่าน 2 (ต้นแบบ) ธีม "ภารกิจทรัพยากรชุมชน" — เล่นได้เมื่อปลดล็อกจากการจบด่าน 1 เท่านั้น
   slot(khlongNamLaiLevel.id, khlongNamLaiLevel.tambon, khlongNamLaiLevel.title, 'available', 2),
-  slot('level-3', 'ตำบลโป่งน้ำร้อน', 'ปริศนาทิศทางและพิกัด', 'planned', 3),
+  // ด่าน 3 (ต้นแบบ) — เล่นได้เมื่อปลดล็อกจากการจบด่าน 2 เท่านั้น
+  slot(pongNamRonLevel.id, pongNamRonLevel.tambon, pongNamRonLevel.title, 'available', 3),
   slot('level-4', 'ตำบลคลองลานพัฒนา', 'ปริศนาบูรณาการภูมิศาสตร์', 'planned', 4),
 ];
 

@@ -5,6 +5,7 @@ import { MAP_COLOR_OBJECT, MAP_COLOR_TERRAIN } from '../graphics/tileIndex';
 import type { MapSymbol } from '../core/world/types';
 import { drawMapSymbol, SYMBOL_LABEL } from './mapSymbols';
 import { drawBaseSheet, drawFlowArrow } from './sheetRenderer';
+import { GridSystem } from '../core/world/GridSystem';
 import { wrapThaiText } from './textWrap';
 import { COLORS, FONT_FAMILY, textStyle } from './theme';
 
@@ -47,8 +48,11 @@ export class MapOverlay {
       .text(
         GAME_WIDTH / 2,
         52,
-        `มาตราส่วน ${s.scale.ratioLabel} · 1 ช่อง = ${s.scale.config.metersPerTile} ม. · ` +
-          `1 ซม. บนแผนที่ = ${s.scale.mapCmToMeters(1)} ม. · เส้นตารางหนา = ทุก 100 ม.`,
+        s.coords
+          ? `มาตราส่วน ${s.scale.ratioLabel} · 1 ช่อง = ${s.scale.config.metersPerTile} ม. · เส้นกริดทุก 100 ม. · ` +
+              `พิกัดจำลอง: E เพิ่มไปทางตะวันออก · N เพิ่มไปทางเหนือ`
+          : `มาตราส่วน ${s.scale.ratioLabel} · 1 ช่อง = ${s.scale.config.metersPerTile} ม. · ` +
+              `1 ซม. บนแผนที่ = ${s.scale.mapCmToMeters(1)} ม. · เส้นตารางหนา = ทุก 100 ม.`,
         textStyle(14, COLORS.text),
       )
       .setOrigin(0.5, 0);
@@ -132,7 +136,9 @@ export class MapOverlay {
     const lines: string[] = [];
     if (pinning && s.pinCursor) {
       const pin = s.level.pinTask!;
-      const where = `ตำแหน่งหมุด: ช่อง X ${s.pinCursor.x}, Y ${s.pinCursor.y}`;
+      const where = s.coords
+        ? `พิกัดหมุด: ${GridSystem.format(s.coords.tileToGrid(s.pinCursor))}`
+        : `ตำแหน่งหมุด: ช่อง X ${s.pinCursor.x}, Y ${s.pinCursor.y}`;
       if (s.pinStage === 'cursor') {
         lines.push(`โหมดปักหมุด · ${where} · WASD/ลูกศร: เลื่อน · Space: ปักหมุด`);
       } else {
@@ -168,11 +174,13 @@ export class MapOverlay {
     this.labels.removeAll(true);
     for (let x = 0; x <= width; x += 10) {
       g.lineBetween(mx + x * cell, my, mx + x * cell, my + height * cell);
-      this.labels.add(scene.add.text(mx + x * cell, my - 4, `${x}`, textStyle(11, COLORS.textDim)).setOrigin(0.5, 1));
+      const xl = s.coords ? `E${s.coords.eastingAtColumnEdge(x)}` : `${x}`;
+      this.labels.add(scene.add.text(mx + x * cell, my - 4, xl, textStyle(s.coords ? 9 : 11, COLORS.textDim)).setOrigin(0.5, 1));
     }
     for (let y = 0; y <= height; y += 10) {
       g.lineBetween(mx, my + y * cell, mx + width * cell, my + y * cell);
-      this.labels.add(scene.add.text(mx - 6, my + y * cell, `${y}`, textStyle(11, COLORS.textDim)).setOrigin(1, 0.5));
+      const yl = s.coords ? `N${s.coords.northingAtRowEdge(y)}` : `${y}`;
+      this.labels.add(scene.add.text(mx - 6, my + y * cell, yl, textStyle(s.coords ? 9 : 11, COLORS.textDim)).setOrigin(1, 0.5));
     }
     g.lineStyle(2, COLORS.panelBorder, 1).strokeRect(mx, my, width * cell, height * cell);
 

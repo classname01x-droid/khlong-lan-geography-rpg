@@ -1,6 +1,7 @@
 import { bearingDeg, bearingToDirection8, THAI_DIRECTION, type Direction8 } from '../direction/Compass';
 import type { ScaleSystem } from '../scale/ScaleSystem';
 import type { TilePoint } from '../world/types';
+import { GridSystem } from '../world/GridSystem';
 
 /**
  * แทนค่าตัวแปรภูมิศาสตร์ในบทพูด/เบาะแส โดยคำนวณจากตำแหน่งจริงในโลกเกม
@@ -13,13 +14,18 @@ import type { TilePoint } from '../world/types';
  *   {{route:id}}   ระยะตามเส้นทาง id (เมตร คำนวณจากถนนในแผนที่)
  *   {{elev:a}}     ระดับความสูงที่จุดสังเกต a (เมตร คำนวณจากแบบจำลองความสูง)
  *   {{flow:id}}    ทิศที่ลำน้ำ id ไหลไป (คำนวณจากระดับความสูง ไม่ใช่ตำแหน่งบนจอ)
+ *   {{grid:a}}     พิกัดกริดจำลองของจุดสังเกต a ("E 4,660 · N 1,470")
+ *   {{gridtop:a}}  พิกัดที่ "นับ N จากขอบบน" (ผิด) — ใช้เป็นตัวเลือกหลอก
+ *   {{gridswap:a}} พิกัดที่สลับ E กับ N (ผิด) — ใช้เป็นตัวเลือกหลอก
  */
+export const GRID_TEMPLATE_PATTERN = /\{\{(grid|gridtop|gridswap):([\w-]+)\}\}/g;
 export const ELEV_TEMPLATE_PATTERN = /\{\{elev:([\w-]+)\}\}/g;
 export const FLOW_TEMPLATE_PATTERN = /\{\{flow:([\w-]+)\}\}/g;
 
 export interface TerrainTemplateContext {
   heightAt?: (p: TilePoint) => number;
   flow?: Readonly<Record<string, Direction8>>;
+  grid?: GridSystem | null;
 }
 export const GEO_TEMPLATE_PATTERN = /\{\{(dist|dir|mapcm):([\w-]+)>([\w-]+)(?:\*([\d.]+))?\}\}/g;
 export const ROUTE_TEMPLATE_PATTERN = /\{\{route:([\w-]+)\}\}/g;
@@ -46,6 +52,15 @@ export function resolveGeoTemplate(
   terrain: TerrainTemplateContext = {},
 ): string {
   return text
+    .replace(GRID_TEMPLATE_PATTERN, (match, kind: string, id: string) => {
+      const p = points[id];
+      const g = terrain.grid;
+      if (!p || !g) return match;
+      if (kind === 'grid') return GridSystem.format(g.tileToGrid(p));
+      if (kind === 'gridtop') return GridSystem.format(g.tileToTopCountedGrid(p));
+      const r = g.tileToGrid(p);
+      return GridSystem.format({ e: r.n, n: r.e });
+    })
     .replace(ELEV_TEMPLATE_PATTERN, (match, id: string) => {
       const p = points[id];
       return p && terrain.heightAt ? String(Math.round(terrain.heightAt(p))) : match;
@@ -74,6 +89,7 @@ export function referencedPoints(text: string): string[] {
   const ids: string[] = [];
   for (const m of text.matchAll(GEO_TEMPLATE_PATTERN)) ids.push(m[2], m[3]);
   for (const m of text.matchAll(ELEV_TEMPLATE_PATTERN)) ids.push(m[1]);
+  for (const m of text.matchAll(GRID_TEMPLATE_PATTERN)) ids.push(m[2]);
   return ids;
 }
 

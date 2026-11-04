@@ -1,6 +1,7 @@
 import type { MapDefinition, MapSymbol, TilePoint, TileRect } from '../core/world/types';
 import type { WaterwayDefinition } from '../core/world/Waterway';
 import type { Direction8 } from '../core/direction/Compass';
+import type { GridDefinition, GridRef } from '../core/world/GridSystem';
 
 /**
  * รูปแบบข้อมูลเนื้อหาด่าน — ด่านใหม่ (ตำบลอื่น) เขียนเป็นข้อมูลตามรูปแบบนี้
@@ -30,6 +31,8 @@ export interface Landmark {
   symbol?: MapSymbol;
   /** ตำแหน่งป้ายชื่อบนแผนที่สำรวจ (ค่าเริ่มต้น above) */
   mapLabelAt?: 'above' | 'below' | 'left' | 'right';
+  /** สิ่งที่พบได้จากการสำรวจจริง ณ จุดนี้ (เช่น ไอน้ำร้อน หินปูนสีขาว) ใช้ตรวจหลักฐานภาคสนาม */
+  features?: string[];
 }
 
 /* ---------------- เงื่อนไขและผลของบทสนทนา ---------------- */
@@ -165,7 +168,7 @@ export interface QuizDefinition {
   verifyFlowOf?: string;
 }
 
-export type ClueType = 'direction' | 'distance' | 'landmark' | 'elevation' | 'symbol' | 'comparison';
+export type ClueType = 'direction' | 'distance' | 'landmark' | 'elevation' | 'symbol' | 'comparison' | 'coordinate';
 
 export interface ClueDefinition {
   id: string;
@@ -295,6 +298,35 @@ export interface SiteAnalysisDefinition {
   correctLandmarkId?: string;
 }
 
+/**
+ * จุดเป้าหมายในด่านพิกัด — ตรวจด้วย พิกัดกริด (หลังแก้ข้อผิดพลาดของบันทึก) + ตำแหน่งสัมพัทธ์ + หลักฐานภาคสนาม
+ * ไม่ได้กำหนดคำตอบตายตัว: ระบบคำนวณจุดที่ผ่านทุกข้อ (validateLevel ตรวจว่ามีเพียงจุดเดียว)
+ */
+export interface GridSiteAnalysisDefinition {
+  /** พิกัดที่เขียนในบันทึกสำรวจเก่า (ตามที่เขียนไว้ ซึ่งอาจผิด) */
+  record: GridRef;
+  /**
+   * วิธีที่ผู้บันทึกใช้นับค่า N: 'standard' = จากขอบใต้ขึ้นไป (ถูกต้อง),
+   * 'top-counted' = นับจากขอบบนลงมาแบบแกน y ของจอ (ผิด ต้องแปลงกลับ)
+   */
+  recordConvention: 'standard' | 'top-counted';
+  /** คำบรรยายตำแหน่งสัมพัทธ์: ทิศและระยะจากจุดอ้างอิง */
+  relative: { fromId: string; direction: Direction8; meters: number; toleranceMeters: number };
+  /** สิ่งที่ต้องพบจากการสำรวจจริง (ดู Landmark.features) */
+  requiredFeatures: string[];
+  /** ชื่อภาษาไทยของ feature (ใช้อธิบายผล) */
+  featureLabels: Record<string, string>;
+  toleranceTiles: number;
+  candidates: Array<{ landmarkId: string; label: string; evidenceId?: string }>;
+  correctLandmarkId?: string;
+  /** ประเภทสถานที่ที่ถูกต้อง (ใช้ตรวจตอนปักหมุด) */
+  placeType: string;
+  /** เบาะแสที่ต้องมีก่อนตัดสิน */
+  requiredClueIds: string[];
+  availableWhen: Condition;
+  successFlag: string;
+}
+
 /* ---------------- โครงเรื่อง ---------------- */
 
 export type StoryStepStatus = 'prototype' | 'planned' | 'playable';
@@ -347,6 +379,10 @@ export interface LevelDefinition {
   mapComparison?: MapComparisonDefinition;
   /** สถานที่ผู้ต้องสงสัย (เป้าหมายจริง + สถานที่หลอก) */
   siteAnalysis?: SiteAnalysisDefinition;
+  /** ระบบพิกัดกริดจำลอง (E/N เป็นเมตร, N เพิ่มไปทางเหนือ) — ไม่ระบุ = แสดงตำแหน่งเป็นช่องแบบเดิม */
+  grid?: GridDefinition;
+  /** จุดเป้าหมายที่ตรวจด้วยพิกัดกริด + ตำแหน่งสัมพัทธ์ + หลักฐานภาคสนาม */
+  gridSiteAnalysis?: GridSiteAnalysisDefinition;
   /** ทักษะที่แสดงในหน้าสรุปผล (ไม่ระบุ = ชุดทักษะของด่าน 1) */
   skills?: string[];
   /** id ด่านที่ปลดล็อกเมื่อผ่านด่านนี้ */
