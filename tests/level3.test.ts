@@ -172,7 +172,7 @@ describe('ด่าน 3: ข้อมูลพื้นฐาน', () => {
   it('ใช้ id level-3 ที่จองไว้ และผ่าน validateLevel', () => {
     expect(L3.id).toBe('level-3');
     expect(getLevelSlot('level-3')?.status).toBe('available');
-    expect(LEVELS.map((l) => l.id)).toEqual(['sakngam', 'level-2', 'level-3']);
+    expect(LEVELS.map((l) => l.id)).toEqual(['sakngam', 'level-2', 'level-3', 'level-4']);
     expect(validateLevel(L3)).toEqual([]);
   });
 
@@ -735,20 +735,19 @@ describe('บันทึก/โหลด และการปลดล็อ�
     expect(cards[2].canEnter).toBe(true);
   });
 
-  it('ด่าน 4 เข้าไม่ได้: ยังไม่มีเนื้อหา แม้ข้อมูลบันทึกจะปลดล็อกไว้', () => {
-    expect(isPlayableLevel('level-4')).toBe(false);
-    expect(getLevelSlot('level-4')?.status).toBe('planned');
-    expect(LEVELS.some((l) => l.id === 'level-4')).toBe(false);
+  it('ด่าน 4 เข้าได้เฉพาะเมื่อจบด่าน 3 (ปลดล็อกผ่าน ProgressStore)', () => {
+    expect(isPlayableLevel('level-4')).toBe(true);
     const store = new ProgressStore(new MemoryStorage(), 'sakngam');
+    expect(canEnterLevel('level-4', store.data)).toBe(false);
     store.completeLevel(result('level-3', '?', 3), L3.unlocks);
     expect(store.isUnlocked('level-4')).toBe(true);
-    expect(canEnterLevel('level-4', store.data)).toBe(false);
+    expect(canEnterLevel('level-4', store.data)).toBe(true);
     const card = describeLevel(LEVEL_SEQUENCE[3], store.data, false, null);
-    expect(card.state).toBe('in-development');
-    expect(card.canEnter).toBe(false);
+    expect(card.state).toBe('unlocked');
+    expect(card.canEnter).toBe(true);
   });
 
-  it('จบด่าน 3 → บันทึกผ่าน ProgressStore เดิม · รหัส "พิกัด" · ปลดล็อก level-4 แต่ยังเข้าไม่ได้', () => {
+  it('จบด่าน 3 → บันทึกผ่าน ProgressStore เดิม · รหัส "พิกัด" · ปลดล็อก level-4', () => {
     const s = playTo(7);
     const sum = s.summary();
     const store = new ProgressStore(new MemoryStorage(), 'sakngam');
@@ -775,12 +774,12 @@ describe('บันทึก/โหลด และการปลดล็อ�
     expect(store.loadInProgress('level-3')).toBeFalsy(); // บันทึกกลางด่านถูกล้างเมื่อจบ
     expect(store.collectedCodePieces().map((c) => c.value)).toEqual(['ลาย', 'น้ำ', 'พิกัด']);
     expect(store.isUnlocked('level-4')).toBe(true);
-    expect(canEnterLevel('level-4', store.data)).toBe(false);
+    expect(canEnterLevel('level-4', store.data)).toBe(true);
     const cards = LEVEL_SEQUENCE.map((slot, i) =>
       describeLevel(slot, store.data, i === 0, LEVELS.find((l) => l.id === slot.id)?.evidence?.length ?? null),
     );
-    expect(cards.map((c) => c.state)).toEqual(['completed', 'completed', 'completed', 'in-development']);
-    expect(cards[3].canEnter).toBe(false);
+    expect(cards.map((c) => c.state)).toEqual(['completed', 'completed', 'completed', 'unlocked']);
+    expect(cards[3].canEnter).toBe(true);
     expect(L3.story.every((st) => st.status === 'playable')).toBe(true);
   });
 });

@@ -42,7 +42,7 @@ describe('ลำดับ 4 ตำบล และการกันเข้า
       'ตำบลสักงาม — ปริศนาลวดลายแห่งสักงาม',
       'ตำบลคลองน้ำไหล — ปริศนาสายน้ำแห่งคลองน้ำไหล',
       'ตำบลโป่งน้ำร้อน — ปริศนาพิกัดลับแห่งโป่งน้ำร้อน',
-      'ตำบลคลองลานพัฒนา — ปริศนาบูรณาการภูมิศาสตร์',
+      'ตำบลคลองลานพัฒนา — ปริศนาแผนที่ลับแห่งคลองลานพัฒนา',
     ]);
     expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
   });
@@ -51,7 +51,7 @@ describe('ลำดับ 4 ตำบล และการกันเข้า
     expect(isPlayableLevel('sakngam')).toBe(true);
     expect(isPlayableLevel('level-2')).toBe(true); // ต้นแบบด่าน 2 มีเนื้อหาแล้ว
     expect(isPlayableLevel('level-3')).toBe(true); // ต้นแบบด่าน 3 มีเนื้อหาแล้ว
-    expect(isPlayableLevel('level-4')).toBe(false);
+    expect(isPlayableLevel('level-4')).toBe(true); // ต้นแบบด่าน 4 มีเนื้อหาแล้ว
     const fresh = new ProgressStore(new MemoryStorage(), 'sakngam');
     expect(canEnterLevel('sakngam', fresh.data)).toBe(true);
     expect(canEnterLevel('level-2', fresh.data)).toBe(false); // ยังไม่จบด่าน 1
@@ -59,8 +59,7 @@ describe('ลำดับ 4 ตำบล และการกันเข้า
     expect(canEnterLevel('level-2', fresh.data)).toBe(true);
     expect(canEnterLevel('level-3', fresh.data)).toBe(false); // ยังไม่จบด่าน 2
     expect(canEnterLevel('level-3', { ...fresh.data, unlocked: [...fresh.data.unlocked, 'level-3'] })).toBe(true);
-    // ด่าน 4 ยังไม่มีเนื้อหา: เข้าไม่ได้แม้ข้อมูลบันทึกจะปลดล็อกไว้
-    expect(canEnterLevel('level-4', { ...fresh.data, unlocked: [...fresh.data.unlocked, 'level-3', 'level-4'] })).toBe(false);
+    expect(canEnterLevel('level-4', fresh.data)).toBe(false); // ยังไม่จบด่าน 3
     expect(isPlayableLevel('nope')).toBe(false);
     expect(getLevelSlot(sakNgamLevel.unlocks!)?.id).toBe('level-2');
   });
@@ -74,7 +73,7 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
     expect(c[1].evidenceText).toBe('หลักฐาน: 0/6');
     expect(c[2].evidenceText).toBe('หลักฐาน: 0/7');
-    expect(c[3].evidenceText).toBe('หลักฐาน: —');
+    expect(c[3].evidenceText).toBe('หลักฐาน: 0/5');
   });
 
   it('ด่าน 1 เข้าได้เสมอ แม้ข้อมูลบันทึกไม่มีในรายการปลดล็อก', () => {

@@ -334,6 +334,26 @@ export interface GridSiteAnalysisDefinition {
   verify?: { radiusTiles: number; when: Condition; evidenceId: string; flag: string };
 }
 
+/**
+ * จุดเป้าหมายแบบหลักฐานรวม (ด่านสุดท้าย) — ระบบคำนวณข้อเท็จจริงของทุกจุดจากโลกเกม แล้วตรวจด้วย
+ * evaluateIntegratedSite (core/site/IntegratedSiteAnalysis.ts) · validateLevel ตรวจว่ามีจุดเดียวที่ผ่านทุกข้อ
+ * และหลักฐานแต่ละชนิดเพียงข้อเดียวชี้ได้มากกว่าหนึ่งจุด (ตอบจากหลักฐานข้อเดียวไม่ได้)
+ */
+export interface IntegratedSiteAnalysisDefinition {
+  /** ทิศและระยะจากจุดอ้างอิง — แยกระยะเส้นตรงกับระยะตามถนน */
+  distance: { fromId: string; direction: Direction8; straightMeters: number; roadMeters: number; toleranceMeters: number };
+  /** สัญลักษณ์แผนที่ + สูงกว่า minElevationMeters + อยู่ทางต้นน้ำ/ปลายน้ำของจุด ofId บนลำน้ำ waterwayId */
+  terrain: { symbol: MapSymbol; minElevationMeters: number; waterwayId: string; relation: 'upstream' | 'downstream'; ofId: string };
+  /** N = N ของหมุด fromId + dN · ค่า E อ่านได้บางหลัก (eMask เช่น "5,?40") */
+  grid: { fromId: string; dN: number; eMask: string; toleranceMeters: number };
+  candidates: Array<{ landmarkId: string; label: string; evidenceId?: string }>;
+  correctLandmarkId?: string;
+  placeType: string;
+  requiredClueIds: string[];
+  availableWhen: Condition;
+  successFlag: string;
+}
+
 /* ---------------- โครงเรื่อง ---------------- */
 
 export type StoryStepStatus = 'prototype' | 'planned' | 'playable';
@@ -390,6 +410,8 @@ export interface LevelDefinition {
   grid?: GridDefinition;
   /** จุดเป้าหมายที่ตรวจด้วยพิกัดกริด + ตำแหน่งสัมพัทธ์ + หลักฐานภาคสนาม */
   gridSiteAnalysis?: GridSiteAnalysisDefinition;
+  /** จุดเป้าหมายที่ตรวจด้วยหลักฐานรวม: ทิศ/ระยะ (เส้นตรง+ถนน) · ภูมิประเทศ/สัญลักษณ์/ทิศน้ำไหล · พิกัด E/N จากหมุดอ้างอิง */
+  integratedSiteAnalysis?: IntegratedSiteAnalysisDefinition;
   /** ทักษะที่แสดงในหน้าสรุปผล (ไม่ระบุ = ชุดทักษะของด่าน 1) */
   skills?: string[];
   /** id ด่านที่ปลดล็อกเมื่อผ่านด่านนี้ */

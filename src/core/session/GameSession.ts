@@ -25,13 +25,14 @@ import { DistanceTracker } from '../movement/DistanceTracker';
 import {
   evaluateRoute,
   measureRoute,
+  roadMetersBetween,
   straightMeters,
   type RouteCheck,
   type RouteExpectation,
   type RouteMetrics,
 } from '../route/RouteAnalysis';
 import type { ScaleSystem } from '../scale/ScaleSystem';
-import { resolveGeoTemplate } from '../text/geoTemplate';
+import { resolveGeoTemplate, ROAD_TEMPLATE_PATTERN } from '../text/geoTemplate';
 import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
 import { ElevationModel } from '../world/Elevation';
@@ -39,6 +40,13 @@ import { analyzeWaterway, type WaterwayAnalysis } from '../world/Waterway';
 import { evaluateSite, type SiteCheck, type SiteEvidence } from '../site/SiteAnalysis';
 import { checkSheet, type SheetReport, type TruthLandmark } from '../map/BaseMapCheck';
 import { evaluateGridSite, type GridSiteEvidence, type GridSiteReport } from '../site/GridSiteAnalysis';
+import {
+  evaluateIntegratedSite,
+  type IntegratedCheck,
+  type IntegratedEvidence,
+  type IntegratedReport,
+  type SiteFacts,
+} from '../site/IntegratedSiteAnalysis';
 import { GridSystem, type GridRef } from '../world/GridSystem';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare' | 'gridcheck';
@@ -266,6 +274,12 @@ export class GameSession {
     // {{gridrecord}} = พิกัดตามที่เขียนในบันทึกสำรวจของด่าน (ข้อมูลเดียวกับที่ใช้ตรวจจุดเป้าหมาย)
     const record = this.level.gridSiteAnalysis?.record;
     if (record) text = text.replaceAll('{{gridrecord}}', GridSystem.format(record));
+    // {{road:a>b}} = ระยะตามถนน (คำนวณจากถนนในโลกเกม) · {{ia:...}} = ค่าจากหลักฐานรวมของด่าน
+    text = text.replace(ROAD_TEMPLATE_PATTERN, (match, a: string, b: string) => {
+      const m = this.roadMetersBetweenLandmarks(a, b);
+      return m === null ? match : (Math.round(m / 10) * 10).toLocaleString('en-US');
+    });
+    text = this.resolveIntegratedText(text);
     // "site-analysis" ในตัวแปรข้อความ = จุดที่ระบบวิเคราะห์ว่าผ่านหลักฐานทุกข้อ (ไม่เขียนชื่อจุดคำตอบในเนื้อหา)
     if (text.includes('site-analysis}}')) {
       const target = this.siteTargetId();
@@ -381,6 +395,8 @@ export class GameSession {
   startEnding(): boolean {
     const ending = this.level.ending;
     if (!ending || this.completed) return false;
+    // ห้ามข้ามเงื่อนไขจบด่าน: ด่านที่มีการปักหมุดต้องปักหมุดผ่านก่อน (รหัสลับได้จากตอนจบเท่านั้น)
+    if (this.level.pinTask && !this.pinSolved) return false;
     for (const m of ending.messages) this.messages.push({ speaker: m.speaker, text: this.resolveText(m.text) });
     this.startDialogue(ending.messages, 'ending', null, null);
     return true;
@@ -581,7 +597,7 @@ export class GameSession {
     if (!this.fog.isExplored(tile.x, tile.y)) problems.push('unexplored');
     else if (!target || Math.hypot(tile.x - target.x, tile.y - target.y) > p.toleranceTiles) problems.push('location');
     if (p.wisdomChoices[wisdomIndex]?.id !== p.correctWisdomId) problems.push('wisdom');
-    const siteEvidenceId = (this.level.siteAnalysis ?? this.level.gridSiteAnalysis)?.candidates.find(
+    const siteEvidenceId = (this.level.siteAnalysis ?? this.level.gridSiteAnalysis ?? this.level.integratedSiteAnalysis)?.candidates.find(
       (c) => c.landmarkId === targetId,
     )?.evidenceId;
     const required = [...p.requiredEvidenceIds, ...(siteEvidenceId ? [siteEvidenceId] : [])];
@@ -819,9 +835,107 @@ export class GameSession {
 
   /** สถานที่เดียวที่ผ่านหลักฐานทุกข้อ (null ถ้าไม่มีหรือมีหลายแห่ง) — ใช้ได้ทั้งแบบลำน้ำและแบบพิกัดกริด */
   siteTargetId(): string | null {
-    const rows = this.level.siteAnalysis ? this.evaluateSites() : this.evaluateGridSites();
+    const rows = this.level.siteAnalysis
+      ? this.evaluateSites()
+      : this.level.integratedSiteAnalysis
+        ? this.evaluateIntegratedSites()
+        : this.evaluateGridSites();
     const ok = rows.filter((r) => r.failed.length === 0);
     return ok.length === 1 ? ok[0].landmarkId : null;
+  }
+
+  /* ---------------- จุดเป้าหมายแบบหลักฐานรวม (ด่านสุดท้าย) ---------------- */
+
+  /** ระยะตามถนนระหว่างจุดสังเกตสองแห่ง (เมตร) — null ถ้าไม่มีถนนเชื่อม */
+  roadMetersBetweenLandmarks(a: string, b: string): number | null {
+    const pa = this.landmarkPoints[a];
+    const pb = this.landmarkPoints[b];
+    return pa && pb ? roadMetersBetween(this.grid, this.scale, pa, pb) : null;
+  }
+
+  /** ค่า N ที่หลักฐานพิกัดชี้ (N ของหมุดอ้างอิง + dN) */
+  integratedTargetN(): number | null {
+    const g = this.level.integratedSiteAnalysis?.grid;
+    const rp = g ? this.landmarkPoints[g.fromId] : undefined;
+    return g && rp && this.coords ? this.coords.tileToGrid(rp).n + g.dN : null;
+  }
+
+  integratedEvidence(): IntegratedEvidence | null {
+    const ia = this.level.integratedSiteAnalysis;
+    const n = this.integratedTargetN();
+    if (!ia || n === null) return null;
+    return {
+      distance: { ...ia.distance },
+      terrain: { symbol: ia.terrain.symbol, minElevationMeters: ia.terrain.minElevationMeters, relation: ia.terrain.relation },
+      grid: { nMeters: n, eMask: ia.grid.eMask, toleranceMeters: ia.grid.toleranceMeters },
+    };
+  }
+
+  /**
+   * ข้อเท็จจริงของสถานที่ คำนวณจากโลกเกมด้วยระบบเดิมทั้งหมด:
+   * ทิศ/ระยะเส้นตรง (Compass, ScaleSystem) · ระยะตามถนน (measureRoute) · ความสูง (ElevationModel)
+   * · ต้นน้ำ/ปลายน้ำ (analyzeWaterway: ลำดับช่องจากต้นน้ำ) · พิกัด (GridSystem)
+   */
+  integratedFacts(landmarkId: string): SiteFacts | null {
+    const ia = this.level.integratedSiteAnalysis;
+    const lm = this.level.landmarks.find((l) => l.id === landmarkId);
+    const from = ia ? this.landmarkPoints[ia.distance.fromId] : undefined;
+    const ww = ia ? this.waterways.get(ia.terrain.waterwayId) : undefined;
+    const ref = ia ? this.landmarkPoints[ia.terrain.ofId] : undefined;
+    if (!ia || !lm || !from || !ww || !ref || !this.coords || !this.elevation) return null;
+    const idx = (p: TilePoint) => {
+      let best = 0;
+      let bestD = Infinity;
+      ww.tiles.forEach((t, i) => {
+        const d = Math.hypot(t.x - p.x, t.y - p.y);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      return best;
+    };
+    const si = idx(lm.at);
+    const ri = idx(ref);
+    const g = this.coords.tileToGrid(lm.at);
+    return {
+      direction: bearingToDirection8(bearingDeg(lm.at.x - from.x, lm.at.y - from.y)),
+      straightMeters: straightMeters(from, lm.at, this.scale),
+      roadMeters: roadMetersBetween(this.grid, this.scale, from, lm.at),
+      symbol: lm.symbol ?? null,
+      elevationMeters: this.elevation.heightAt(lm.at.x, lm.at.y),
+      waterRelation: si < ri ? 'upstream' : si > ri ? 'downstream' : 'same',
+      e: g.e,
+      n: g.n,
+    };
+  }
+
+  evaluateIntegratedSites(): Array<{ landmarkId: string; label: string; failed: IntegratedCheck[]; report: IntegratedReport; facts: SiteFacts }> {
+    const ia = this.level.integratedSiteAnalysis;
+    const ev = this.integratedEvidence();
+    if (!ia || !ev) return [];
+    return ia.candidates.flatMap((c) => {
+      const facts = this.integratedFacts(c.landmarkId);
+      if (!facts) return [];
+      const report = evaluateIntegratedSite(facts, ev);
+      return [{ landmarkId: c.landmarkId, label: c.label, failed: report.failed, report, facts }];
+    });
+  }
+
+  private resolveIntegratedText(text: string): string {
+    const ia = this.level.integratedSiteAnalysis;
+    if (!ia || !text.includes('{{ia:')) return text;
+    const n = this.integratedTargetN();
+    const values: Record<string, string> = {
+      dir: THAI_DIRECTION[ia.distance.direction],
+      straight: ia.distance.straightMeters.toLocaleString('en-US'),
+      road: ia.distance.roadMeters.toLocaleString('en-US'),
+      minelev: String(ia.terrain.minElevationMeters),
+      dn: ia.grid.dN.toLocaleString('en-US'),
+      emask: `E ${ia.grid.eMask}`,
+      n: n === null ? '?' : `N ${n.toLocaleString('en-US')}`,
+    };
+    return text.replace(/\{\{ia:(\w+)\}\}/g, (m, k: string) => values[k] ?? m);
   }
 
   /* ---------------- จุดเป้าหมายแบบพิกัดกริด ---------------- */

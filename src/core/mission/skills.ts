@@ -10,7 +10,8 @@ export type SkillId =
   | 'map-symbols'
   | 'map-compare'
   | 'grid-reference'
-  | 'relative-position';
+  | 'relative-position'
+  | 'evidence-synthesis';
 
 export const SKILL_LABEL: Record<SkillId, string> = {
   direction: 'การใช้ทิศทาง 8 ทิศ',
@@ -24,6 +25,7 @@ export const SKILL_LABEL: Record<SkillId, string> = {
   'map-compare': 'การเปรียบเทียบข้อมูลจากแผนที่สองแผ่น',
   'grid-reference': 'การอ่านพิกัดกริด (E เพิ่มไปตะวันออก · N เพิ่มไปเหนือ)',
   'relative-position': 'การบอกตำแหน่งสัมพัทธ์ด้วยทิศและระยะจากจุดอ้างอิง',
+  'evidence-synthesis': 'การบูรณาการหลักฐาน (ระยะทาง · ภูมิประเทศ · พิกัด)',
 };
 
 export const ALL_SKILLS = Object.keys(SKILL_LABEL) as SkillId[];

@@ -29,6 +29,8 @@ export interface TerrainTemplateContext {
 }
 export const GEO_TEMPLATE_PATTERN = /\{\{(dist|dir|mapcm):([\w-]+)>([\w-]+)(?:\*([\d.]+))?\}\}/g;
 export const ROUTE_TEMPLATE_PATTERN = /\{\{route:([\w-]+)\}\}/g;
+/** ระยะตามถนนระหว่างสองสถานที่ — แปลงโดย GameSession (ต้องใช้ข้อมูลถนนของโลกเกม) */
+export const ROAD_TEMPLATE_PATTERN = /\{\{road:([\w-]+)>([\w-]+)\}\}/g;
 
 export function straightLineMeters(a: TilePoint, b: TilePoint, scale: ScaleSystem): number {
   return scale.tilesToMeters(Math.hypot(b.x - a.x, b.y - a.y));
@@ -90,6 +92,7 @@ export function referencedPoints(text: string): string[] {
   for (const m of text.matchAll(GEO_TEMPLATE_PATTERN)) ids.push(m[2], m[3]);
   for (const m of text.matchAll(ELEV_TEMPLATE_PATTERN)) ids.push(m[1]);
   for (const m of text.matchAll(GRID_TEMPLATE_PATTERN)) ids.push(m[2]);
+  for (const m of text.matchAll(ROAD_TEMPLATE_PATTERN)) ids.push(m[1], m[2]);
   return ids;
 }
 

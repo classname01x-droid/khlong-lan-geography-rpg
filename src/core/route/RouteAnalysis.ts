@@ -112,3 +112,35 @@ export function evaluateRoute(m: RouteMetrics, expected: RouteExpectation): Rout
   if (!m.passes.includes(expected.landmarkId)) failed.push('landmark');
   return failed;
 }
+
+/**
+ * ช่องถนนที่ใกล้จุดนี้ที่สุด (ระยะเส้นตรง) ภายในรัศมี maxTiles — ใช้หาทางเข้าจากถนนของสถานที่ที่ไม่ได้อยู่บนถนน
+ * คืน null ถ้าไม่มีถนนในรัศมี
+ */
+export function nearestRoadTile(grid: WorldGrid, p: TilePoint, maxTiles = 6): TilePoint | null {
+  let best: TilePoint | null = null;
+  let bestD = Infinity;
+  for (let y = p.y - maxTiles; y <= p.y + maxTiles; y++) {
+    for (let x = p.x - maxTiles; x <= p.x + maxTiles; x++) {
+      if (!grid.inBounds(x, y) || !isRoadLike(grid, x, y)) continue;
+      const d = Math.hypot(x - p.x, y - p.y);
+      if (d < bestD - 1e-9) {
+        bestD = d;
+        best = { x, y };
+      }
+    }
+  }
+  return best && bestD <= maxTiles ? best : null;
+}
+
+/**
+ * ระยะตามถนน (เมตร) ระหว่างสองสถานที่: จากช่องถนนที่ใกล้ต้นทางที่สุด ไปช่องถนนที่ใกล้ปลายทางที่สุด
+ * คืน null ถ้าสถานที่ใดไม่มีถนนเข้าถึง หรือถนนไม่เชื่อมกัน — แยกจากระยะเส้นตรงโดยสิ้นเชิง
+ */
+export function roadMetersBetween(grid: WorldGrid, scale: ScaleSystem, a: TilePoint, b: TilePoint): number | null {
+  const ra = nearestRoadTile(grid, a);
+  const rb = nearestRoadTile(grid, b);
+  if (!ra || !rb) return null;
+  const m = measureRoute(grid, scale, ra, rb, [], []);
+  return m.connected ? m.roadMeters : null;
+}

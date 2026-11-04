@@ -1,7 +1,8 @@
 import { bearingDeg, bearingToDirection8 } from '../core/direction/Compass';
-import { evaluateRoute, measureRoute, straightMeters } from '../core/route/RouteAnalysis';
+import { evaluateRoute, measureRoute, roadMetersBetween, straightMeters } from '../core/route/RouteAnalysis';
 import { defaultScale, type ScaleSystem } from '../core/scale/ScaleSystem';
-import { referencedPoints, referencedRoutes, referencedWaterways } from '../core/text/geoTemplate';
+import { referencedPoints, referencedRoutes, referencedWaterways, ROAD_TEMPLATE_PATTERN } from '../core/text/geoTemplate';
+import { INTEGRATED_CHECKS } from '../core/site/IntegratedSiteAnalysis';
 import { THAI_DIRECTION } from '../core/direction/Compass';
 import { GameSession } from '../core/session/GameSession';
 import { ElevationModel } from '../core/world/Elevation';
@@ -49,7 +50,7 @@ export function validateLevel(
   const checkText = (where: string, text: string) => {
     for (const ref of referencedPoints(text)) {
       // 'site-analysis' = จุดที่ระบบวิเคราะห์ได้ (ใช้ได้เมื่อด่านมีการวิเคราะห์สถานที่)
-      if (ref === 'site-analysis' && (level.siteAnalysis || level.gridSiteAnalysis)) continue;
+      if (ref === 'site-analysis' && (level.siteAnalysis || level.gridSiteAnalysis || level.integratedSiteAnalysis)) continue;
       if (!landmarkIds.has(ref)) errors.push(`${where} อ้างถึงจุดสังเกตที่ไม่มี: ${ref}`);
     }
     for (const ref of referencedRoutes(text)) {
@@ -58,6 +59,15 @@ export function validateLevel(
     for (const ref of referencedWaterways(text)) {
       if (!waterwayIds.has(ref)) errors.push(`${where} อ้างถึงลำน้ำที่ไม่มี: ${ref}`);
     }
+    // {{road:a>b}} ต้องมีถนนเชื่อมจริง · {{ia:...}} ต้องมีข้อมูลหลักฐานรวม
+    for (const m of text.matchAll(ROAD_TEMPLATE_PATTERN)) {
+      const a = level.landmarks.find((l) => l.id === m[1]);
+      const b = level.landmarks.find((l) => l.id === m[2]);
+      if (a && b && roadMetersBetween(grid, scale, a.at, b.at) === null) {
+        errors.push(`${where}: ไม่มีถนนเชื่อม ${m[1]} กับ ${m[2]} (ใช้ {{road}} ไม่ได้)`);
+      }
+    }
+    if (text.includes('{{ia:') && !level.integratedSiteAnalysis) errors.push(`${where} ใช้ {{ia:...}} แต่ด่านไม่มีหลักฐานรวม`);
   };
   const checkEffects = (where: string, effects: Effect[] | undefined) => {
     for (const e of effects ?? []) {
@@ -212,7 +222,9 @@ export function validateLevel(
         if (pin.correctWisdomId !== level.gridSiteAnalysis.placeType) {
           errors.push('ปักหมุด: ประเภทสถานที่ที่ถูกต้องต้องตรงกับ placeType ของจุดเป้าหมาย');
         }
-      } else errors.push('ปักหมุดแบบคำนวณเป้าหมายต้องมี siteAnalysis หรือ gridSiteAnalysis');
+      } else if (!level.integratedSiteAnalysis) {
+        errors.push('ปักหมุดแบบคำนวณเป้าหมายต้องมี siteAnalysis, gridSiteAnalysis หรือ integratedSiteAnalysis');
+      }
     } else if (!landmarkIds.has(pin.targetId)) errors.push(`เป้าหมายปักหมุดไม่มีอยู่จริง: ${pin.targetId}`);
     if (!pin.wisdomChoices.some((c) => c.id === pin.correctWisdomId)) errors.push('ปักหมุด: ไม่มีประเภทภูมิปัญญาที่ถูก');
     for (const id of pin.requiredEvidenceIds) {
@@ -322,6 +334,43 @@ export function validateLevel(
     }
     if (ga.correctLandmarkId && passing[0] !== ga.correctLandmarkId) {
       errors.push(`เป้าหมายที่ตั้งใจ (${ga.correctLandmarkId}) ไม่ตรงกับผลคำนวณ (${passing.join(', ') || 'ไม่มี'})`);
+    }
+  }
+
+  // ---- จุดเป้าหมายแบบหลักฐานรวม (ด่านสุดท้าย) — ตรวจความสอดคล้องกับโลกเกมอัตโนมัติ ----
+  const ia = level.integratedSiteAnalysis;
+  if (ia) {
+    if (!level.grid) errors.push('หลักฐานรวมต้องกำหนด level.grid (พิกัด E/N)');
+    if (!level.map.elevation) errors.push('หลักฐานรวมต้องมีข้อมูลระดับความสูง');
+    if (!waterwayIds.has(ia.terrain.waterwayId)) errors.push(`หลักฐานรวมอ้างถึงลำน้ำที่ไม่มี: ${ia.terrain.waterwayId}`);
+    for (const id of [ia.distance.fromId, ia.terrain.ofId, ia.grid.fromId]) {
+      if (!landmarkIds.has(id)) errors.push(`หลักฐานรวมอ้างถึงจุดสังเกตที่ไม่มี: ${id}`);
+    }
+    if (ia.candidates.length < 3) errors.push('ต้องมีจุดเป้าหมายอย่างน้อย 3 แห่ง');
+    for (const id of ia.requiredClueIds) if (!clueIds.has(id)) errors.push(`หลักฐานรวมอ้างถึงเบาะแสที่ไม่มี: ${id}`);
+    for (const c of ia.candidates) {
+      if (!landmarkIds.has(c.landmarkId)) errors.push(`จุดเป้าหมายไม่มีอยู่จริง: ${c.landmarkId}`);
+      if (c.evidenceId && !evidenceIds.has(c.evidenceId)) errors.push(`จุดเป้าหมาย ${c.landmarkId} อ้างถึงหลักฐานที่ไม่มี: ${c.evidenceId}`);
+    }
+    const rows = session.evaluateIntegratedSites();
+    if (rows.length !== ia.candidates.length) errors.push('คำนวณข้อเท็จจริงของจุดเป้าหมายไม่ครบ');
+    for (const r of rows) {
+      if (r.facts.roadMeters === null) errors.push(`จุด ${r.landmarkId} ไม่มีถนนเชื่อมจากจุดอ้างอิงระยะทาง`);
+      // ทุกจุดต้องดูเหมือนคำตอบอย่างน้อยหนึ่งทาง (ผ่านหลักฐานอย่างน้อย 1 ชนิด)
+      if (r.failed.length === INTEGRATED_CHECKS.length) errors.push(`จุด ${r.landmarkId} ไม่ผ่านหลักฐานข้อใดเลย จึงไม่ดูเหมือนคำตอบ`);
+    }
+    const passing = rows.filter((r) => r.failed.length === 0).map((r) => r.landmarkId);
+    if (passing.length !== 1) errors.push(`จุดที่ผ่านหลักฐานรวมทุกข้อต้องมีจุดเดียว (ตอนนี้: ${passing.join(', ') || 'ไม่มี'})`);
+    // ห้ามตอบได้จากหลักฐานข้อเดียว: หลักฐานแต่ละชนิดต้องชี้ได้อย่างน้อย 2 จุด
+    for (const check of INTEGRATED_CHECKS) {
+      const n = rows.filter((r) => !r.failed.includes(check)).length;
+      if (n < 2) errors.push(`หลักฐาน "${check}" เพียงข้อเดียวชี้ได้ ${n} จุด — ผู้เล่นจะตอบได้โดยไม่ต้องใช้หลักฐานอื่น`);
+    }
+    if (ia.correctLandmarkId && passing[0] !== ia.correctLandmarkId) {
+      errors.push(`เป้าหมายที่ตั้งใจ (${ia.correctLandmarkId}) ไม่ตรงกับผลคำนวณ (${passing.join(', ') || 'ไม่มี'})`);
+    }
+    if (level.pinTask?.targetId === 'site-analysis' && level.pinTask.correctWisdomId !== ia.placeType) {
+      errors.push('ประเภทสถานที่ของการปักหมุดไม่ตรงกับหลักฐานรวม');
     }
   }
 

@@ -1,5 +1,6 @@
 import { khlongNamLaiLevel } from './levels/khlongnamlai';
 import { pongNamRonLevel } from './levels/pongnamron';
+import { khlongLanPattanaLevel } from './levels/khlonglanpattana';
 import { sakNgamLevel } from './levels/sakngam';
 import type { ProgressData } from '../core/progress/ProgressStore';
 import type { LevelDefinition } from './types';
@@ -8,7 +9,7 @@ import type { LevelDefinition } from './types';
  * ทะเบียนด่านที่เล่นได้ — เพิ่มตำบลใหม่โดยสร้างโฟลเดอร์ใน content/levels/
  * แล้วนำมาใส่ในอาร์เรย์นี้ (ระบบเกมไม่ต้องแก้)
  */
-export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLevel, pongNamRonLevel];
+export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLevel, pongNamRonLevel, khlongLanPattanaLevel];
 
 export const DEFAULT_LEVEL_ID = sakNgamLevel.id;
 
@@ -29,8 +30,8 @@ export interface LevelSlot {
 
 /**
  * 4 ตำบลของอำเภอคลองลาน = 4 ด่าน = รหัสลับ 4 ชิ้น
- * ด่าน 2–4 ยังไม่สร้าง (status 'planned') — id 'level-2'…'level-4' คงไว้เพื่อให้ข้อมูลบันทึกเดิมใช้ได้
- * เมื่อสร้างเนื้อหาแล้ว: เพิ่มด่านใน LEVELS (id เดียวกัน) แล้วเปลี่ยน status เป็น 'available'
+ * id 'level-2'…'level-4' คงเดิมเพื่อให้ข้อมูลบันทึกเดิมใช้ได้ · ทุกด่านมีเนื้อหาแล้ว (ด่าน 4 เป็นต้นแบบ)
+ * ช่องที่ยังไม่มีเนื้อหาให้ใช้ status 'planned' — ปลดล็อกได้แต่ระบบไม่ให้เข้าเล่น (canEnterLevel)
  */
 const slot = (
   id: string,
@@ -49,11 +50,12 @@ const slot = (
 
 export const LEVEL_SEQUENCE: readonly LevelSlot[] = [
   slot(sakNgamLevel.id, sakNgamLevel.tambon, sakNgamLevel.title, 'available', 1),
-  // ด่าน 2 (ต้นแบบ) ธีม "ภารกิจทรัพยากรชุมชน" — เล่นได้เมื่อปลดล็อกจากการจบด่าน 1 เท่านั้น
+  // ด่าน 2 ธีม "ภารกิจทรัพยากรชุมชน" — เล่นได้เมื่อปลดล็อกจากการจบด่าน 1 เท่านั้น
   slot(khlongNamLaiLevel.id, khlongNamLaiLevel.tambon, khlongNamLaiLevel.title, 'available', 2),
-  // ด่าน 3 (ต้นแบบ) — เล่นได้เมื่อปลดล็อกจากการจบด่าน 2 เท่านั้น
+  // ด่าน 3 — เล่นได้เมื่อปลดล็อกจากการจบด่าน 2 เท่านั้น
   slot(pongNamRonLevel.id, pongNamRonLevel.tambon, pongNamRonLevel.title, 'available', 3),
-  slot('level-4', 'ตำบลคลองลานพัฒนา', 'ปริศนาบูรณาการภูมิศาสตร์', 'planned', 4),
+  // ด่าน 4 (ด่านสุดท้าย, ต้นแบบ) — เล่นได้เมื่อปลดล็อกจากการจบด่าน 3 เท่านั้น
+  slot(khlongLanPattanaLevel.id, khlongLanPattanaLevel.tambon, khlongLanPattanaLevel.title, 'available', 4),
 ];
 
 export function getLevel(id: string): LevelDefinition {
