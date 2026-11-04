@@ -152,5 +152,42 @@ export function validateLevel(
   }
   if (level.ending) checkNodes('ข้อความตอนจบ', level.ending.messages);
 
+  // ---- จุดตรวจค้น ----
+  for (const p of level.inspectPoints ?? []) {
+    if (!grid.inBounds(p.at.x, p.at.y)) errors.push(`จุดตรวจค้น ${p.id} อยู่นอกแผนที่`);
+    else if (!isPointReachable(grid, reachable, p.at)) errors.push(`จุดตรวจค้น ${p.id} เดินไปไม่ถึง`);
+    checkNodes(`จุดตรวจค้น ${p.id}`, p.nodes);
+  }
+
+  // ---- ภารกิจ ----
+  const questIds = new Set<string>();
+  const steps = new Set(level.story.map((st) => st.order));
+  const mains = (level.quests ?? []).filter((q) => q.kind === 'main');
+  if (level.quests && mains.length !== 1) errors.push('ต้องมีภารกิจหลัก 1 ภารกิจต่อด่าน');
+  for (const q of level.quests ?? []) {
+    if (questIds.has(q.id)) errors.push(`id ภารกิจซ้ำ: ${q.id}`);
+    questIds.add(q.id);
+    if (q.objectives.length === 0) errors.push(`ภารกิจ ${q.id} ไม่มีเป้าหมาย`);
+    for (const c of q.unlockWhen?.clues ?? []) {
+      if (!clueIds.has(c)) errors.push(`ภารกิจ ${q.id} ปลดล็อกด้วยเบาะแสที่ไม่มี: ${c}`);
+    }
+    checkEffects(`รางวัลภารกิจ ${q.id}`, q.reward?.effects);
+    for (const o of q.objectives) {
+      const d = o.done;
+      const bad =
+        (d.type === 'step' && !steps.has(d.order)) ||
+        (d.type === 'discover' && !landmarkIds.has(d.landmarkId)) ||
+        (d.type === 'clue' && !clueIds.has(d.clueId)) ||
+        (d.type === 'evidence' && !evidenceIds.has(d.evidenceId)) ||
+        (d.type === 'talk' && !npcIds.has(d.npcId)) ||
+        (d.type === 'routesExplored' && d.count > routeIds.size);
+      if (bad) errors.push(`ภารกิจ ${q.id} มีเป้าหมายที่อ้างถึงข้อมูลที่ไม่มี: ${JSON.stringify(d)}`);
+    }
+  }
+  if (mains[0]) {
+    const covered = new Set(mains[0].objectives.flatMap((o) => (o.done.type === 'step' ? [o.done.order] : [])));
+    for (const st of level.story) if (!covered.has(st.order)) errors.push(`ภารกิจหลักไม่ครอบคลุมฉาก ${st.order}`);
+  }
+
   return errors;
 }

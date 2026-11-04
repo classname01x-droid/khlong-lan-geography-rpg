@@ -50,4 +50,10 @@ export class DistanceTracker {
   resetTrip(): void {
     this.tripPx = 0;
   }
+
+  /** คืนค่าระยะทางรวมจากเกมที่บันทึกไว้ (ระยะช่วงที่วัดเริ่มใหม่) */
+  restoreTotal(totalMeters: number): void {
+    this.totalPx = Math.max(0, this.scale.metersToPx(totalMeters));
+    this.tripPx = 0;
+  }
 }

@@ -82,6 +82,7 @@ export const sakNgamNpcs: NpcDefinition[] = [
             text: 'ลุงเคยวัดบนแผนที่มาตราส่วน 1:10,000 จากศาลาถึงแหล่งผ้าปักเป็นเส้นตรง ได้ {{mapcm:sala>nai-chiao}} เซนติเมตร',
             effects: [{ type: 'clue', clueId: 'clue-distance' }],
           },
+          { quiz: 'scale' },
           {
             speaker: HEADMAN,
             text: 'แต่ทางเดินจริงมีทางแยกหลายทาง ลองถามลุงคำที่ริมลำห้วย กับป้าศรีที่ต้นสักใหญ่ แล้วนำเบาะแสมาวิเคราะห์ในสมุดภาคสนาม',
@@ -180,6 +181,21 @@ export const sakNgamNpcs: NpcDefinition[] = [
           {
             speaker: NUAN,
             text: 'ต่อไปเปิดแผนที่ (M) แล้วปักหมุดตำแหน่งแหล่งผ้าปักนี้ด้วยตัวเอง ครูเนมจะได้รับข้อมูลผ่านสมุดภาคสนาม',
+          },
+          {
+            speaker: NUAN,
+            text: 'อีกเรื่องหนึ่ง ผ้าปักผืนแรกของหมู่บ้านมีลายบอกทางซ่อนอยู่ ป้าจดความหมายลงสมุดให้แล้ว ถ้าอยากรู้ลองตามไปดูนะ',
+            effects: [{ type: 'clue', clueId: 'clue-old-cloth' }],
+          },
+        ],
+      },
+      {
+        when: { flags: ['mystery-found'], notFlags: ['told-nuan-mystery'] },
+        nodes: [
+          {
+            speaker: NUAN,
+            text: 'หลานเจอเศษผ้าใต้ต้นไม้ใหญ่จริง ๆ หรือ! ลายนั้นคือลายที่บรรพบุรุษปักไว้ ขอบใจที่ช่วยตามหานะ',
+            effects: [{ type: 'flag', flag: 'told-nuan-mystery' }],
           },
         ],
       },

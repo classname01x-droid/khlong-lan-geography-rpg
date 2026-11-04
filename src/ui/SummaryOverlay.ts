@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import { ALL_SKILLS, SKILL_LABEL } from '../core/mission/skills';
+import type { CodePiece } from '../core/progress/ProgressStore';
 import type { GameSession } from '../core/session/GameSession';
 import { fmtDuration, fmtMeters } from './format';
 import { COLORS, textStyle } from './theme';
@@ -34,7 +35,7 @@ export class SummaryOverlay {
       .setVisible(false);
   }
 
-  render(s: GameSession, unlockedName: string | null): void {
+  render(s: GameSession, unlockedName: string | null, collected: CodePiece[] = []): void {
     if (s.mode !== 'summary') {
       this.root.setVisible(false);
       return;
@@ -50,6 +51,7 @@ export class SummaryOverlay {
         `จำนวนครั้งที่ตอบผิด: ${sum.mistakes}`,
         `   (ปริศนา ${sum.mistakesBy.quiz} · เส้นทาง ${sum.mistakesBy.route} · ปักหมุด ${sum.mistakesBy.pin})`,
         `เวลาที่ใช้: ${fmtDuration(sum.elapsedMs)}`,
+        `ภารกิจ: หลัก ${sum.quests.main.done}/${sum.quests.main.total} · รอง ${sum.quests.side.done}/${sum.quests.side.total} · ปริศนา ${sum.quests.mystery.done}/${sum.quests.mystery.total}`,
       ].join('\n'),
     );
     this.skills.setText(
@@ -61,6 +63,9 @@ export class SummaryOverlay {
     this.reward.setText(
       [
         e ? `ได้รับรหัสลับชิ้นที่ ${e.codePiece.index}/${e.codePiece.total}: "${e.codePiece.value}"  ·  ${e.rewardItem}` : '',
+        e && collected.length > 0
+          ? `รหัสลับที่สะสม: ${Array.from({ length: e.codePiece.total }, (_, i) => collected.find((c) => c.index === i + 1)?.value ?? '?').join(' · ')}`
+          : '',
         unlockedName ? `ปลดล็อก: ${unlockedName}` : '',
       ]
         .filter(Boolean)

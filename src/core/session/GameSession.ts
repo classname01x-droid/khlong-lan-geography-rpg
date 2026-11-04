@@ -5,8 +5,13 @@ import type {
   DialogueNode,
   DialogueVariant,
   Effect,
+  InspectPoint,
+  Landmark,
   LevelDefinition,
   NpcDefinition,
+  ObjectiveCondition,
+  QuestDefinition,
+  QuestKind,
   RouteDefinition,
   StoryStep,
   TriggerZone,
@@ -30,8 +35,46 @@ import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary';
-export type NotebookTab = 'clues' | 'routes' | 'records';
-export const NOTEBOOK_TABS: readonly NotebookTab[] = ['clues', 'routes', 'records'];
+export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
+export const NOTEBOOK_TABS: readonly NotebookTab[] = ['quests', 'clues', 'routes', 'records'];
+
+export type QuestStatus = 'locked' | 'active' | 'completed';
+
+export const QUEST_KIND_LABEL: Record<QuestKind, string> = {
+  main: 'ภารกิจหลัก',
+  side: 'ภารกิจรอง',
+  mystery: 'ภารกิจปริศนา',
+};
+
+export interface QuestView {
+  def: QuestDefinition;
+  status: QuestStatus;
+  objectivesDone: boolean[];
+}
+
+export type QuestCounts = Record<QuestKind, { done: number; total: number }>;
+
+/** สถานะที่บันทึกได้ของการเล่นกลางด่าน (JSON) */
+export interface SessionSnapshot {
+  version: 1;
+  levelId: string;
+  flags: string[];
+  clues: string[];
+  evidence: string[];
+  mistakes: { quiz: number; route: number; pin: number };
+  skills: string[];
+  firedTriggers: string[];
+  seenVariants: string[];
+  talkedTo: string[];
+  messages: Array<{ speaker: string; text: string }>;
+  quests: Record<string, QuestStatus>;
+  fog: string;
+  totalMeters: number;
+  elapsedMs: number;
+  player: TilePoint;
+  pinnedAt: TilePoint | null;
+  completed: boolean;
+}
 
 export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
   direction: 'ทิศทาง',
@@ -75,6 +118,7 @@ export interface LevelSummary {
   mistakesBy: { quiz: number; route: number; pin: number };
   elapsedMs: number;
   skills: SkillId[];
+  quests: QuestCounts;
 }
 
 type DialoguePurpose = 'npc' | 'ending';
@@ -112,6 +156,7 @@ export class GameSession {
   /** ข้อความแจ้งเตือนที่รอให้ UI แสดง */
   readonly pendingToasts: string[] = [];
 
+  readonly questStatus = new Map<string, QuestStatus>();
   readonly routeMetrics = new Map<string, RouteMetrics>();
   readonly routeMeters: Record<string, number> = {};
 
@@ -123,7 +168,7 @@ export class GameSession {
   facing: Direction8 = 'S';
   elapsedMs = 0;
   completed = false;
-  notebookTab: NotebookTab = 'clues';
+  notebookTab: NotebookTab = 'quests';
   routeFeedback: string | null = null;
   pinCursor: TilePoint | null = null;
   pinStage: 'none' | 'cursor' | 'wisdom' = 'none';
@@ -142,6 +187,7 @@ export class GameSession {
     this.playerTile = { ...level.spawn };
     this.landmarkPoints = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
     this.measureRoutes();
+    this.updateQuests(true);
   }
 
   /* ---------------- พื้นฐาน ---------------- */
@@ -165,11 +211,21 @@ export class GameSession {
         found.push(lm.id);
       }
     }
+    if (found.length > 0) this.updateQuests();
     return found;
   }
 
+  /** จุดสังเกตนี้แสดงป้าย/บนแผนที่ได้หรือยัง (ค้นพบแล้ว และไม่ใช่จุดลับที่ยังไม่เปิดเผย) */
+  isLandmarkVisible(lm: Landmark): boolean {
+    return (
+      this.discoveredLandmarks.has(lm.id) && lm.showLabel && (!lm.revealFlag || this.flags.has(lm.revealFlag))
+    );
+  }
+
   noteSkill(skill: SkillId): void {
+    if (this.skills.has(skill)) return;
     this.skills.add(skill);
+    this.updateQuests();
   }
 
   toast(message: string): void {
@@ -206,6 +262,7 @@ export class GameSession {
     if (cond.maxStep !== undefined && step > cond.maxStep) return false;
     if (cond.flags?.some((f) => !this.flags.has(f))) return false;
     if (cond.notFlags?.some((f) => this.flags.has(f))) return false;
+    if (cond.clues?.some((c) => !this.clues.includes(c))) return false;
     return true;
   }
 
@@ -283,6 +340,7 @@ export class GameSession {
     this.dialogue = null;
     if (d.npcId) this.talkedTo.add(d.npcId);
     if (d.variantKey) this.seenVariants.add(d.variantKey);
+    this.updateQuests();
     if (d.purpose === 'ending') {
       this.completeMission();
       this.mode = 'summary';
@@ -408,6 +466,7 @@ export class GameSession {
     const ok = failed.length === 0 && route.id === ra.correctRouteId;
     if (ok) this.flags.add(ra.successFlag);
     else this.mistakes.route++;
+    this.updateQuests();
     return { ok, failed };
   }
 
@@ -446,6 +505,7 @@ export class GameSession {
       this.flags.add(p.successFlag);
       this.pinnedAt = { ...tile };
       this.skills.add('grid-coordinates');
+      this.updateQuests();
     }
     return { ok, problems };
   }
@@ -456,6 +516,7 @@ export class GameSession {
     const ending = this.level.ending;
     if (ending) this.flags.add(ending.completeFlag);
     this.completed = true;
+    this.updateQuests();
     return this.summary();
   }
 
@@ -469,6 +530,156 @@ export class GameSession {
       mistakesBy: { ...m },
       elapsedMs: this.elapsedMs,
       skills: [...this.skills],
+      quests: this.questCounts(),
     };
+  }
+
+  /* ---------------- ระบบภารกิจ: หลัก / รอง / ปริศนา ---------------- */
+
+  objectiveDone(c: ObjectiveCondition): boolean {
+    switch (c.type) {
+      case 'step': {
+        const step = this.level.story.find((st) => st.order === c.order);
+        return !!step && this.isStepComplete(step);
+      }
+      case 'flag':
+        return this.flags.has(c.flag);
+      case 'discover':
+        return this.discoveredLandmarks.has(c.landmarkId);
+      case 'clue':
+        return this.clues.includes(c.clueId);
+      case 'evidence':
+        return this.evidence.includes(c.evidenceId);
+      case 'talk':
+        return this.talkedTo.has(c.npcId);
+      case 'skill':
+        return this.skills.has(c.skill as SkillId);
+      case 'routesExplored':
+        return this.routeRows().filter((r) => r.explored).length >= c.count;
+    }
+  }
+
+  /**
+   * อัปเดตสถานะภารกิจ: ล็อก → กำลังทำ (เมื่อเงื่อนไขปลดล็อกเป็นจริง) → สำเร็จ (เมื่อเป้าหมายย่อยครบ)
+   * สถานะเดินหน้าอย่างเดียว ไม่ย้อนกลับ; รางวัลของภารกิจทำงานครั้งเดียวตอนสำเร็จ
+   */
+  updateQuests(silent = false): void {
+    const quests = this.level.quests ?? [];
+    for (let changed = true, guard = 0; changed && guard < 10; guard++) {
+      changed = false;
+      for (const q of quests) {
+        const status = this.questStatus.get(q.id) ?? 'locked';
+        if (status === 'locked' && this.matches(q.unlockWhen)) {
+          this.questStatus.set(q.id, 'active');
+          if (!silent) this.toast(`${QUEST_KIND_LABEL[q.kind]}ใหม่: ${q.title}`);
+          changed = true;
+        } else if (status === 'active' && q.objectives.every((o) => this.objectiveDone(o.done))) {
+          this.questStatus.set(q.id, 'completed');
+          for (const e of q.reward?.effects ?? []) this.applyEffect(e);
+          if (!silent) this.toast(`${QUEST_KIND_LABEL[q.kind]}สำเร็จ: ${q.title}`);
+          changed = true;
+        } else if (!this.questStatus.has(q.id)) {
+          this.questStatus.set(q.id, status);
+        }
+      }
+    }
+  }
+
+  quests(): QuestView[] {
+    return (this.level.quests ?? []).map((def) => ({
+      def,
+      status: this.questStatus.get(def.id) ?? 'locked',
+      objectivesDone: def.objectives.map((o) => this.objectiveDone(o.done)),
+    }));
+  }
+
+  questCounts(): QuestCounts {
+    const counts: QuestCounts = {
+      main: { done: 0, total: 0 },
+      side: { done: 0, total: 0 },
+      mystery: { done: 0, total: 0 },
+    };
+    for (const q of this.quests()) {
+      counts[q.def.kind].total++;
+      if (q.status === 'completed') counts[q.def.kind].done++;
+    }
+    return counts;
+  }
+
+  /* ---------------- จุดตรวจค้น ---------------- */
+
+  /** จุดตรวจค้นที่อยู่ในระยะของช่องนี้ และเงื่อนไขตรง */
+  inspectPointAt(tile: TilePoint): InspectPoint | undefined {
+    return this.level.inspectPoints?.find(
+      (p) => Math.hypot(p.at.x - tile.x, p.at.y - tile.y) <= p.radiusTiles && this.matches(p.when),
+    );
+  }
+
+  inspect(point: InspectPoint): void {
+    this.startDialogue(point.nodes, 'npc', null, null);
+  }
+
+  /* ---------------- บันทึก / โหลดการเล่นกลางด่าน ---------------- */
+
+  toSnapshot(): SessionSnapshot {
+    return {
+      version: 1,
+      levelId: this.level.id,
+      flags: [...this.flags],
+      clues: [...this.clues],
+      evidence: [...this.evidence],
+      mistakes: { ...this.mistakes },
+      skills: [...this.skills],
+      firedTriggers: [...this.firedTriggers],
+      seenVariants: [...this.seenVariants],
+      talkedTo: [...this.talkedTo],
+      messages: this.messages.map((m) => ({ ...m })),
+      quests: Object.fromEntries(this.questStatus),
+      fog: this.fog.exportBits(),
+      totalMeters: this.odometer.totalMeters,
+      elapsedMs: this.elapsedMs,
+      player: { ...this.playerTile },
+      pinnedAt: this.pinnedAt ? { ...this.pinnedAt } : null,
+      completed: this.completed,
+    };
+  }
+
+  /**
+   * โหลดสถานะที่บันทึกไว้ (ใช้กับ session ใหม่ที่ยังไม่ได้เล่น)
+   * คืน false ถ้าข้อมูลไม่ใช่ของด่านนี้หรือรูปแบบไม่ถูกต้อง — กรณีนี้ session ไม่ถูกแก้ไข
+   */
+  restore(snap: SessionSnapshot): boolean {
+    if (!snap || snap.version !== 1 || snap.levelId !== this.level.id) return false;
+    if (!this.grid.inBounds(snap.player?.x ?? -1, snap.player?.y ?? -1)) return false;
+    const fog = new FogOfWar(this.grid.width, this.grid.height);
+    if (!fog.importBits(snap.fog)) return false;
+    this.fog.importBits(snap.fog);
+    const fill = <T>(target: Set<T>, items: T[]) => {
+      target.clear();
+      for (const i of items) target.add(i);
+    };
+    fill(this.flags, snap.flags);
+    fill(this.skills, snap.skills as SkillId[]);
+    fill(this.firedTriggers, snap.firedTriggers);
+    fill(this.seenVariants, snap.seenVariants);
+    fill(this.talkedTo, snap.talkedTo);
+    this.clues.splice(0, this.clues.length, ...snap.clues);
+    this.evidence.splice(0, this.evidence.length, ...snap.evidence);
+    this.messages.splice(0, this.messages.length, ...snap.messages);
+    Object.assign(this.mistakes, snap.mistakes);
+    this.questStatus.clear();
+    for (const [id, st] of Object.entries(snap.quests)) this.questStatus.set(id, st);
+    this.odometer.restoreTotal(snap.totalMeters);
+    this.elapsedMs = snap.elapsedMs;
+    this.playerTile = { ...snap.player };
+    this.pinnedAt = snap.pinnedAt ? { ...snap.pinnedAt } : null;
+    this.completed = snap.completed;
+    this.discoveredLandmarks.clear();
+    this.checkLandmarkDiscovery();
+    this.updateQuests(true);
+    this.pendingToasts.length = 0; // ไม่แจ้งเตือนซ้ำสิ่งที่ค้นพบไปแล้ว
+    this.mode = 'explore';
+    this.uiVersion++;
+    return true;
   }
 }

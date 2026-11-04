@@ -54,8 +54,8 @@ export class DialogueRunner {
         kind: 'quiz',
         speaker: quiz.speaker,
         question: this.hooks.resolveText(quiz.question),
-        choices: quiz.choices.map((c) => c.label),
-        feedback: this.feedback,
+        choices: quiz.choices.map((c) => this.hooks.resolveText(c.label)),
+        feedback: this.feedback === null ? null : this.hooks.resolveText(this.feedback),
         step,
         total,
       };

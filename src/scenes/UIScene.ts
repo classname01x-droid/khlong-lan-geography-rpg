@@ -8,7 +8,8 @@ import { MapOverlay } from '../ui/MapOverlay';
 import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
-import { REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import type { CodePiece } from '../core/progress/ProgressStore';
 
 /**
  * ชั้น UI ซ้อนบนโลกเกม (กล้องไม่ซูม ตัวอักษรคมชัด)
@@ -94,7 +95,11 @@ export class UIScene extends Phaser.Scene {
       this.dialogueBox.render(s.mode === 'dialogue' ? s.dialogueView : null);
       this.mapOverlay.render();
       this.notebook.render(s);
-      this.summary.render(s, (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null);
+      this.summary.render(
+        s,
+        (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,
+        (this.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
+      );
     } else if (s.mode === 'map') {
       this.mapOverlay.updatePlayer();
     }

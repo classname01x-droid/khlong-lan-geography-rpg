@@ -3,3 +3,5 @@ export const REGISTRY_SESSION = 'session';
 export const REGISTRY_LEVEL_ID = 'levelId';
 /** ชื่อด่านที่เพิ่งปลดล็อก (แสดงในหน้าสรุปผล) */
 export const REGISTRY_UNLOCKED = 'unlockedName';
+/** รหัสลับที่สะสมได้ทั้งหมด (จาก ProgressStore) แสดงในหน้าสรุปผล */
+export const REGISTRY_CODE_PIECES = 'codePieces';

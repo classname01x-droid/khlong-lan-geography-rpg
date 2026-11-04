@@ -58,6 +58,33 @@ export class FogOfWar {
     return this.exploredTotal;
   }
 
+  /** ส่งออกสถานะเป็นข้อความ base64 (1 บิตต่อช่อง) สำหรับบันทึกเกม */
+  exportBits(): string {
+    const bytes = new Uint8Array(Math.ceil(this.explored.length / 8));
+    for (let i = 0; i < this.explored.length; i++) if (this.explored[i]) bytes[i >> 3] |= 1 << (i & 7);
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin);
+  }
+
+  /** โหลดสถานะจาก exportBits(); คืน false ถ้าข้อมูลไม่ตรงขนาดแผนที่ */
+  importBits(data: string): boolean {
+    let bin: string;
+    try {
+      bin = atob(data);
+    } catch {
+      return false;
+    }
+    if (bin.length !== Math.ceil(this.explored.length / 8)) return false;
+    this.exploredTotal = 0;
+    for (let i = 0; i < this.explored.length; i++) {
+      const on = (bin.charCodeAt(i >> 3) >> (i & 7)) & 1;
+      this.explored[i] = on;
+      this.exploredTotal += on;
+    }
+    return true;
+  }
+
   /** สัดส่วนพื้นที่ที่สำรวจแล้ว 0–1 */
   get exploredRatio(): number {
     return this.exploredTotal / (this.width * this.height);

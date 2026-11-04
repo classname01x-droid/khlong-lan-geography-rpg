@@ -19,6 +19,11 @@ export interface Landmark {
   at: TilePoint;
   /** แสดงป้ายชื่อบนแผนที่เมื่อพื้นที่ถูกเปิดแล้ว */
   showLabel: boolean;
+  /**
+   * จุดสังเกตลับ: ไม่แสดงป้าย/แจ้งเตือนเมื่อเปิดหมอก จนกว่าจะมี flag นี้
+   * (ใช้กับปริศนาที่ผู้เล่นต้องวัดระยะหาเอง)
+   */
+  revealFlag?: string;
 }
 
 /* ---------------- เงื่อนไขและผลของบทสนทนา ---------------- */
@@ -30,6 +35,8 @@ export interface Condition {
   maxStep?: number;
   flags?: string[];
   notFlags?: string[];
+  /** ต้องได้เบาะแสเหล่านี้แล้ว */
+  clues?: string[];
 }
 
 export type Effect =
@@ -73,6 +80,51 @@ export interface TriggerZone {
   area: TileRect;
   npcId: string;
   when: Condition;
+}
+
+/** จุดที่ผู้เล่นกด E ตรวจค้นได้ (ไม่ใช่ NPC) เช่น ต้นไม้เก่าในปริศนา */
+export interface InspectPoint {
+  id: string;
+  at: TilePoint;
+  /** ระยะที่ตรวจค้นได้ (ช่อง) */
+  radiusTiles: number;
+  when: Condition;
+  nodes: DialogueNode[];
+}
+
+/* ---------------- ระบบภารกิจ (Quest) ---------------- */
+
+export type QuestKind = 'main' | 'side' | 'mystery';
+
+/** เงื่อนไขของเป้าหมายย่อยในภารกิจ */
+export type ObjectiveCondition =
+  | { type: 'step'; order: number }
+  | { type: 'flag'; flag: string }
+  | { type: 'discover'; landmarkId: string }
+  | { type: 'clue'; clueId: string }
+  | { type: 'evidence'; evidenceId: string }
+  | { type: 'talk'; npcId: string }
+  | { type: 'skill'; skill: string }
+  /** ค้นพบปลายทางของเส้นทางในการวิเคราะห์เส้นทางอย่างน้อย count เส้น */
+  | { type: 'routesExplored'; count: number };
+
+export interface QuestObjective {
+  text: string;
+  done: ObjectiveCondition;
+}
+
+export interface QuestDefinition {
+  id: string;
+  kind: QuestKind;
+  title: string;
+  description: string;
+  /** ไม่ระบุ = เปิดตั้งแต่เริ่มด่าน */
+  unlockWhen?: Condition;
+  /** ข้อความบอกวิธีปลดล็อก (แสดงในสมุดขณะยังล็อก) */
+  lockedHint: string;
+  objectives: QuestObjective[];
+  /** ข้อความรางวัล และผลที่เกิดเมื่อภารกิจสำเร็จ */
+  reward?: { text: string; effects?: Effect[] };
 }
 
 /* ---------------- คำถาม เบาะแส หลักฐาน ---------------- */
@@ -201,6 +253,8 @@ export interface LevelDefinition {
   routeAnalysis?: RouteAnalysisDefinition;
   pinTask?: PinTaskDefinition;
   ending?: EndingDefinition;
+  quests?: QuestDefinition[];
+  inspectPoints?: InspectPoint[];
   /** id ด่านที่ปลดล็อกเมื่อผ่านด่านนี้ */
   unlocks?: string;
 }

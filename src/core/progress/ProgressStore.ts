@@ -1,10 +1,20 @@
 /**
- * บันทึกความคืบหน้าข้ามการเล่น (ด่านที่ผ่าน และด่านที่ปลดล็อก)
+ * บันทึกความคืบหน้าของผู้เล่นข้ามการเล่น — ออกแบบให้รองรับทั้ง 4 ตำบล
+ *   - completed : ผลการผ่านแต่ละด่าน (เก็บผลรอบแรก)
+ *   - unlocked  : ด่านที่ปลดล็อกแล้ว
+ *   - codePieces: รหัสลับที่เก็บได้จากแต่ละตำบล (ใช้รวมรหัสตอนจบเกม)
+ *   - inProgress: สถานะการเล่นกลางด่าน (เล่นต่อได้หลังปิดเบราว์เซอร์)
  * รับ storage แบบ localStorage — ถ้าใช้ไม่ได้ (โหมดส่วนตัว/ถูกบล็อก) จะเก็บในหน่วยความจำแทน
  */
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+}
+
+export interface CodePiece {
+  index: number;
+  total: number;
+  value: string;
 }
 
 export interface LevelResult {
@@ -16,19 +26,46 @@ export interface LevelResult {
   mistakes: number;
   elapsedMs: number;
   skills: string[];
-  codePiece: { index: number; total: number; value: string } | null;
+  codePiece: CodePiece | null;
+  /** จำนวนภารกิจที่สำเร็จ แยกตามประเภท (เพิ่มใน v2) */
+  quests?: Record<string, { done: number; total: number }>;
 }
 
 export interface ProgressData {
-  version: 1;
+  version: 2;
   completed: Record<string, LevelResult>;
   unlocked: string[];
+  codePieces: Record<string, CodePiece>;
+  inProgress: Record<string, unknown>;
 }
 
 export const PROGRESS_KEY = 'khlonglan-geo-rpg:progress';
 
 function emptyProgress(firstLevelId: string): ProgressData {
-  return { version: 1, completed: {}, unlocked: [firstLevelId] };
+  return { version: 2, completed: {}, unlocked: [firstLevelId], codePieces: {}, inProgress: {} };
+}
+
+/** แปลงข้อมูลรุ่นเก่า (v1: completed + unlocked) เป็นรุ่นปัจจุบัน */
+function migrate(raw: unknown, firstLevelId: string): ProgressData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>;
+  if (!Array.isArray(d.unlocked) || typeof d.completed !== 'object' || d.completed === null) return null;
+  const completed = d.completed as Record<string, LevelResult>;
+  if (d.version === 1) {
+    const codePieces: Record<string, CodePiece> = {};
+    for (const [id, r] of Object.entries(completed)) if (r?.codePiece) codePieces[id] = r.codePiece;
+    return { version: 2, completed, unlocked: d.unlocked as string[], codePieces, inProgress: {} };
+  }
+  if (d.version === 2) {
+    const data = d as unknown as ProgressData;
+    return {
+      ...emptyProgress(firstLevelId),
+      ...data,
+      codePieces: data.codePieces ?? {},
+      inProgress: data.inProgress ?? {},
+    };
+  }
+  return null;
 }
 
 export class ProgressStore {
@@ -45,8 +82,8 @@ export class ProgressStore {
     try {
       const raw = this.storage?.getItem(PROGRESS_KEY);
       if (raw) {
-        const data = JSON.parse(raw) as ProgressData;
-        if (data && data.version === 1 && Array.isArray(data.unlocked) && data.completed) return data;
+        const data = migrate(JSON.parse(raw), this.firstLevelId);
+        if (data) return data;
       }
     } catch {
       /* ข้อมูลเสีย/อ่านไม่ได้ → เริ่มใหม่ */
@@ -74,12 +111,39 @@ export class ProgressStore {
     return levelId in this.memory.completed;
   }
 
-  /** บันทึกผลการผ่านด่าน และปลดล็อกด่านถัดไป (ถ้ามี) — เก็บผลรอบแรกที่ผ่านไว้ ถ้าเล่นซ้ำจะไม่ทับ */
+  /**
+   * บันทึกผลการผ่านด่าน เก็บรหัสลับ และปลดล็อกด่านถัดไป (ถ้ามี)
+   * เก็บผลรอบแรกที่ผ่านไว้ ถ้าเล่นซ้ำจะไม่ทับ และล้างสถานะกลางด่านของด่านนั้น
+   */
   completeLevel(result: LevelResult, unlockLevelId?: string): ProgressData {
     if (!this.memory.completed[result.levelId]) this.memory.completed[result.levelId] = result;
+    if (result.codePiece && !this.memory.codePieces[result.levelId]) {
+      this.memory.codePieces[result.levelId] = result.codePiece;
+    }
     if (unlockLevelId && !this.memory.unlocked.includes(unlockLevelId)) this.memory.unlocked.push(unlockLevelId);
+    delete this.memory.inProgress[result.levelId];
     this.write();
     return this.memory;
+  }
+
+  /** รหัสลับที่เก็บได้ เรียงตามลำดับชิ้น */
+  collectedCodePieces(): CodePiece[] {
+    return Object.values(this.memory.codePieces).sort((a, b) => a.index - b.index);
+  }
+
+  saveInProgress(levelId: string, snapshot: unknown): void {
+    this.memory.inProgress[levelId] = snapshot;
+    this.write();
+  }
+
+  loadInProgress(levelId: string): unknown {
+    return this.memory.inProgress[levelId] ?? null;
+  }
+
+  clearInProgress(levelId: string): void {
+    if (!(levelId in this.memory.inProgress)) return;
+    delete this.memory.inProgress[levelId];
+    this.write();
   }
 }
 

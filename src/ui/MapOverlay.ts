@@ -156,7 +156,7 @@ export class MapOverlay {
     g.lineStyle(2, COLORS.panelBorder, 1).strokeRect(mx, my, width * cell, height * cell);
 
     for (const lm of s.level.landmarks) {
-      if (!s.discoveredLandmarks.has(lm.id)) continue;
+      if (!s.isLandmarkVisible(lm)) continue;
       const lx = mx + (lm.at.x + 0.5) * cell;
       const ly = my + (lm.at.y + 0.5) * cell;
       g.fillStyle(0xffd84d, 1).fillCircle(lx, ly, 4);

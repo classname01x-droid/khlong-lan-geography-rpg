@@ -19,6 +19,26 @@ describe('มาตราส่วนของเบาะแสระยะท�
     expect(defaultScale.metersToTiles(400)).toBe(40);
   });
 
+  it('3 ซม. บนแผนที่ 1:10,000 = 300 ม. จริง = 30 ช่อง', () => {
+    expect(defaultScale.mapCmToMeters(3)).toBe(300);
+    expect(defaultScale.metersToMapCm(300)).toBe(3);
+    expect(defaultScale.metersToTiles(300)).toBe(30);
+  });
+
+  it('จุดลับภารกิจปริศนาอยู่ทิศตะวันตกของบ้านไหนเจียว 300 ม. (3 ซม.) ตามเบาะแส', () => {
+    expect(resolveGeoTemplate('{{dir:nai-chiao>old-banyan}} {{dist:nai-chiao>old-banyan}} {{mapcm:nai-chiao>old-banyan}}', at, defaultScale)).toBe(
+      'ทิศตะวันตก 300 3',
+    );
+    const key = at['old-banyan'].y * grid.width + at['old-banyan'].x;
+    expect(reachableTiles(grid, level.spawn).has(key)).toBe(true);
+  });
+
+  it('ตัวเลือกคำถามมาตราส่วนคำนวณจากระยะจริง (×10, ×0.1, ×1)', () => {
+    const s = newSession();
+    const quiz = level.quizzes!.find((q) => q.id === 'scale')!;
+    expect(quiz.choices.map((c) => s.resolveText(c.label))).toEqual(['4,000 เมตร', '40 เมตร', '400 เมตร']);
+  });
+
   it('ระยะเส้นตรงศาลา→บ้านไหนเจียวคำนวณจากแผนที่ได้ 400 ม. และเบาะแสแสดง 4 ซม.', () => {
     const s = newSession();
     expect(s.routeExpectation()!.straightMeters).toBeCloseTo(400);

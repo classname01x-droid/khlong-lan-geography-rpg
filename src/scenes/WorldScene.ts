@@ -4,7 +4,7 @@ import { getLevel, getLevelSlot } from '../content/registry';
 import type { NpcDefinition } from '../content/types';
 import { browserStorage, ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
-import { GameSession, NOTEBOOK_TABS } from '../core/session/GameSession';
+import { GameSession, NOTEBOOK_TABS, type SessionSnapshot } from '../core/session/GameSession';
 import { buildWorld } from '../core/world/MapBuilder';
 import { findPath } from '../core/world/pathfinding';
 import type { TilePoint } from '../core/world/types';
@@ -12,7 +12,7 @@ import { Character, Player } from '../entities/Player';
 import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY } from '../graphics/tileIndex';
 import { PIN_PROBLEM_TEXT, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
-import { REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
 
 const S = TILE_SIZE_PX;
 const DEPTH = { characters: 20, labels: 40, grid: 60, fog: 100 } as const;
@@ -47,6 +47,8 @@ export class WorldScene extends Phaser.Scene {
   private labels = new Map<string, Phaser.GameObjects.Text>();
   private lastTileKey = '';
   private walk: ScriptedWalk | null = null;
+  private progress!: ProgressStore;
+  private resetArmedAt = 0;
 
   constructor() {
     super('WorldScene');
@@ -160,9 +162,81 @@ export class WorldScene extends Phaser.Scene {
 
     kb.on('keydown', (ev: KeyboardEvent) => this.onKey(ev));
 
+    // ---- ความคืบหน้า: เล่นต่อจากที่บันทึกไว้ (เพิ่ม ?new=1 ใน URL เพื่อเริ่มใหม่) ----
+    this.progress = new ProgressStore(browserStorage(), level.id);
+    this.tryResume();
+
     this.updateFog(true);
+    this.syncFogLayer();
+    this.refreshLabels();
     this.refreshMarkers();
     this.installTestHooks();
+
+    // บันทึกอัตโนมัติทุก 5 วินาที และตอนปิด/ซ่อนหน้าเว็บ
+    this.time.addEvent({ delay: 5000, loop: true, callback: () => this.autosave() });
+    const onHide = () => this.autosave();
+    window.addEventListener('pagehide', onHide);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('pagehide', onHide));
+
+    // เริ่มด่านใหม่ (restart) → ให้ UI สร้างใหม่ตาม session ใหม่ด้วย
+    if (this.scene.isActive('UIScene')) this.scene.get('UIScene').scene.restart();
+  }
+
+  /* =========================================================
+   * บันทึก / โหลดความคืบหน้า
+   * ========================================================= */
+
+  private tryResume(): void {
+    const s = this.session;
+    if (new URLSearchParams(window.location.search).has('new')) {
+      this.progress.clearInProgress(s.level.id);
+      return;
+    }
+    const snap = this.progress.loadInProgress(s.level.id) as SessionSnapshot | null;
+    if (!snap || !s.restore(snap)) return;
+    const x = (s.playerTile.x + 0.5) * S;
+    const y = (s.playerTile.y + 0.5) * S - 4;
+    this.player.setPosition(x, y);
+    this.player.body.reset(x, y);
+    s.odometer.teleport(x, y);
+    this.cameras.main.centerOn(x, y);
+    s.toast('เล่นต่อจากความคืบหน้าที่บันทึกไว้');
+  }
+
+  /** บันทึกเฉพาะตอนไม่ได้อยู่กลางบทสนทนา เพื่อให้สถานะที่บันทึกสอดคล้องกันเสมอ */
+  private autosave(): void {
+    const s = this.session;
+    if (!s || s.completed || s.inDialogue) return;
+    this.progress.saveInProgress(s.level.id, s.toSnapshot());
+  }
+
+  /** วาดชั้นหมอกให้ตรงกับสถานะ (ใช้หลังโหลดเกม) */
+  private syncFogLayer(): void {
+    const s = this.session;
+    for (let y = 0; y < s.grid.height; y++) {
+      for (let x = 0; x < s.grid.width; x++) {
+        if (s.fog.isExplored(x, y)) this.fogLayer.removeTileAt(x, y);
+        else if (s.fog.isFrontier(x, y)) this.fogLayer.putTileAt(FOG_EDGE_TILE, x, y);
+      }
+    }
+  }
+
+  private refreshLabels(): void {
+    for (const lm of this.session.level.landmarks) this.labels.get(lm.id)?.setVisible(this.session.isLandmarkVisible(lm));
+  }
+
+  /** เริ่มด่านนี้ใหม่ (ลบความคืบหน้ากลางด่าน) — กด Delete 2 ครั้งในหน้า หลักฐาน/ข้อความ */
+  private requestReset(): void {
+    const now = this.time.now;
+    if (now - this.resetArmedAt < 2500) {
+      this.progress.clearInProgress(this.session.level.id);
+      this.cancelWalk();
+      this.scene.restart();
+      return;
+    }
+    this.resetArmedAt = now;
+    this.session.routeFeedback = null;
+    this.session.toast('กด Delete อีกครั้งเพื่อเริ่มด่านนี้ใหม่');
   }
 
   override update(_time: number, delta: number): void {
@@ -217,7 +291,8 @@ export class WorldScene extends Phaser.Scene {
       }
 
       case 'notebook':
-        if (code === 'KeyN' || code === 'Escape') this.setMode('explore');
+        if (code === 'Delete' && s.notebookTab === 'records') this.requestReset();
+        else if (code === 'KeyN' || code === 'Escape') this.setMode('explore');
         else if (code === 'ArrowRight' || code === 'KeyD' || code === 'Tab') this.switchTab(1);
         else if (code === 'ArrowLeft' || code === 'KeyA') this.switchTab(-1);
         else if (choice >= 0 && s.notebookTab === 'routes') this.chooseRoute(choice);
@@ -236,6 +311,7 @@ export class WorldScene extends Phaser.Scene {
   private setMode(mode: GameSession['mode']): void {
     this.session.mode = mode;
     this.bumpUi();
+    if (mode === 'explore') this.autosave();
   }
 
   private bumpUi(): void {
@@ -252,14 +328,26 @@ export class WorldScene extends Phaser.Scene {
       if (step.order >= before && step.order < after) s.toast(`ผ่านฉากที่ ${step.order}: ${step.title}`);
     }
     this.refreshMarkers();
+    this.refreshLabels();
     this.bumpUi();
+    this.autosave();
   }
 
   /* ---------------- บทสนทนา ---------------- */
 
   private interact(): void {
     const npc = this.findNearbyNpc();
-    if (npc) this.startTalk(npc);
+    if (npc) {
+      this.startTalk(npc);
+      return;
+    }
+    // ไม่มี NPC ใกล้ ๆ → ลองตรวจค้นจุดที่ยืนอยู่ (เช่น ภารกิจปริศนา)
+    const point = this.session.inspectPointAt(this.session.playerTile);
+    if (point) {
+      this.cancelWalk();
+      this.player.setVelocity(0, 0);
+      this.withStepToasts(() => this.session.inspect(point));
+    }
   }
 
   private startTalk(npc: NpcInstance): void {
@@ -397,8 +485,7 @@ export class WorldScene extends Phaser.Scene {
     const s = this.session;
     const sum = s.summary();
     const ending = s.level.ending;
-    const store = new ProgressStore(browserStorage(), s.level.id);
-    store.completeLevel(
+    this.progress.completeLevel(
       {
         levelId: s.level.id,
         completedAt: new Date().toISOString(),
@@ -408,12 +495,14 @@ export class WorldScene extends Phaser.Scene {
         mistakes: sum.mistakes,
         elapsedMs: Math.round(sum.elapsedMs),
         skills: sum.skills,
+        quests: sum.quests,
         codePiece: ending?.codePiece ?? null,
       },
       s.level.unlocks,
     );
     const slot = s.level.unlocks ? getLevelSlot(s.level.unlocks) : undefined;
     this.registry.set(REGISTRY_UNLOCKED, slot?.name ?? null);
+    this.registry.set(REGISTRY_CODE_PIECES, this.progress.collectedCodePieces());
     s.toast('บันทึกการผ่านด่านแล้ว');
   }
 
@@ -446,11 +535,15 @@ export class WorldScene extends Phaser.Scene {
 
     const found = s.checkLandmarkDiscovery();
     for (const id of found) {
-      this.labels.get(id)?.setVisible(true);
       const lm = s.level.landmarks.find((l) => l.id === id)!;
-      if (!force) s.toast(`ค้นพบจุดสังเกต: ${lm.name}`);
+      // จุดลับ (revealFlag) ไม่แจ้งเตือน เพื่อไม่ให้เฉลยปริศนา
+      if (!force && s.isLandmarkVisible(lm)) s.toast(`ค้นพบจุดสังเกต: ${lm.name}`);
     }
-    if (found.length > 0) this.bumpUi();
+    if (found.length > 0) {
+      this.refreshLabels();
+      this.refreshMarkers();
+      this.bumpUi();
+    }
 
     // พื้นที่ที่เรียกบทสนทนาอัตโนมัติ (เช่น มาถึงศาลาชุมชน)
     if (s.mode === 'explore') {

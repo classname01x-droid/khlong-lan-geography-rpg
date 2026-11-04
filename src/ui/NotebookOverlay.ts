@@ -1,14 +1,33 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { CLUE_TYPE_LABEL, NOTEBOOK_TABS, type GameSession, type NotebookTab } from '../core/session/GameSession';
+import {
+  CLUE_TYPE_LABEL,
+  NOTEBOOK_TABS,
+  QUEST_KIND_LABEL,
+  type GameSession,
+  type NotebookTab,
+  type QuestStatus,
+} from '../core/session/GameSession';
 import { dirName, fmtMeters10 } from './format';
 import { wrapThaiText } from './textWrap';
 import { FONT_FAMILY, textStyle } from './theme';
 
 const TAB_LABEL: Record<NotebookTab, string> = {
+  quests: 'ภารกิจ',
   clues: 'เบาะแส',
   routes: 'วิเคราะห์เส้นทาง',
-  records: 'หลักฐานและข้อความ',
+  records: 'หลักฐาน/ข้อความ',
+};
+
+const STATUS_LABEL: Record<QuestStatus, string> = {
+  locked: 'ล็อก',
+  active: 'กำลังทำ',
+  completed: 'สำเร็จ',
+};
+const STATUS_COLOR: Record<QuestStatus, string> = {
+  locked: '#8a7a64',
+  active: '#7a2e1e',
+  completed: '#1f6b2a',
 };
 
 const PX = 50;
@@ -37,7 +56,7 @@ export class NotebookOverlay {
     for (let ly = BODY_TOP + 24; ly < BODY_BOTTOM; ly += 26) paper.lineBetween(PX + 16, ly, PX + PW - 16, ly);
     const title = scene.add.text(PX + 28, PY + 14, 'สมุดภาคสนาม', textStyle(24, '#5a3a1e'));
     this.tabTexts = NOTEBOOK_TABS.map((tab, i) =>
-      scene.add.text(PX + 220 + i * 190, PY + 20, TAB_LABEL[tab], {
+      scene.add.text(PX + 200 + i * 160, PY + 20, TAB_LABEL[tab], {
         ...textStyle(16, '#5a3a1e'),
         padding: { x: 10, y: 4, top: 6 },
       }),
@@ -68,7 +87,8 @@ export class NotebookOverlay {
     this.body.removeAll(true);
     this.footer.setText('');
     this.y = BODY_TOP;
-    if (s.notebookTab === 'clues') this.renderClues(s);
+    if (s.notebookTab === 'quests') this.renderQuests(s);
+    else if (s.notebookTab === 'clues') this.renderClues(s);
     else if (s.notebookTab === 'routes') this.renderRoutes(s);
     else this.renderRecords(s);
   }
@@ -83,6 +103,51 @@ export class NotebookOverlay {
     );
     this.body.add(t);
     this.y += t.height + gap;
+  }
+
+  private renderQuests(s: GameSession): void {
+    for (const q of s.quests()) {
+      const locked = q.status === 'locked';
+      const title = locked && q.def.kind === 'mystery' ? '???' : q.def.title;
+      this.line(
+        `[${QUEST_KIND_LABEL[q.def.kind]}]  ${title}  —  ${STATUS_LABEL[q.status]}`,
+        16,
+        STATUS_COLOR[q.status],
+        0,
+        2,
+      );
+      if (locked) {
+        this.line(`ปลดล็อก: ${q.def.lockedHint}`, 13, '#8a7a64', 22, 8);
+        continue;
+      }
+      if (q.def.kind === 'main') {
+        // ภารกิจหลักแสดงเฉพาะเป้าหมายถัดไป เพื่อให้หน้ากระชับ
+        const next = q.def.objectives.findIndex((_, i) => !q.objectivesDone[i]);
+        const done = q.objectivesDone.filter(Boolean).length;
+        this.line(
+          next < 0
+            ? `ครบ ${done}/${q.def.objectives.length} เป้าหมาย`
+            : `ความคืบหน้า ${done}/${q.def.objectives.length} — ถัดไป: ${q.def.objectives[next].text}`,
+          14,
+          '#2b2118',
+          22,
+          8,
+        );
+        continue;
+      }
+      if (q.status === 'active') this.line(q.def.description, 13, '#5a4a38', 22, 2);
+      q.def.objectives.forEach((o, i) => {
+        this.line(`${q.objectivesDone[i] ? '●' : '○'} ${o.text}`, 14, '#2b2118', 22, 1);
+      });
+      if (q.status === 'completed' && q.def.reward) this.line(`รางวัล: ${q.def.reward.text}`, 13, '#1f6b2a', 22, 0);
+      this.y += 8;
+    }
+    const c = s.questCounts();
+    this.footer
+      .setText(
+        `สำเร็จแล้ว — หลัก ${c.main.done}/${c.main.total} · รอง ${c.side.done}/${c.side.total} · ปริศนา ${c.mystery.done}/${c.mystery.total}`,
+      )
+      .setColor('#5a3a1e');
   }
 
   private renderClues(s: GameSession): void {
@@ -161,6 +226,7 @@ export class NotebookOverlay {
   }
 
   private renderRecords(s: GameSession): void {
+    this.footer.setText('กด Delete 2 ครั้ง เพื่อเริ่มด่านนี้ใหม่ (ความคืบหน้าบันทึกอัตโนมัติ)').setColor('#8a7a64');
     this.line('หลักฐานการสำรวจ', 17, '#5a3a1e', 0, 4);
     if (s.evidence.length === 0) this.line('ยังไม่มี', 14, '#7a6448', 20, 8);
     for (const id of s.evidence) {

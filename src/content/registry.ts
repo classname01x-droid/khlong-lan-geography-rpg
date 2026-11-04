@@ -17,11 +17,16 @@ export interface LevelSlot {
   id: string;
   name: string;
   status: 'available' | 'planned';
+  /** ลำดับชิ้นรหัสลับที่ด่านนี้มอบให้ (1–4) */
+  codePieceIndex: number;
 }
 
+/** 4 ตำบล = 4 ด่าน = รหัสลับ 4 ชิ้น (ด่าน 2–4 ยังไม่สร้าง: id/ชื่อเป็นตัวยึดตำแหน่ง) */
 export const LEVEL_SEQUENCE: readonly LevelSlot[] = [
-  { id: sakNgamLevel.id, name: `${sakNgamLevel.tambon}: ${sakNgamLevel.title}`, status: 'available' },
-  { id: 'level-2', name: 'ด่านที่ 2 (ตำบลถัดไป — กำลังพัฒนา)', status: 'planned' },
+  { id: sakNgamLevel.id, name: `${sakNgamLevel.tambon}: ${sakNgamLevel.title}`, status: 'available', codePieceIndex: 1 },
+  { id: 'level-2', name: 'ด่านที่ 2 (ตำบลถัดไป — กำลังพัฒนา)', status: 'planned', codePieceIndex: 2 },
+  { id: 'level-3', name: 'ด่านที่ 3 (กำลังพัฒนา)', status: 'planned', codePieceIndex: 3 },
+  { id: 'level-4', name: 'ด่านที่ 4 (กำลังพัฒนา)', status: 'planned', codePieceIndex: 4 },
 ];
 
 export function getLevel(id: string): LevelDefinition {

@@ -2,7 +2,9 @@ import type {
   ClueDefinition,
   EndingDefinition,
   EvidenceDefinition,
+  InspectPoint,
   PinTaskDefinition,
+  QuestDefinition,
   QuizDefinition,
   RouteAnalysisDefinition,
   StoryStep,
@@ -37,6 +39,30 @@ export const sakNgamQuizzes: QuizDefinition[] = [
     correctFeedback: 'ถูกต้อง! ผ้าปักคือภูมิปัญญาที่บ้านไหนเจียวสืบทอดกันมา',
     effects: [{ type: 'flag', flag: 'quiz-wisdom' }],
   },
+  {
+    // ตัวเลือกคำนวณจากระยะจริงบนแผนที่ (×0.1, ×1, ×10) จึงไม่ขัดกับแผนที่แม้ย้ายตำแหน่ง
+    id: 'scale',
+    speaker: 'ผู้ใหญ่บ้าน',
+    question: 'ลองคิดดูนะหลาน บนแผนที่ 1:10,000 ระยะ {{mapcm:sala>nai-chiao}} เซนติเมตร เท่ากับระยะจริงเท่าไร?',
+    choices: [
+      {
+        id: 'times-ten',
+        label: '{{dist:sala>nai-chiao*10}} เมตร',
+        hint: 'มากเกินไป ลองคิดทีละขั้น: 1 ซม. บนแผนที่ = 10,000 ซม. จริง = 100 เมตร',
+      },
+      {
+        id: 'tenth',
+        label: '{{dist:sala>nai-chiao*0.1}} เมตร',
+        hint: 'น้อยเกินไป 1 ซม. บนแผนที่ 1:10,000 คือ 10,000 ซม. จริง = 100 เมตร ไม่ใช่ 10 เมตร',
+      },
+      { id: 'correct', label: '{{dist:sala>nai-chiao}} เมตร' },
+    ],
+    correctChoiceId: 'correct',
+    fallbackHint: '1 ซม. บนแผนที่ 1:10,000 = 100 เมตรจริง',
+    correctFeedback:
+      'ถูกต้อง! 1 ซม. บนแผนที่ = 100 เมตร ดังนั้น {{mapcm:sala>nai-chiao}} ซม. = {{dist:sala>nai-chiao}} เมตร (= {{dist:sala>nai-chiao*0.1}} ช่องตาราง)',
+    effects: [{ type: 'flag', flag: 'quiz-scale' }],
+  },
 ];
 
 export const sakNgamClues: ClueDefinition[] = [
@@ -65,6 +91,12 @@ export const sakNgamClues: ClueDefinition[] = [
     text: 'ช่างผ้าปักบ้านไหนเจียวต้องข้ามสะพานไม้ข้ามห้วยสาขาทุกครั้งที่นำผ้ามาที่ศาลา (ห้วยสาขามีสะพานไม้แห่งเดียว)',
   },
   {
+    id: 'clue-old-cloth',
+    type: 'distance',
+    source: 'ป้านวล (ลายผ้าผืนแรก)',
+    text: 'ลายบอกทางบนผ้าปักผืนแรก: จากบ้านไหนเจียว มุ่ง{{dir:nai-chiao>old-banyan}} {{mapcm:nai-chiao>old-banyan}} เซนติเมตรบนแผนที่ 1:10,000 คือที่นั่งปักผ้าใต้ต้นไม้ใหญ่ของบรรพบุรุษ',
+  },
+  {
     id: 'clue-fork',
     type: 'landmark',
     source: 'ป้าศรี',
@@ -77,6 +109,97 @@ export const sakNgamEvidence: EvidenceDefinition[] = [
     id: 'evidence-pattern',
     name: 'ภาพร่างลวดลายผ้าปัก',
     description: 'ภาพร่างลวดลายที่ป้านวล ช่างผ้าปักบ้านไหนเจียว วาดให้ระหว่างการสำรวจ',
+  },
+  {
+    id: 'evidence-old-cloth',
+    name: 'เศษผ้าปักลายโบราณ',
+    description: 'เศษผ้าปักเก่าที่พบใต้ต้นไม้ใหญ่ ทางตะวันตกของบ้านไหนเจียว ตรงกับลายบอกทางบนผ้าผืนแรก',
+  },
+];
+
+/** จุดตรวจค้น (กด E) — ที่นั่งปักผ้าของบรรพบุรุษ เปิดให้ค้นเมื่อได้เบาะแสลายผ้าผืนแรกแล้ว */
+export const sakNgamInspectPoints: InspectPoint[] = [
+  {
+    id: 'old-banyan-spot',
+    at: { x: 40, y: 13 },
+    radiusTiles: 1.5,
+    when: { clues: ['clue-old-cloth'], notFlags: ['mystery-found'] },
+    nodes: [
+      {
+        speaker: 'สมุดภาคสนาม',
+        text: 'ใต้ต้นไม้ใหญ่ตรงนี้มีม้านั่งไม้เก่า ๆ ในโพรงไม้มีเศษผ้าปักลายโบราณซุกอยู่!',
+        effects: [
+          { type: 'evidence', evidenceId: 'evidence-old-cloth' },
+          { type: 'flag', flag: 'mystery-found' },
+        ],
+      },
+      {
+        speaker: 'สมุดภาคสนาม',
+        text: 'จุดนี้อยู่{{dir:nai-chiao>old-banyan}}ของบ้านไหนเจียว ห่าง {{dist:nai-chiao>old-banyan}} เมตร = {{mapcm:nai-chiao>old-banyan}} ซม. บนแผนที่ ตรงกับลายผ้าผืนแรก',
+      },
+    ],
+  },
+];
+
+/**
+ * ภารกิจของด่าน — สถานะ: ล็อก → กำลังทำ → สำเร็จ
+ * ภารกิจหลักต้องทำให้จบด่าน ส่วนภารกิจรองและภารกิจปริศนาเป็นทางเลือก (นับในหน้าสรุปผล)
+ */
+export const sakNgamQuests: QuestDefinition[] = [
+  {
+    id: 'main-sakngam',
+    kind: 'main',
+    title: 'ปริศนาลวดลายแห่งสักงาม',
+    description: 'ค้นหาแหล่งภูมิปัญญาของชุมชนตามปริศนาของผู้ใหญ่บ้าน บันทึกตำแหน่ง และรับรหัสลับชิ้นที่ 1',
+    lockedHint: '',
+    objectives: [
+      { text: 'รับภารกิจจากครูเนมที่โรงเรียนสักงาม', done: { type: 'step', order: 1 } },
+      { text: 'เดินทางไปศาลาชุมชน', done: { type: 'step', order: 2 } },
+      { text: 'ไขปริศนาภูมิปัญญาของผู้ใหญ่บ้าน', done: { type: 'step', order: 3 } },
+      { text: 'รวบรวมเบาะแสและเลือกเส้นทางที่ตรงกับหลักฐาน', done: { type: 'step', order: 4 } },
+      { text: 'สำรวจแหล่งผ้าปักบ้านไหนเจียว', done: { type: 'step', order: 5 } },
+      { text: 'ปักหมุดตำแหน่งและรับรหัสลับชิ้นที่ 1', done: { type: 'step', order: 6 } },
+    ],
+  },
+  {
+    id: 'side-measure',
+    kind: 'side',
+    title: 'นักวัดระยะ',
+    description: 'ครูเนมชวนให้ฝึกใช้เครื่องมือ: วัดระยะเดินจริงด้วยตัวเอง แล้วเทียบกับระยะเส้นตรงในสมุดภาคสนาม',
+    unlockWhen: { minStep: 2 },
+    lockedHint: 'รับภารกิจจากครูเนมก่อน',
+    objectives: [
+      { text: 'กด R เพื่อเริ่มวัดระยะเดินจริง', done: { type: 'skill', skill: 'odometer' } },
+      { text: 'เปิดหน้า "วิเคราะห์เส้นทาง" ในสมุดภาคสนาม', done: { type: 'skill', skill: 'straight-vs-route' } },
+      { text: 'เดินสำรวจให้ถึงปลายทางอย่างน้อย 2 เส้นทาง', done: { type: 'routesExplored', count: 2 } },
+    ],
+    reward: { text: 'บันทึกในสมุด: ระยะตามถนนยาวกว่าระยะเส้นตรงเสมอ' },
+  },
+  {
+    id: 'side-bridges',
+    kind: 'side',
+    title: 'สองสะพานแห่งสักงาม',
+    description: 'ลุงคำเล่าว่าสักงามมีสะพานข้ามลำน้ำสองแห่ง ไปสำรวจให้ครบ แล้วสังเกตว่าแต่ละแห่งข้ามลำน้ำสายใด',
+    unlockWhen: { clues: ['clue-bridge'] },
+    lockedHint: 'ฟังเรื่องเล่าจากชาวบ้านที่หาปลาริมลำห้วย',
+    objectives: [
+      { text: 'สำรวจสะพานข้ามลำห้วยใหญ่', done: { type: 'discover', landmarkId: 'bridge' } },
+      { text: 'สำรวจสะพานไม้ข้ามห้วยสาขา', done: { type: 'discover', landmarkId: 'wood-bridge' } },
+    ],
+    reward: { text: 'บันทึกในสมุด: สะพานเป็นจุดสังเกตที่ช่วยยืนยันเส้นทางได้' },
+  },
+  {
+    id: 'mystery-old-cloth',
+    kind: 'mystery',
+    title: 'ลายผ้าผืนแรก',
+    description: 'ผ้าปักผืนแรกของหมู่บ้านมีลายบอกทางซ่อนอยู่ ใช้ทิศและมาตราส่วนตามหาที่นั่งปักผ้าของบรรพบุรุษ',
+    unlockWhen: { flags: ['evidence-collected'] },
+    lockedHint: '??? — พูดคุยกับผู้รู้เรื่องผ้าปักให้ครบก่อน',
+    objectives: [
+      { text: 'ฟังเรื่องลายผ้าผืนแรกจากป้านวล', done: { type: 'clue', clueId: 'clue-old-cloth' } },
+      { text: 'ตามลายผ้าไปหาที่นั่งปักผ้าของบรรพบุรุษ แล้วกด E ตรวจค้น', done: { type: 'flag', flag: 'mystery-found' } },
+    ],
+    reward: { text: 'ได้หลักฐานพิเศษ: เศษผ้าปักลายโบราณ' },
   },
 ];
 
@@ -185,7 +308,7 @@ export const sakNgamStory: StoryStep[] = [
   {
     order: 4,
     title: 'รวบรวมเบาะแสและเปรียบเทียบเส้นทาง',
-    objective: 'หาเบาะแส ทิศทาง ระยะทาง จุดสังเกต ให้ครบ แล้วเลือกเส้นทางในสมุดภาคสนาม (N)',
+    objective: 'หาเบาะแสทิศทาง ระยะทาง จุดสังเกต แล้วเลือกเส้นทางในสมุด (N)',
     landmarkId: 'big-teak',
     status: 'playable',
     completeWhen: { type: 'flag', flag: 'route-correct' },

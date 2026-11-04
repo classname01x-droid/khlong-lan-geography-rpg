@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { explore, newSession, runDialogue, talk } from './helpers';
 
 const EMBROIDERY = 1; // ลำดับตัวเลือก: 0 จักสาน, 1 ผ้าปัก, 2 ดินเผา
+const SCALE_OK = 2; // คำถามมาตราส่วน: 0 = ×10, 1 = ×0.1, 2 = ระยะจริง
+const HEADMAN_OK = [EMBROIDERY, SCALE_OK];
 
 describe('ฉาก 1–2: รับภารกิจ และเดินทางไปศาลา', () => {
   it('เริ่มที่ฉาก 1 และผ่านเมื่อคุยกับครูเนม พร้อมได้เบาะแสแรก', () => {
@@ -53,7 +55,7 @@ describe('ฉาก 3: ปริศนาผู้ใหญ่บ้าน (เ�
 
     expect(s.answerQuiz(EMBROIDERY)).toBe(true);
     expect(s.dialogueView!.kind).toBe('line');
-    runDialogue(s);
+    runDialogue(s, [SCALE_OK]);
     expect(s.flags.has('quiz-wisdom')).toBe(true);
     expect(s.clues).toEqual(['clue-sala', 'clue-direction', 'clue-distance']);
     expect(s.currentStepOrder).toBe(4);
@@ -64,7 +66,7 @@ describe('ฉาก 4: รวบรวมเบาะแส และเลื�
   function atStep4() {
     const s = newSession();
     talk(s, 'teacher-nem');
-    talk(s, 'headman', [EMBROIDERY]);
+    talk(s, 'headman', HEADMAN_OK);
     return s;
   }
 
@@ -87,7 +89,7 @@ describe('ฉาก 4: รวบรวมเบาะแส และเลื�
     talk(s, 'villager-sri');
     expect(s.clues).toEqual(['clue-sala', 'clue-direction', 'clue-distance', 'clue-bridge', 'clue-fork']);
     expect(s.summary().cluesFound).toBe(5);
-    expect(s.summary().cluesTotal).toBe(5);
+    expect(s.summary().cluesTotal).toBe(6); // + เบาะแสภารกิจปริศนา
   });
 
   it('เลือกเส้นทางหลอกนับเป็นการตอบผิด และบอกหลักฐานที่ไม่ตรง', () => {
@@ -107,7 +109,7 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
   function atStep5() {
     const s = newSession();
     talk(s, 'teacher-nem');
-    talk(s, 'headman', [EMBROIDERY]);
+    talk(s, 'headman', HEADMAN_OK);
     talk(s, 'fisher-kham');
     s.chooseRoute(1);
     return s;
@@ -118,7 +120,7 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
   it('ช่างผ้าปักยังไม่ให้หลักฐานถ้ายังไม่ได้วิเคราะห์เส้นทาง', () => {
     const s = newSession();
     talk(s, 'teacher-nem');
-    talk(s, 'headman', [EMBROIDERY]);
+    talk(s, 'headman', HEADMAN_OK);
     talk(s, 'embroiderer-nuan');
     expect(s.evidence).toEqual([]);
   });
@@ -184,7 +186,7 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
     expect(sum.mistakes).toBe(1);
     expect(sum.mistakesBy).toEqual({ quiz: 0, route: 0, pin: 1 });
     expect(sum.elapsedMs).toBe(125_000);
-    expect(sum.cluesFound).toBe(4);
+    expect(sum.cluesFound).toBe(5); // รวมเบาะแสลายผ้าผืนแรกจากป้านวล
     expect(sum.skills).toEqual(
       expect.arrayContaining(['direction', 'scale', 'landmark', 'straight-vs-route', 'grid-coordinates']),
     );

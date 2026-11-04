@@ -74,4 +74,42 @@ describe('ProgressStore', () => {
     expect(slot?.status).toBe('planned');
     expect(LEVEL_SEQUENCE[0].id).toBe(sakNgamLevel.id);
   });
+
+  it('ลำดับด่านรองรับ 4 ตำบล = รหัสลับ 4 ชิ้น และด่าน 1 มอบชิ้นที่ 1', () => {
+    expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
+    expect(sakNgamLevel.ending!.codePiece).toMatchObject({ index: 1, total: 4 });
+  });
+
+  it('ย้ายข้อมูลบันทึกรุ่น v1 เป็น v2 โดยไม่สูญหาย', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      PROGRESS_KEY,
+      JSON.stringify({ version: 1, completed: { sakngam: result() }, unlocked: ['sakngam', 'level-2'] }),
+    );
+    const p = new ProgressStore(storage, 'sakngam');
+    expect(p.data.version).toBe(2);
+    expect(p.isCompleted('sakngam')).toBe(true);
+    expect(p.isUnlocked('level-2')).toBe(true);
+    expect(p.collectedCodePieces()).toEqual([{ index: 1, total: 4, value: 'ลาย' }]);
+  });
+
+  it('บันทึก/โหลด/ล้าง การเล่นกลางด่าน และล้างอัตโนมัติเมื่อผ่านด่าน', () => {
+    const storage = new MemoryStorage();
+    const p = new ProgressStore(storage, 'sakngam');
+    expect(p.loadInProgress('sakngam')).toBeNull();
+    p.saveInProgress('sakngam', { step: 3 });
+    expect(new ProgressStore(storage, 'sakngam').loadInProgress('sakngam')).toEqual({ step: 3 });
+    p.completeLevel(result(), 'level-2');
+    expect(new ProgressStore(storage, 'sakngam').loadInProgress('sakngam')).toBeNull();
+    p.saveInProgress('sakngam', { step: 1 });
+    p.clearInProgress('sakngam');
+    expect(p.loadInProgress('sakngam')).toBeNull();
+  });
+
+  it('เก็บรหัสลับจากหลายตำบลเรียงตามลำดับชิ้น', () => {
+    const p = new ProgressStore(new MemoryStorage(), 'sakngam');
+    p.completeLevel(result({ levelId: 'level-3', codePiece: { index: 3, total: 4, value: 'C' } }));
+    p.completeLevel(result());
+    expect(p.collectedCodePieces().map((c) => c.index)).toEqual([1, 3]);
+  });
 });

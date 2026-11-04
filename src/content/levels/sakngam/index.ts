@@ -1,6 +1,8 @@
 import type { LevelDefinition } from '../../types';
 import { sakNgamMap } from './map';
 import {
+  sakNgamInspectPoints,
+  sakNgamQuests,
   sakNgamClues,
   sakNgamEnding,
   sakNgamEvidence,
@@ -37,6 +39,14 @@ export const sakNgamLevel: LevelDefinition = {
     { id: 'pottery', name: 'เตาปั้นดินเผา', at: { x: 40, y: 22 }, showLabel: true },
     { id: 'basketry', name: 'ลานจักสาน', at: { x: 77, y: 21 }, showLabel: true },
     { id: 'nai-chiao', name: 'แหล่งผ้าปักบ้านไหนเจียว', at: { x: 70, y: 13 }, showLabel: true },
+    // จุดลับของภารกิจปริศนา — ไม่แสดงป้ายจนกว่าจะตรวจค้นพบ
+    {
+      id: 'old-banyan',
+      name: 'ที่นั่งปักผ้าของบรรพบุรุษ',
+      at: { x: 40, y: 13 },
+      showLabel: true,
+      revealFlag: 'mystery-found',
+    },
   ],
 
   npcs: sakNgamNpcs,
@@ -48,5 +58,7 @@ export const sakNgamLevel: LevelDefinition = {
   routeAnalysis: sakNgamRouteAnalysis,
   pinTask: sakNgamPinTask,
   ending: sakNgamEnding,
+  quests: sakNgamQuests,
+  inspectPoints: sakNgamInspectPoints,
   unlocks: 'level-2',
 };
