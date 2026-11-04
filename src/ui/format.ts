@@ -1,6 +1,6 @@
 import { THAI_DIRECTION, type Direction8 } from '../core/direction/Compass';
 import type { RouteCheck } from '../core/route/RouteAnalysis';
-import type { PinProblem } from '../core/session/GameSession';
+import type { GameSession, PinProblem } from '../core/session/GameSession';
 import type { SheetCheck, SheetProblem } from '../core/map/BaseMapCheck';
 import { SYMBOL_LABEL } from './mapSymbols';
 
@@ -31,6 +31,24 @@ export const PIN_PROBLEM_TEXT: Record<PinProblem, string> = {
   evidence: 'ยังไม่มีหลักฐานการสำรวจของจุดนี้ ต้องไปถึงจุดนั้นและสำรวจ (กด E) ก่อน',
   far: 'ต้องเดินไปให้ถึงจุดที่จะปักหมุดก่อน (ยืนใกล้ตำแหน่งที่ปัก)',
 };
+
+/**
+ * ข้อความเมื่อปักหมุดไม่ผ่าน — บอกเฉพาะส่วนที่ยังขาด
+ * ด่านที่กำหนด pinTask.problemHints ใช้ข้อความของด่าน และระบุชื่อหลักฐานที่ยังขาด
+ */
+export function pinProblemText(s: GameSession, problems: PinProblem[]): string {
+  const hints = s.level.pinTask?.problemHints;
+  return problems
+    .map((p) => {
+      const base = hints?.[p] ?? PIN_PROBLEM_TEXT[p];
+      if (p !== 'evidence' || !hints) return base;
+      const names = s.pinMissingEvidence.map((id) => s.level.evidence?.find((e) => e.id === id)?.name ?? id);
+      return names.length
+        ? `${base}: ${names.join(', ')} (เดินไปที่จุดนั้นแล้วกด E ตรวจยืนยัน)`
+        : `${base}: ยังไม่ได้สำรวจจุดนั้นด้วยตัวเอง (เดินไปให้เห็นและกด E)`;
+    })
+    .join(' · ');
+}
 
 /* ---------------- อธิบายผลการเปรียบเทียบแผนที่ ---------------- */
 

@@ -73,7 +73,7 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
     expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
     expect(c[1].evidenceText).toBe('หลักฐาน: 0/6');
-    expect(c[2].evidenceText).toBe('หลักฐาน: 0/5');
+    expect(c[2].evidenceText).toBe('หลักฐาน: 0/7');
     expect(c[3].evidenceText).toBe('หลักฐาน: —');
   });
 

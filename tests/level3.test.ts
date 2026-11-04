@@ -12,6 +12,7 @@ import type { GameSession, SessionSnapshot } from '../src/core/session/GameSessi
 import { GridSystem } from '../src/core/world/GridSystem';
 import { buildWorld } from '../src/core/world/MapBuilder';
 import { evaluateGridSite } from '../src/core/site/GridSiteAnalysis';
+import { buildGridBoard, explainGridChoice, gridHint } from '../src/core/site/gridBoard';
 import { explore, newSession, runDialogue, talk } from './helpers';
 
 /* ตัวเลือกคำถาม: grid-axes [นับ N จากบน, สลับ E/N, ถูก] · north-100 [N ลด, N เพิ่ม, E เพิ่ม] */
@@ -56,6 +57,19 @@ function playTo(step: number): GameSession {
   talk(s, 'villager-son');
   if (step <= 3) return s;
   talk(s, 'record-keeper', [NORTH_UP]);
+  if (step <= 4) return s;
+  survey(s, 'a');
+  s.chooseGridSite(SITE.a); // ตั้งใจเลือกผิด 1 ครั้ง
+  survey(s, 'b');
+  s.chooseGridSite(SITE.b);
+  if (step <= 5) return s;
+  s.playerTile = { x: 66, y: 19 };
+  s.startGridVerify('site-b');
+  runDialogue(s);
+  s.submitPin({ x: 66, y: 18 }, HOT_SPRING);
+  if (step <= 6) return s;
+  s.startEnding();
+  runDialogue(s);
   return s;
 }
 
@@ -360,37 +374,293 @@ describe('การเลือกจุดเป้าหมาย (หน้�
   });
 });
 
-describe('การปักหมุด (เป้าหมายคำนวณจากการวิเคราะห์)', () => {
-  function readyToPin() {
+describe('ฉาก 4: กระดานวิเคราะห์พิกัด', () => {
+  it('ข้อมูลบนกระดานคำนวณจากบันทึกและแผนที่: บันทึกเก่า · พิกัดที่แก้แล้ว · RP-2 · ทิศ/ระยะ · หลักฐานภาคสนาม', () => {
+    const s = playTo(4);
+    const v = buildGridBoard(s)!;
+    const ev = v.evidence.join('\n');
+    expect(ev).toContain('บันทึกพิกัดเก่า (ตามที่เขียน): E 4,660 · N 1,180');
+    expect(ev).toContain('พิกัดที่แก้ไขแล้ว: E 4,660 · N 1,410');
+    expect(ev).toContain('N = 1,590 − (1,180 − 1,000) = 1,410');
+    expect(ev).toContain('หมุดอ้างอิง RP-2: E 4,400 · N 1,100');
+    expect(ev).toContain('ทางทิศตะวันออกเฉียงเหนือ ราว 400 ม.');
+    expect(ev).toContain('ไอน้ำร้อน และ หินปูนสีขาว');
+    // พิกัดที่แก้แล้วได้จาก GridSystem ไม่ได้เขียนไว้
+    expect(s.gridCorrectedRecord()).toEqual(grid.tileToGrid(grid.topCountedGridToTile(L3.gridSiteAnalysis!.record)));
+    expect(v.candidates.map((c) => c.label)).toEqual(['จุด A', 'จุด B', 'จุด C']);
+  });
+
+  it('ก่อนกดยืนยัน ไม่เปิดเผยคำตอบหรือผลถูก/ผิด แม้เลือกจุดไว้แล้ว', () => {
+    const s = playTo(4);
+    survey(s, 'a');
+    survey(s, 'b');
+    survey(s, 'c');
+    s.gridSelection = SITE.b;
+    const v = buildGridBoard(s)!;
+    const all = [...v.evidence, ...v.candidates.flatMap((c) => c.facts), ...v.status, ...v.result].join('\n');
+    expect(all).not.toMatch(/✓|✗|ถูกต้อง|ไม่ถูก|ไม่ตรง/);
+    expect(v.result).toEqual([]);
+    expect(v.candidates[SITE.b].selected).toBe(true);
+    expect(v.status[0]).toContain('กด Enter เพื่อยืนยัน');
+    expect(s.flags.has('grid-checked')).toBe(false);
+  });
+
+  it('จุดที่ยังไม่สำรวจ ไม่แสดงข้อมูล (ต้องเดินไปดูเอง)', () => {
+    const s = playTo(4);
+    survey(s, 'a');
+    const v = buildGridBoard(s)!;
+    expect(v.candidates[SITE.a].facts.join()).toContain('E 4,660 · N 1,180');
+    expect(v.candidates[SITE.b].surveyed).toBe(false);
+    expect(v.candidates[SITE.b].facts.join()).toContain('ยังไม่ได้สำรวจ');
+    const r = s.chooseGridSite(SITE.b);
+    expect(explainGridChoice(s, r)).toMatchObject({ tone: 'blocked' });
+    expect(explainGridChoice(s, r).lines.join()).toContain('ไม่นับเป็นการตอบผิด');
+  });
+
+  it('ตอบผิด (จุด A): อธิบายหลักฐานที่ขัดแย้งครบ 3 ชนิด พร้อมคำใบ้ โดยไม่บอกว่าจุดใดถูก', () => {
+    const s = playTo(4);
+    survey(s, 'a');
+    const r = s.chooseGridSite(SITE.a);
+    const e = explainGridChoice(s, r);
+    const text = e.lines.join('\n');
+    expect(e.tone).toBe('wrong');
+    expect(text).toContain('ขัดกับหลักฐาน 3 ชนิด');
+    expect(text).toContain('อ่านตามที่เขียน'); // ตัวลวง: พิกัดตามตัวอักษร
+    expect(text).toContain('ทางทิศตะวันออก ~270 ม.');
+    expect(text).toContain('ไม่พบไอน้ำร้อน');
+    expect(text).toContain('คำใบ้:');
+    expect(text).not.toMatch(/จุด B|จุด C|E 4,730/);
+    expect(s.mistakes.compare).toBe(1);
+  });
+
+  it('ตอบผิด (จุด C): ทิศ/ระยะตรง แต่พิกัดและหินปูนไม่ตรง — บอกข้อที่ตรงด้วย', () => {
+    const s = playTo(4);
+    survey(s, 'c');
+    const e = explainGridChoice(s, s.chooseGridSite(SITE.c));
+    const text = e.lines.join('\n');
+    expect(text).toContain('ขัดกับหลักฐาน 2 ชนิด');
+    expect(text).toContain('ไม่พบหินปูนสีขาว');
+    expect(text).toContain('ข้อที่ตรง: ทิศและระยะจากจุดอ้างอิง');
+    expect(text).not.toMatch(/จุด A|จุด B/);
+    expect(gridHint(['field'])).not.toMatch(/จุด [ABC]/);
+  });
+
+  it('ตอบถูก: สรุปเหตุผลจากข้อมูลจริง ปลดล็อกฉาก 5 และนับครั้งที่ผิดไว้', () => {
+    const s = playTo(4);
+    survey(s, 'a');
+    s.chooseGridSite(SITE.a);
+    survey(s, 'b');
+    const r = s.chooseGridSite(SITE.b);
+    const text = explainGridChoice(s, r).lines.join('\n');
+    expect(r.ok).toBe(true);
+    expect(text).toContain('ตรงกับหลักฐานครบทั้ง 3 ชนิด');
+    expect(text).toContain('E 4,660 · N 1,410');
+    expect(text).toContain('ทางทิศตะวันออกเฉียงเหนือ ~400 ม.');
+    expect(text).toContain('ไอน้ำร้อนและหินปูนสีขาว');
+    expect(s.currentStepOrder).toBe(5);
+    expect(s.mistakes.compare).toBe(1);
+    expect(s.gridAttempts).toEqual([
+      { landmarkId: 'site-a', ok: false },
+      { landmarkId: 'site-b', ok: true },
+    ]);
+    // อ่านย้อนหลังได้: กระดานแสดงสถานะวิเคราะห์แล้ว + ประวัติ
+    s.lastGridChoice = null;
+    const v = buildGridBoard(s)!;
+    expect(v.status.join()).toContain('วิเคราะห์แล้ว: จุด B');
+    expect(v.status.join()).toContain('ประวัติ: จุด A ✗ → จุด B ✓');
+    expect(v.status.join()).toContain('ตอบผิดแล้ว 1 ครั้ง');
+    // ตอบซ้ำหลังผ่านแล้ว ไม่นับผิดเพิ่ม
+    expect(s.chooseGridSite(SITE.a).blocked).toBe('already-solved');
+    expect(s.mistakes.compare).toBe(1);
+  });
+
+  it('ฉาก 5 ยังไม่เปิดถ้ายังไม่ตอบถูก (ตอบผิดอย่างเดียวไม่ปลดล็อก)', () => {
+    const s = playTo(4);
+    survey(s, 'c');
+    s.chooseGridSite(SITE.c);
+    expect(s.currentStepOrder).toBe(4);
+    expect(s.isPinAvailable()).toBe(false);
+    s.playerTile = { ...POS['survey-b'] };
+    expect(s.gridVerifyAt(s.playerTile)).toBeNull();
+  });
+});
+
+describe('ฉาก 5: สำรวจจริง ยืนยัน และปักหมุด', () => {
+  function readyToVerify() {
     const s = playTo(4);
     survey(s, 'b');
     s.chooseGridSite(SITE.b);
     return s;
   }
 
-  it('ยังปักไม่ได้ก่อนตรวจพิกัด', () => {
-    const s = playTo(4);
-    expect(s.isPinAvailable()).toBe(false);
-  });
-
-  it('เป้าหมายการปักคือจุด B (คำนวณ ไม่ได้กำหนดในเนื้อหา)', () => {
-    const s = readyToPin();
+  it('เป้าหมายการปักคือจุดที่วิเคราะห์ได้ (คำนวณ ไม่ได้กำหนดในเนื้อหา)', () => {
+    const s = readyToVerify();
     expect(L3.pinTask!.targetId).toBe('site-analysis');
     expect(s.pinTargetId()).toBe('site-b');
   });
 
-  it('ตรวจ: ยืนไกลเกิน · พิกัดผิด (ปักตามพิกัดตัวอักษรที่ A) · ประเภทสถานที่ผิด', () => {
-    const s = readyToPin();
+  it('กด E ที่จุด: ตรวจพิกัด E/N · ทิศ/ระยะจาก RP-2 · ไอน้ำและหินปูน แล้วได้รายงานยืนยัน', () => {
+    const s = readyToVerify();
+    s.playerTile = { x: 66, y: 19 };
+    expect(s.gridVerifyAt(s.playerTile)).toBe('site-b');
+    expect(s.startGridVerify('site-b')).toBe(true);
+    const lines: string[] = [];
+    for (let i = 0; i < 10 && s.inDialogue; i++) {
+      const v = s.dialogueView!;
+      if (v.kind === 'line') lines.push(v.text);
+      s.advanceDialogue();
+    }
+    const text = lines.join('\n');
+    expect(text).toContain('ตรงนี้คือ E 4,660 · N 1,410');
+    expect(text).toContain('คุณยืนที่ E 4,660 · N 1,400');
+    expect(text).toContain('ทางทิศตะวันออกเฉียงเหนือ ประมาณ 400 ม.');
+    expect(text).toContain('ไอน้ำร้อน ✓ พบ · หินปูนสีขาว ✓ พบ');
+    expect(s.evidence).toContain('field-report');
+    expect(s.flags.has('site-verified')).toBe(true);
+    expect(s.gridVerifyAt(s.playerTile)).toBeNull(); // ตรวจแล้วไม่ต้องตรวจซ้ำ
+  });
+
+  it('ตรวจที่จุดอื่น (C) ระบบแสดงข้อที่ไม่ตรง และไม่ให้รายงานยืนยัน', () => {
+    const s = readyToVerify();
+    s.playerTile = { ...POS['survey-c'] };
+    expect(s.gridVerifyAt(s.playerTile)).toBe('site-c');
+    s.startGridVerify('site-c');
+    const lines: string[] = [];
+    for (let i = 0; i < 10 && s.inDialogue; i++) {
+      const v = s.dialogueView!;
+      if (v.kind === 'line') lines.push(v.text);
+      s.advanceDialogue();
+    }
+    expect(lines.join('\n')).toContain('หินปูนสีขาว ✗ ไม่พบ');
+    expect(s.evidence).not.toContain('field-report');
+  });
+
+  it('เดินถึงตำแหน่งอย่างเดียวปักหมุดไม่ผ่าน — คำใบ้บอกเฉพาะหลักฐานที่ยังขาด', () => {
+    const s = readyToVerify();
+    s.playerTile = { x: 66, y: 19 };
+    const r = s.submitPin({ x: 66, y: 18 }, HOT_SPRING);
+    expect(r).toEqual({ ok: false, problems: ['evidence'] });
+    expect(s.pinMissingEvidence).toEqual(['field-report']);
+    expect(s.mistakes.pin).toBe(0); // ขาดหลักฐานไม่นับเป็นตอบผิด
+    expect(L3.pinTask!.problemHints!.evidence).toBeTruthy();
+  });
+
+  it('ตรวจ: ยืนไกลเกิน · พิกัดผิด (ปักที่ A ตามพิกัดตัวอักษร) · ประเภทสถานที่ผิด · แล้วปักถูก', () => {
+    const s = readyToVerify();
+    s.playerTile = { x: 66, y: 19 };
+    s.startGridVerify('site-b');
+    runDialogue(s);
     s.playerTile = { x: 40, y: 49 };
-    expect(s.submitPin({ x: 66, y: 18 }, HOT_SPRING).problems).toContain('far');
+    expect(s.submitPin({ x: 66, y: 18 }, HOT_SPRING).problems).toEqual(['far']);
     survey(s, 'a');
     expect(s.submitPin({ x: 66, y: 41 }, HOT_SPRING).problems).toContain('location');
     s.playerTile = { x: 66, y: 19 };
     expect(s.submitPin({ x: 66, y: 18 }, FOOT_BATH).problems).toEqual(['wisdom']);
-    const ok = s.submitPin({ x: 66, y: 18 }, HOT_SPRING);
-    expect(ok).toEqual({ ok: true, problems: [] });
+    expect(s.mistakes.pin).toBe(2);
+    expect(s.submitPin({ x: 66, y: 18 }, HOT_SPRING)).toEqual({ ok: true, problems: [] });
     expect(s.flags.has('pin-verified')).toBe(true);
     expect(s.currentStepOrder).toBe(6);
+  });
+});
+
+describe('ฉาก 6: ส่งรายงาน รหัสลับชิ้นที่ 3 และภารกิจ', () => {
+  it('ครูเนมสรุปผ่านสมุดภาคสนาม ครบ 5 ความรู้ และจบด่าน', () => {
+    const s = playTo(6);
+    expect(s.startEnding()).toBe(true);
+    expect(runDialogue(s)).toBe('mission-complete');
+    const text = s.messages.map((m) => m.text).join('\n');
+    expect(s.messages.every((m) => m.speaker.includes('สมุดภาคสนาม'))).toBe(true);
+    expect(text).toContain('E 4,660 · N 1,410'); // {{grid:site-analysis}} → จุดที่วิเคราะห์ได้
+    expect(text).toContain('ค่า E เพิ่มเมื่อไปทางตะวันออก');
+    expect(text).toContain('ค่า N เพิ่มเมื่อไปทางเหนือ');
+    expect(text).toContain('แกน Y ของ Phaser');
+    expect(text).toContain('จุดกำเนิด');
+    expect(text).toContain('หลักฐานประกอบ');
+    expect(s.mode).toBe('summary');
+    expect(s.currentStepOrder).toBe(7);
+    expect(L3.ending!.codePiece).toEqual({ index: 3, total: 4, value: 'พิกัด' });
+    const sum = s.summary();
+    expect(sum.mistakesBy.compare).toBe(1);
+    expect(sum.distanceMeters).toBeGreaterThanOrEqual(0);
+  });
+
+  it('ภารกิจหลักสำเร็จเมื่อจบเท่านั้น — ยังไม่สำเร็จก่อนมีหลักฐานครบ', () => {
+    // ฉาก 5: วิเคราะห์ถูกแล้ว แต่ยังไม่มีรายงานยืนยันภาคสนามและยังไม่ได้ปักหมุด
+    const s2 = playTo(5);
+    expect(s2.evidence).not.toContain('field-report');
+    expect(s2.questStatus.get('main-pong')).toBe('active');
+    expect(s2.isPinAvailable()).toBe(true);
+    const done = playTo(7);
+    expect(done.questStatus.get('main-pong')).toBe('completed');
+  });
+
+  it('ภารกิจปริศนา: แปลงทิศ/ระยะจาก RP-1 เป็นพิกัด แล้วเดินไปหาหมุดเก่าที่ไม่มีป้าย', () => {
+    const s = playTo(4);
+    expect(s.questStatus.get('mystery-old-mark')).toBe('locked');
+    talk(s, 'villager-son');
+    expect(s.questStatus.get('mystery-old-mark')).toBe('active');
+    expect(s.resolveText(L3.clues!.find((c) => c.id === 'clue-old-mark')!.text)).toContain('ทางทิศเหนือ 150 เมตร');
+    expect(L3.landmarks.find((l) => l.id === 'old-mark')!.showLabel).toBe(false);
+    s.playerTile = { x: 20, y: 25 };
+    const p = s.inspectPointAt(s.playerTile)!;
+    expect(p.id).toBe('old-mark');
+    s.inspect(p);
+    runDialogue(s, [0, 1, 2]); // ผิด (N ลด) · ผิด (E เปลี่ยน) · ถูก
+    expect(s.mistakes.quiz).toBe(2);
+    expect(s.evidence).toContain('old-mark-plate');
+    expect(s.questStatus.get('mystery-old-mark')).toBe('completed');
+    const q = L3.quizzes!.find((x) => x.id === 'old-mark-coord')!;
+    expect(s.resolveText(q.choices[2].label)).toBe('E 4,200 · N 1,350');
+  });
+});
+
+describe('บันทึก/โหลดระหว่างฉาก 4–5', () => {
+  const roundTrip = (a: GameSession) => {
+    const b = newSession(L3);
+    expect(b.restore(JSON.parse(JSON.stringify(a.toSnapshot())) as SessionSnapshot)).toBe(true);
+    return b;
+  };
+
+  it('กลางฉาก 4 หลังตอบผิด: จำนวนครั้งผิดและประวัติไม่หาย · เลือกค้างไม่ถูกบันทึก', () => {
+    const a = playTo(4);
+    survey(a, 'a');
+    a.chooseGridSite(SITE.a);
+    a.gridSelection = SITE.c;
+    const b = roundTrip(a);
+    expect(b.currentStepOrder).toBe(4);
+    expect(b.mistakes.compare).toBe(1);
+    expect(b.gridAttempts).toEqual([{ landmarkId: 'site-a', ok: false }]);
+    expect(b.gridSelection).toBeNull();
+    expect(b.lastGridChoice).toBeNull();
+    expect(b.mode).toBe('explore');
+    survey(b, 'b');
+    expect(b.chooseGridSite(SITE.b).ok).toBe(true);
+  });
+
+  it('กลางฉาก 5 (ก่อน/หลังตรวจยืนยัน): โหลดแล้วปักหมุดต่อได้ ไม่ต้องวิเคราะห์ใหม่', () => {
+    const a = playTo(5);
+    const b = roundTrip(a);
+    expect(b.currentStepOrder).toBe(5);
+    expect(b.gridCheckSolved).toBe(true);
+    b.playerTile = { x: 66, y: 19 };
+    expect(b.gridVerifyAt(b.playerTile)).toBe('site-b');
+    b.startGridVerify('site-b');
+    runDialogue(b);
+    const c = roundTrip(b);
+    expect(c.evidence).toContain('field-report');
+    expect(c.gridVerifyAt({ x: 66, y: 19 })).toBeNull();
+    c.playerTile = { x: 66, y: 19 };
+    expect(c.submitPin({ x: 66, y: 18 }, HOT_SPRING).ok).toBe(true);
+    c.startEnding();
+    expect(runDialogue(c)).toBe('mission-complete');
+  });
+
+  it('บันทึกรุ่นต้นแบบ (ไม่มีประวัติกระดาน) ยังโหลดได้', () => {
+    const snap = JSON.parse(JSON.stringify(playTo(4).toSnapshot()));
+    delete snap.gridAttempts;
+    const b = newSession(L3);
+    expect(b.restore(snap)).toBe(true);
+    expect(b.gridAttempts).toEqual([]);
   });
 });
 
@@ -478,8 +748,39 @@ describe('บันทึก/โหลด และการปลดล็อ�
     expect(card.canEnter).toBe(false);
   });
 
-  it('ด่าน 3 ยังไม่มีตอนจบ (ต้นแบบ) จึงไม่ให้ชิ้นรหัส', () => {
-    expect(L3.ending).toBeUndefined();
-    expect(L3.story.filter((s) => s.status === 'playable').map((s) => s.order)).toEqual([1, 2, 3]);
+  it('จบด่าน 3 → บันทึกผ่าน ProgressStore เดิม · รหัส "พิกัด" · ปลดล็อก level-4 แต่ยังเข้าไม่ได้', () => {
+    const s = playTo(7);
+    const sum = s.summary();
+    const store = new ProgressStore(new MemoryStorage(), 'sakngam');
+    store.completeLevel(result('sakngam', 'ลาย', 1), sakNgamLevel.unlocks);
+    store.completeLevel(result('level-2', 'น้ำ', 2), L2.unlocks);
+    store.saveInProgress('level-3', playTo(5).toSnapshot());
+    store.completeLevel(
+      {
+        levelId: 'level-3',
+        completedAt: 'x',
+        distanceMeters: sum.distanceMeters,
+        cluesFound: sum.cluesFound,
+        cluesTotal: sum.cluesTotal,
+        mistakes: sum.mistakes,
+        elapsedMs: sum.elapsedMs,
+        skills: sum.skills,
+        evidenceFound: s.evidence.length,
+        evidenceTotal: L3.evidence!.length,
+        codePiece: L3.ending!.codePiece,
+      },
+      L3.unlocks,
+    );
+    expect(store.isCompleted('level-3')).toBe(true);
+    expect(store.loadInProgress('level-3')).toBeFalsy(); // บันทึกกลางด่านถูกล้างเมื่อจบ
+    expect(store.collectedCodePieces().map((c) => c.value)).toEqual(['ลาย', 'น้ำ', 'พิกัด']);
+    expect(store.isUnlocked('level-4')).toBe(true);
+    expect(canEnterLevel('level-4', store.data)).toBe(false);
+    const cards = LEVEL_SEQUENCE.map((slot, i) =>
+      describeLevel(slot, store.data, i === 0, LEVELS.find((l) => l.id === slot.id)?.evidence?.length ?? null),
+    );
+    expect(cards.map((c) => c.state)).toEqual(['completed', 'completed', 'completed', 'in-development']);
+    expect(cards[3].canEnter).toBe(false);
+    expect(L3.story.every((st) => st.status === 'playable')).toBe(true);
   });
 });

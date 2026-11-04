@@ -58,6 +58,7 @@ export interface MapDefinition {
 
 /** สัญลักษณ์แผนที่ (ใช้ทั้งแผนที่สำรวจและแผนที่เก่า) */
 export type MapSymbol =
+  | 'refmark'
   | 'school'
   | 'temple'
   | 'office'

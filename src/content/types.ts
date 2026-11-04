@@ -230,6 +230,8 @@ export interface PinTaskDefinition {
   wisdomChoices: Choice[];
   correctWisdomId: string;
   requiredEvidenceIds: string[];
+  /** (ไม่บังคับ) คำใบ้เฉพาะด่านเมื่อปักหมุดไม่ผ่าน แยกตามปัญหา — ไม่กำหนดใช้ข้อความกลาง */
+  problemHints?: Partial<Record<'unexplored' | 'location' | 'wisdom' | 'evidence' | 'far', string>>;
   /** เปิดให้ปักหมุดเมื่อเงื่อนไขนี้เป็นจริง */
   availableWhen: Condition;
   successFlag: string;
@@ -325,6 +327,11 @@ export interface GridSiteAnalysisDefinition {
   requiredClueIds: string[];
   availableWhen: Condition;
   successFlag: string;
+  /**
+   * (ไม่บังคับ) การตรวจยืนยันภาคสนามหลังวิเคราะห์ (กด E ที่จุดเป้าหมาย): ระบบคำนวณพิกัด ทิศ/ระยะ
+   * และสิ่งที่พบ ณ จุดนั้นให้ดูทีละข้อ — ผ่านครบจึงได้หลักฐาน evidenceId และ flag
+   */
+  verify?: { radiusTiles: number; when: Condition; evidenceId: string; flag: string };
 }
 
 /* ---------------- โครงเรื่อง ---------------- */

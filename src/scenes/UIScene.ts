@@ -14,6 +14,7 @@ import { GridSystem } from '../core/world/GridSystem';
 import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
 import { PauseOverlay } from '../ui/PauseOverlay';
 import { CompareOverlay } from '../ui/CompareOverlay';
+import { GridBoardOverlay } from '../ui/GridBoardOverlay';
 import type { CodePiece } from '../core/progress/ProgressStore';
 
 /**
@@ -33,6 +34,7 @@ export class UIScene extends Phaser.Scene {
   private summary!: SummaryOverlay;
   private pause!: PauseOverlay;
   private compare!: CompareOverlay;
+  private gridBoard!: GridBoardOverlay;
   private controlsHint!: Phaser.GameObjects.Text;
   private renderedVersion = -1;
 
@@ -55,6 +57,7 @@ export class UIScene extends Phaser.Scene {
     this.mapOverlay = new MapOverlay(this, this.session);
     this.notebook = new NotebookOverlay(this, this.session.notebookTabs(), this.session.level.tambon);
     this.compare = new CompareOverlay(this);
+    this.gridBoard = new GridBoardOverlay(this);
     this.summary = new SummaryOverlay(this);
     this.pause = new PauseOverlay(this, PAUSE_ITEMS, (i) => (this.scene.get(SCENE.level) as WorldScene).pauseAction(i));
     this.toastText = this.add
@@ -106,6 +109,7 @@ export class UIScene extends Phaser.Scene {
       this.mapOverlay.render();
       this.notebook.render(s);
       this.compare.render(s);
+      this.gridBoard.render(s);
       this.summary.render(
         s,
         (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,

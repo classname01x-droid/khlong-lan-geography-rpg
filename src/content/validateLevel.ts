@@ -48,6 +48,8 @@ export function validateLevel(
 
   const checkText = (where: string, text: string) => {
     for (const ref of referencedPoints(text)) {
+      // 'site-analysis' = จุดที่ระบบวิเคราะห์ได้ (ใช้ได้เมื่อด่านมีการวิเคราะห์สถานที่)
+      if (ref === 'site-analysis' && (level.siteAnalysis || level.gridSiteAnalysis)) continue;
       if (!landmarkIds.has(ref)) errors.push(`${where} อ้างถึงจุดสังเกตที่ไม่มี: ${ref}`);
     }
     for (const ref of referencedRoutes(text)) {

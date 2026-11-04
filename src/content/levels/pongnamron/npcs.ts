@@ -68,6 +68,20 @@ export const pongNamRonNpcs: NpcDefinition[] = [
     at: { x: 34, y: 42 },
     dialogue: [
       {
+        when: { minStep: 4, notFlags: ['heard-old-mark'] },
+        nodes: [
+          { speaker: SON, text: 'ได้ยินว่ากำลังตามหาบ่อน้ำร้อนจากบันทึกเก่าหรือ ปู่ของลุงก็เคยเป็นนักสำรวจรุ่นแรกนะ' },
+          {
+            speaker: SON,
+            text: 'ปู่ฝังหมุดสำรวจไว้ จากหมุด RP-1 ไปทาง{{dir:rp-1>old-mark}} {{dist:rp-1>old-mark}} เมตร ไม่มีป้ายบอกหรอก ต้องคำนวณพิกัดแล้วเดินไปเอง',
+            effects: [
+              { type: 'clue', clueId: 'clue-old-mark' },
+              { type: 'flag', flag: 'heard-old-mark' },
+            ],
+          },
+        ],
+      },
+      {
         nodes: [
           { speaker: SON, text: 'หมุดอ้างอิงในชุมชนมีสามหมุด กรมที่ดินมาฝังไว้ บนหมุดมีตัวเลขพิกัดตอกไว้' },
           {
@@ -112,6 +126,31 @@ export const pongNamRonNpcs: NpcDefinition[] = [
           },
           { quiz: 'north-100' },
         ],
+      },
+      {
+        when: { minStep: 4, maxStep: 4 },
+        ambient: true,
+        nodes: [
+          {
+            speaker: RUAN,
+            text: 'ไปสำรวจจุด A, B, C ด้วยตัวเอง (กด E ที่จุดนั้น) แล้วกด C เปิดกระดานวิเคราะห์พิกัด เลือกจุดที่ตรงหลักฐานครบทั้งสามชนิดนะ',
+          },
+        ],
+      },
+      {
+        when: { minStep: 5, maxStep: 5 },
+        ambient: true,
+        nodes: [
+          {
+            speaker: RUAN,
+            text: 'วิเคราะห์ได้แล้ว! เดินไปที่จุดนั้น กด E ตรวจยืนยันทั้งพิกัด ทิศ/ระยะ และของจริง แล้วเปิดแผนที่ (M) ปักหมุด',
+          },
+        ],
+      },
+      {
+        when: { minStep: 6 },
+        ambient: true,
+        nodes: [{ speaker: RUAN, text: 'ขอบใจมากหลาน บันทึกสำรวจของตำบลจะได้ถูกต้องเสียที' }],
       },
       {
         ambient: true,

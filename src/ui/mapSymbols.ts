@@ -17,6 +17,7 @@ export const SYMBOL_LABEL: Record<MapSymbol, string> = {
   marsh: 'หนองน้ำ',
   stones: 'ก้อนหินใหญ่',
   benchmark: 'หมุดหลักฐานระดับ',
+  refmark: 'หมุดอ้างอิงพิกัด',
   farm: 'พื้นที่เกษตร',
   hotspring: 'บ่อน้ำร้อน',
 };
@@ -86,6 +87,13 @@ export function drawMapSymbol(g: Phaser.GameObjects.Graphics, symbol: MapSymbol,
         g.lineBetween(cx + dx, cy - 1, cx + dx - 2, cy - 4);
         g.lineBetween(cx + dx, cy - 1, cx + dx + 2, cy - 4);
       }
+      return;
+    case 'refmark':
+      // หมุดอ้างอิงพิกัด: สี่เหลี่ยมมีกากบาท (ต่างจากสามเหลี่ยมหมุดระดับ)
+      g.fillStyle(0xffffff, 1).fillRect(cx - 5, cy - 5, 10, 10);
+      g.lineStyle(1, ink, 1).strokeRect(cx - 5, cy - 5, 10, 10);
+      g.lineBetween(cx - 5, cy, cx + 5, cy);
+      g.lineBetween(cx, cy - 5, cx, cy + 5);
       return;
     case 'benchmark':
       g.fillStyle(0xffffff, 1).fillTriangle(cx - 6, cy + 4, cx + 6, cy + 4, cx, cy - 6);

@@ -18,7 +18,7 @@ import type {
   TriggerZone,
 } from '../../content/types';
 import { DialogueRunner, type DialogueView } from '../dialogue/DialogueRunner';
-import { directionFromVector, bearingDeg, bearingToDirection8, type Direction8 } from '../direction/Compass';
+import { directionFromVector, bearingDeg, bearingToDirection8, THAI_DIRECTION, type Direction8 } from '../direction/Compass';
 import { FogOfWar } from '../fog/FogOfWar';
 import type { SkillId } from '../mission/skills';
 import { DistanceTracker } from '../movement/DistanceTracker';
@@ -39,9 +39,9 @@ import { analyzeWaterway, type WaterwayAnalysis } from '../world/Waterway';
 import { evaluateSite, type SiteCheck, type SiteEvidence } from '../site/SiteAnalysis';
 import { checkSheet, type SheetReport, type TruthLandmark } from '../map/BaseMapCheck';
 import { evaluateGridSite, type GridSiteEvidence, type GridSiteReport } from '../site/GridSiteAnalysis';
-import { GridSystem } from '../world/GridSystem';
+import { GridSystem, type GridRef } from '../world/GridSystem';
 
-export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare';
+export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare' | 'gridcheck';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
 export const NOTEBOOK_TABS: readonly NotebookTab[] = ['quests', 'clues', 'routes', 'records'];
 
@@ -83,6 +83,8 @@ export interface SessionSnapshot {
   player: TilePoint;
   pinnedAt: TilePoint | null;
   completed: boolean;
+  /** ประวัติการเลือกจุดในกระดานวิเคราะห์พิกัด (ไม่มี = บันทึกรุ่นก่อน) */
+  gridAttempts?: Array<{ landmarkId: string; ok: boolean }>;
 }
 
 export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
@@ -216,6 +218,8 @@ export class GameSession {
   pinStage: 'none' | 'cursor' | 'wisdom' = 'none';
   pinFeedback: string | null = null;
   pinnedAt: TilePoint | null = null;
+  /** หลักฐานที่ยังขาดจากการปักหมุดครั้งล่าสุด (id) — ใช้บอกผู้เล่นเฉพาะส่วนที่ยังไม่มี */
+  pinMissingEvidence: string[] = [];
   /** ตัวเลือกที่โฟกัสอยู่ในเมนูหยุดเกม */
   pauseIndex = 0;
   /** แผ่นแผนที่ที่กำลังดู: แผนที่สำรวจ (ปัจจุบัน) หรือแผนที่เก่า */
@@ -224,6 +228,10 @@ export class GameSession {
   lastCompare: CompareResult | null = null;
   /** ผลการเลือกจุดเป้าหมายในหน้าตรวจพิกัดครั้งล่าสุด */
   lastGridChoice: GridChoiceResult | null = null;
+  /** จุดที่เลือกไว้ในกระดานวิเคราะห์พิกัด (ยังไม่ยืนยัน) */
+  gridSelection: number | null = null;
+  /** ประวัติการยืนยันคำตอบในกระดานวิเคราะห์พิกัด (เปิดอ่านย้อนหลังได้ และบันทึกลงข้อมูลเล่นต่อ) */
+  readonly gridAttempts: Array<{ landmarkId: string; ok: boolean }> = [];
 
   private dialogue: ActiveDialogue | null = null;
 
@@ -258,6 +266,11 @@ export class GameSession {
     // {{gridrecord}} = พิกัดตามที่เขียนในบันทึกสำรวจของด่าน (ข้อมูลเดียวกับที่ใช้ตรวจจุดเป้าหมาย)
     const record = this.level.gridSiteAnalysis?.record;
     if (record) text = text.replaceAll('{{gridrecord}}', GridSystem.format(record));
+    // "site-analysis" ในตัวแปรข้อความ = จุดที่ระบบวิเคราะห์ว่าผ่านหลักฐานทุกข้อ (ไม่เขียนชื่อจุดคำตอบในเนื้อหา)
+    if (text.includes('site-analysis}}')) {
+      const target = this.siteTargetId();
+      if (target) text = text.replace(/([:>])site-analysis\}\}/g, `$1${target}}}`);
+    }
     return resolveGeoTemplate(text, this.landmarkPoints, this.scale, this.routeMeters, {
       heightAt: elevation ? (p) => elevation.heightAt(p.x, p.y) : undefined,
       flow: Object.fromEntries([...this.waterways].map(([id, w]) => [id, w.flowDirection])),
@@ -572,8 +585,8 @@ export class GameSession {
       (c) => c.landmarkId === targetId,
     )?.evidenceId;
     const required = [...p.requiredEvidenceIds, ...(siteEvidenceId ? [siteEvidenceId] : [])];
-    const hasEvidence =
-      !!targetId && required.every((id) => this.evidence.includes(id)) && this.discoveredLandmarks.has(targetId);
+    const missingEvidence = required.filter((id) => !this.evidence.includes(id));
+    const hasEvidence = !!targetId && missingEvidence.length === 0 && this.discoveredLandmarks.has(targetId);
     if (!hasEvidence) problems.push('evidence');
 
     // นับเป็นการตอบผิดเฉพาะความเข้าใจผิด (พิกัด/ประเภท) — ยังไม่ได้ไปสำรวจหรือยืนไกลเกินไม่นับ
@@ -585,6 +598,7 @@ export class GameSession {
       this.skills.add('grid-coordinates');
       this.updateQuests();
     }
+    this.pinMissingEvidence = missingEvidence;
     return { ok, problems };
   }
 
@@ -871,8 +885,74 @@ export class GameSession {
       this.skills.add('grid-reference');
       this.skills.add('relative-position');
     } else this.mistakes.compare++;
+    this.gridAttempts.push({ landmarkId: chosen.landmarkId, ok });
     this.updateQuests();
     return (this.lastGridChoice = { ok, ...base });
+  }
+
+  /** พิกัดในบันทึกหลังแปลงตามวิธีนับของผู้บันทึก (พิกัดที่ "แก้ไขแล้ว") */
+  gridCorrectedRecord(): GridRef | null {
+    const ev = this.gridSiteEvidence();
+    return ev && this.coords ? this.coords.tileToGrid(ev.recordTile) : null;
+  }
+
+  /** จุดเป้าหมายที่ตรวจยืนยันภาคสนามได้จากช่องนี้ (ฉาก 5) */
+  gridVerifyAt(tile: TilePoint): string | null {
+    const ga = this.level.gridSiteAnalysis;
+    const v = ga?.verify;
+    if (!ga || !v || this.flags.has(v.flag) || !this.matches(v.when)) return null;
+    for (const c of ga.candidates) {
+      const at = this.landmarkPoints[c.landmarkId];
+      if (at && Math.hypot(at.x - tile.x, at.y - tile.y) <= v.radiusTiles) return c.landmarkId;
+    }
+    return null;
+  }
+
+  /**
+   * ตรวจยืนยันภาคสนามที่จุดเป้าหมาย: แสดงผลตรวจ พิกัด · ทิศ/ระยะ · สิ่งที่พบ ทีละข้อ (คำนวณจากแผนที่จริง)
+   * ผ่านครบ 3 ข้อจึงได้หลักฐานและ flag — ไม่ผ่านจะบอกเฉพาะข้อที่ไม่ตรง
+   */
+  startGridVerify(landmarkId: string): boolean {
+    const ga = this.level.gridSiteAnalysis;
+    const v = ga?.verify;
+    const cand = ga?.candidates.find((c) => c.landmarkId === landmarkId);
+    const row = this.evaluateGridSites().find((r) => r.landmarkId === landmarkId);
+    const corrected = this.gridCorrectedRecord();
+    const at = this.landmarkPoints[landmarkId];
+    if (!ga || !v || !cand || !row || !corrected || !at || !this.coords) return false;
+    const fmt = GridSystem.format;
+    const rep = row.report;
+    const fromName = this.level.landmarks.find((l) => l.id === ga.relative.fromId)?.name ?? ga.relative.fromId;
+    const mark = (ok: boolean) => (ok ? '✓ ตรง' : '✗ ไม่ตรง');
+    const feats = this.level.landmarks.find((l) => l.id === landmarkId)?.features ?? [];
+    const speaker = `สมุดภาคสนาม — ตรวจยืนยัน${cand.label}`;
+    const allOk = rep.failed.length === 0;
+    const nodes: DialogueNode[] = [
+      {
+        speaker,
+        text: `① พิกัด: ตรงนี้คือ ${fmt(this.coords.tileToGrid(at))} (คุณยืนที่ ${fmt(this.coords.tileToGrid(this.playerTile))}) · บันทึกที่แก้ไขแล้ว ${fmt(corrected)} → ${mark(!rep.failed.includes('grid'))}`,
+      },
+      {
+        speaker,
+        text: `② ทิศและระยะ: จาก${fromName} จุดนี้อยู่ทาง${THAI_DIRECTION[rep.actualDirection]} ประมาณ ${Math.round(rep.actualMeters / 10) * 10} ม. · บันทึกบอกทาง${THAI_DIRECTION[ga.relative.direction]} ราว ${ga.relative.meters} ม. → ${mark(!rep.failed.includes('relative'))}`,
+      },
+      {
+        speaker,
+        text: `③ หลักฐานภาคสนาม: ${ga.requiredFeatures.map((f) => `${ga.featureLabels[f] ?? f} ${feats.includes(f) ? '✓ พบ' : '✗ ไม่พบ'}`).join(' · ')}`,
+      },
+      allOk
+        ? {
+            speaker,
+            text: `ยืนยันแล้ว: ${cand.label} ตรงกับหลักฐานครบทั้ง 3 ชนิด บันทึกรายงานลงสมุดแล้ว — เปิดแผนที่ (M) แล้วปักหมุดที่จุดนี้`,
+            effects: [
+              { type: 'evidence', evidenceId: v.evidenceId },
+              { type: 'flag', flag: v.flag },
+            ],
+          }
+        : { speaker, text: `${cand.label} ยังไม่ตรงหลักฐานทุกข้อ (ดูข้อที่มีเครื่องหมาย ✗) — ตรวจกระดานวิเคราะห์พิกัด (C) อีกครั้ง` },
+    ];
+    this.startDialogue(nodes, 'npc', null, null);
+    return true;
   }
 
   /** เป้าหมายการปักหมุด: กำหนดในเนื้อหา หรือคำนวณจากการวิเคราะห์สถานที่ */
@@ -918,6 +998,7 @@ export class GameSession {
       player: { ...this.playerTile },
       pinnedAt: this.pinnedAt ? { ...this.pinnedAt } : null,
       completed: this.completed,
+      gridAttempts: this.gridAttempts.map((a) => ({ ...a })),
     };
   }
 
@@ -953,6 +1034,9 @@ export class GameSession {
     this.playerTile = { ...snap.player };
     this.pinnedAt = snap.pinnedAt ? { ...snap.pinnedAt } : null;
     this.completed = snap.completed;
+    this.gridAttempts.splice(0, this.gridAttempts.length, ...(snap.gridAttempts ?? []).map((a) => ({ ...a })));
+    this.lastGridChoice = null;
+    this.gridSelection = null;
     this.discoveredLandmarks.clear();
     this.checkLandmarkDiscovery();
     this.updateQuests(true);

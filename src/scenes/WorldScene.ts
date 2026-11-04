@@ -10,7 +10,7 @@ import { findPath } from '../core/world/pathfinding';
 import type { TilePoint } from '../core/world/types';
 import { Character, Player } from '../entities/Player';
 import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY } from '../graphics/tileIndex';
-import { PIN_PROBLEM_TEXT, ROUTE_CHECK_TEXT } from '../ui/format';
+import { pinProblemText, ROUTE_CHECK_TEXT } from '../ui/format';
 import { FONT_FAMILY } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
 import { getProgress, getSettings, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
@@ -298,6 +298,26 @@ export class WorldScene extends Phaser.Scene {
         else if (code === 'Escape') this.openPause();
         return;
 
+      case 'gridcheck':
+        if (code === 'Escape' || code === 'KeyC') {
+          s.lastGridChoice = null;
+          s.gridSelection = null;
+          this.setMode('explore');
+        } else if (choice >= 0 && choice < (s.level.gridSiteAnalysis?.candidates.length ?? 0)) {
+          // เลือกก่อน ยังไม่ตัดสิน — ต้องกด Enter ยืนยัน
+          if (!s.gridCheckSolved) {
+            s.gridSelection = choice;
+            s.lastGridChoice = null;
+            this.bumpUi();
+          }
+        } else if ((code === 'Enter' || code === 'NumpadEnter' || code === 'Space') && s.gridSelection !== null && !s.gridCheckSolved) {
+          const pick = s.gridSelection;
+          this.withStepToasts(() => s.chooseGridSite(pick));
+          if (s.lastGridChoice?.ok) s.gridSelection = pick;
+          this.bumpUi();
+        }
+        return;
+
       case 'compare':
         if (code === 'Escape' || code === 'KeyC') {
           s.lastCompare = null;
@@ -348,6 +368,18 @@ export class WorldScene extends Phaser.Scene {
 
   private openCompare(): void {
     const s = this.session;
+    // ด่านที่ใช้พิกัดกริด: C = กระดานวิเคราะห์พิกัด (ด่านที่มีแผนที่ฐานยังใช้หน้าเปรียบเทียบเดิม)
+    if (s.level.gridSiteAnalysis) {
+      if (s.currentStepOrder < 4 && !s.gridCheckSolved) {
+        s.toast('กระดานวิเคราะห์พิกัดจะเปิดหลังฟังเบาะแสจากผู้เก็บบันทึก');
+        return;
+      }
+      s.pinStage = 'none';
+      s.lastGridChoice = null;
+      s.gridSelection = null;
+      this.setMode('gridcheck');
+      return;
+    }
     if (s.availableSheets().length < 2) {
       if (s.level.mapComparison) s.toast('ยังไม่มีแผนที่ฐานครบสองฉบับ');
       return;
@@ -443,6 +475,14 @@ export class WorldScene extends Phaser.Scene {
       this.cancelWalk();
       this.player.setVelocity(0, 0);
       this.withStepToasts(() => this.session.inspect(point));
+      return;
+    }
+    // ฉาก 5 ด่านพิกัด: ตรวจยืนยันภาคสนามที่จุดเป้าหมาย
+    const site = this.session.gridVerifyAt(this.session.playerTile);
+    if (site) {
+      this.cancelWalk();
+      this.player.setVelocity(0, 0);
+      this.withStepToasts(() => this.session.startGridVerify(site));
     }
   }
 
@@ -581,7 +621,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     s.pinStage = 'cursor';
-    s.pinFeedback = `ยังบันทึกไม่ได้: ${result.problems.map((p) => PIN_PROBLEM_TEXT[p]).join(' · ')}`;
+    s.pinFeedback = `ยังบันทึกไม่ได้: ${pinProblemText(s, result.problems)}`;
     this.bumpUi();
   }
 

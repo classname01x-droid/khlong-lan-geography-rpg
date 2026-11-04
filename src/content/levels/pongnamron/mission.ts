@@ -1,5 +1,6 @@
 import type {
   ClueDefinition,
+  EndingDefinition,
   EvidenceDefinition,
   GridSiteAnalysisDefinition,
   InspectPoint,
@@ -11,7 +12,7 @@ import type {
 
 /**
  * ภารกิจด่านโป่งน้ำร้อน — ทักษะ: พิกัดกริด (E/N) · ทิศทางของแกน · ตำแหน่งสัมพัทธ์ · ตรวจหลักฐานภาคสนาม
- * ต้นแบบนี้เล่นได้ฉาก 1–3 ส่วนฉาก 4–6 วางโครงและตรรกะไว้แล้ว (ยังไม่มีหน้าจอ)
+ * เล่นได้ครบ 6 ฉาก: รับแผนที่กริด → หมุดอ้างอิง → ผู้เก็บบันทึก → กระดานวิเคราะห์พิกัด (C) → ยืนยันภาคสนาม + ปักหมุด → รายงานครู
  */
 
 export const pongQuizzes: QuizDefinition[] = [
@@ -53,6 +54,25 @@ export const pongQuizzes: QuizDefinition[] = [
     effects: [{ type: 'flag', flag: 'record-checked' }],
   },
 ];
+
+/** ภารกิจปริศนา: แปลงตำแหน่งสัมพัทธ์ (ทิศ + ระยะจาก RP-1) เป็นพิกัดกริด */
+pongQuizzes.push({
+  id: 'old-mark-coord',
+  speaker: 'หมุดสำรวจเก่า',
+  question: 'หมุดนี้อยู่จาก RP-1 ({{grid:rp-1}}) ไปทาง{{dir:rp-1>old-mark}} {{dist:rp-1>old-mark}} เมตร — พิกัดของหมุดนี้คือข้อใด?',
+  choices: [
+    { id: 'minus', label: '{{gridtop:old-mark}}', hint: 'เดินไปทางเหนือ ค่า N ต้องเพิ่มขึ้น ไม่ใช่ลดลง' },
+    { id: 'east', label: 'E 4,350 · N 1,200', hint: 'ไปทางเหนือ ค่า E ไม่เปลี่ยน — ค่าที่เปลี่ยนคือ N' },
+    { id: 'correct', label: '{{grid:old-mark}}' },
+  ],
+  correctChoiceId: 'correct',
+  fallbackHint: 'ทางเหนือ N เพิ่ม · ค่า E คงเดิม',
+  correctFeedback: 'ถูกต้อง! N ของ RP-1 + {{dist:rp-1>old-mark}} = {{grid:old-mark}} — ตรงกับตัวเลขที่ตอกบนหมุดเก่า',
+  effects: [
+    { type: 'flag', flag: 'found-old-mark' },
+    { type: 'evidence', evidenceId: 'old-mark-plate' },
+  ],
+});
 
 export const pongClues: ClueDefinition[] = [
   {
@@ -106,6 +126,12 @@ export const pongClues: ClueDefinition[] = [
     source: 'พี่เขียว',
     text: 'จุดชมวิวของตำบลอยู่ที่ {{grid:viewpoint}} (ฝึกเดินตามพิกัด)',
   },
+  {
+    id: 'clue-old-mark',
+    type: 'direction',
+    source: 'ลุงสอน',
+    text: 'หมุดสำรวจเก่าของปู่: จากหมุด RP-1 ไปทาง{{dir:rp-1>old-mark}} {{dist:rp-1>old-mark}} เมตร (ไม่มีป้ายบอก ต้องคำนวณพิกัดแล้วเดินไปเอง)',
+  },
   { id: 'clue-survey-a', type: 'landmark', source: 'สำรวจจุด A', text: 'สระน้ำนิ่ง ไม่มีไอน้ำ มีหินสีขาวก้อนหนึ่งอยู่ริมสระ' },
   { id: 'clue-survey-b', type: 'landmark', source: 'สำรวจจุด B', text: 'บ่อน้ำมีไอน้ำร้อนลอยขึ้น รอบบ่อเป็นหินปูนสีขาว' },
   { id: 'clue-survey-c', type: 'landmark', source: 'สำรวจจุด C', text: 'บ่อคอนกรีตมีไอน้ำอุ่นลอยขึ้น ต่อท่อมาจากที่อื่น ไม่มีหินปูน' },
@@ -117,6 +143,12 @@ export const pongEvidence: EvidenceDefinition[] = [
   { id: 'survey-a', name: 'บันทึกสำรวจจุด A', description: 'สิ่งที่พบจริงที่จุด A' },
   { id: 'survey-b', name: 'บันทึกสำรวจจุด B', description: 'สิ่งที่พบจริงที่จุด B' },
   { id: 'survey-c', name: 'บันทึกสำรวจจุด C', description: 'สิ่งที่พบจริงที่จุด C' },
+  {
+    id: 'field-report',
+    name: 'รายงานยืนยันภาคสนาม',
+    description: 'ผลตรวจ ณ จุดที่วิเคราะห์ได้: พิกัด E/N · ทิศและระยะจาก RP-2 · ไอน้ำและหินปูนขาว',
+  },
+  { id: 'old-mark-plate', name: 'แผ่นหมุดสำรวจเก่า', description: 'หมุดสำรวจของนักสำรวจรุ่นแรก พบได้ด้วยการคำนวณพิกัด' },
 ];
 
 const readRp = (n: 1 | 2 | 3, at: { x: number; y: number }): InspectPoint => ({
@@ -167,6 +199,17 @@ export const pongInspectPoints: InspectPoint[] = [
   survey('a', { x: 66, y: 41 }),
   survey('b', { x: 66, y: 18 }),
   survey('c', { x: 73, y: 28 }),
+  {
+    // ภารกิจปริศนา — ไม่มีป้ายบนแผนที่ ต้องเดินตามพิกัดที่คำนวณเอง
+    id: 'old-mark',
+    at: { x: 20, y: 24 },
+    radiusTiles: 1.5,
+    when: { clues: ['clue-old-mark'], notFlags: ['found-old-mark'] },
+    nodes: [
+      { speaker: 'หมุดสำรวจเก่า', text: 'พบหมุดคอนกรีตเก่าจมดินอยู่ครึ่งหนึ่ง ตัวเลขบนหมุดลบเลือน ต้องคำนวณพิกัดเอง' },
+      { quiz: 'old-mark-coord' },
+    ],
+  },
 ];
 
 /**
@@ -191,6 +234,8 @@ export const pongGridSiteAnalysis: GridSiteAnalysisDefinition = {
   requiredClueIds: ['clue-convention', 'clue-relative', 'clue-field'],
   availableWhen: { minStep: 4 },
   successFlag: 'grid-checked',
+  // ฉาก 5: กด E ที่จุดเป้าหมาย → ระบบตรวจพิกัด/ทิศ-ระยะ/สิ่งที่พบให้ดูทีละข้อ
+  verify: { radiusTiles: 3, when: { flags: ['grid-checked'] }, evidenceId: 'field-report', flag: 'site-verified' },
 };
 
 export const pongPinTask: PinTaskDefinition = {
@@ -204,9 +249,47 @@ export const pongPinTask: PinTaskDefinition = {
     { id: 'foot-bath', label: 'บ่อแช่เท้าของชุมชน' },
   ],
   correctWisdomId: 'natural-hot-spring',
-  requiredEvidenceIds: [],
+  // ต้องมีรายงานยืนยันภาคสนาม — เดินไปถึงอย่างเดียวปักไม่ผ่าน
+  requiredEvidenceIds: ['field-report'],
+  problemHints: {
+    far: 'ต้องยืนใกล้ตำแหน่งที่จะปัก (ไม่เกิน 50 ม.) — เดินไปที่จุดนั้นก่อน',
+    unexplored: 'ตำแหน่งที่ปักยังอยู่ในหมอก ต้องเดินไปสำรวจบริเวณนั้นก่อน',
+    location: 'ตำแหน่งที่ปักยังไม่ตรงกับจุดที่วิเคราะห์ได้ — เทียบพิกัด E/N ของหมุดกับพิกัดที่แก้ไขแล้ว',
+    wisdom: 'ประเภทสถานที่ยังไม่ถูก — ทบทวนหลักฐานภาคสนาม (ไอน้ำร้อน หินปูนขาว) ว่าเป็นสถานที่แบบใด',
+    evidence: 'ยังขาดหลักฐาน',
+  },
   availableWhen: { flags: ['grid-checked'] },
   successFlag: 'pin-verified',
+};
+
+export const pongEnding: EndingDefinition = {
+  messages: [
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'ครูได้รับรายงานแล้ว! บ่อน้ำร้อนธรรมชาติอยู่ที่ {{grid:site-analysis}} ถูกต้องทั้งพิกัด ทิศ/ระยะ และหลักฐานภาคสนาม',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'ทบทวนแกนพิกัด: ค่า E เพิ่มเมื่อไปทางตะวันออก ค่า N เพิ่มเมื่อไปทางเหนือ',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'บนจอเกม แกน Y ของ Phaser นับเพิ่มลงด้านล่าง ซึ่งตรงข้ามกับ N — บันทึกเก่า {{gridrecord}} นับ N จากขอบบนแบบแกน Y ถ้าอ่านตามที่เขียนจึงได้ตำแหน่งผิด',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'การอ่านพิกัดต้องรู้จุดกำเนิดที่กำหนด: แผนที่นี้เริ่มที่ E 4,000 · N 1,000 มุมตะวันตกเฉียงใต้',
+    },
+    {
+      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
+      text: 'และการยืนยันตำแหน่งต้องใช้หลักฐานประกอบ: พิกัด + ทิศและระยะจากจุดอ้างอิง + สิ่งที่พบจริง ไม่ใช่ตัวเลขอย่างเดียว',
+    },
+    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 3 และแผนที่กริดตำบลโป่งน้ำร้อนให้ เก็บไว้รวมกับสองชิ้นแรกนะ' },
+  ],
+  // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
+  codePiece: { index: 3, total: 4, value: 'พิกัด' },
+  rewardItem: 'แผนที่กริดตำบลโป่งน้ำร้อน',
+  completeFlag: 'mission-complete',
 };
 
 export const pongQuests: QuestDefinition[] = [
@@ -220,9 +303,9 @@ export const pongQuests: QuestDefinition[] = [
       { text: 'รับแผนที่กริดและบันทึกสำรวจจากครูเนม', done: { type: 'step', order: 1 } },
       { text: 'ตรวจหมุดอ้างอิงในชุมชน', done: { type: 'step', order: 2 } },
       { text: 'ฟังเบาะแสจากผู้เก็บบันทึก', done: { type: 'step', order: 3 } },
-      { text: 'เปรียบเทียบพิกัดกับตำแหน่งสัมพัทธ์ (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 4 } },
-      { text: 'สำรวจและปักหมุดตำแหน่งที่ถูกต้อง (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 5 } },
-      { text: 'รับรหัสลับชิ้นที่ 3 (อยู่ระหว่างพัฒนา)', done: { type: 'step', order: 6 } },
+      { text: 'วิเคราะห์พิกัดบนกระดาน (C) เลือกจุดที่ตรงหลักฐานครบ', done: { type: 'step', order: 4 } },
+      { text: 'ยืนยันภาคสนามและปักหมุดตำแหน่งที่ถูกต้อง', done: { type: 'step', order: 5 } },
+      { text: 'ส่งรายงานและรับรหัสลับชิ้นที่ 3', done: { type: 'step', order: 6 } },
     ],
   },
   {
@@ -234,6 +317,16 @@ export const pongQuests: QuestDefinition[] = [
     lockedHint: 'คุยกับเจ้าหน้าที่ป่าไม้ใกล้ถนนขึ้นเขา',
     objectives: [{ text: 'เดินไปถึงจุดชมวิว', done: { type: 'discover', landmarkId: 'viewpoint' } }],
     reward: { text: 'บันทึกในสมุด: เดินตามพิกัดกริดได้สำเร็จ' },
+  },
+  {
+    id: 'mystery-old-mark',
+    kind: 'mystery',
+    title: 'หมุดสำรวจที่หายไป',
+    description: 'ลุงสอนเล่าว่าปู่ฝังหมุดสำรวจไว้ ห่างจาก RP-1 ตามทิศและระยะที่บอก — คำนวณพิกัดเองแล้วเดินไปให้ถึง',
+    unlockWhen: { clues: ['clue-old-mark'] },
+    lockedHint: 'คุยกับลุงสอนอีกครั้งหลังฟังผู้เก็บบันทึก',
+    objectives: [{ text: 'หาหมุดสำรวจเก่าและตอบพิกัดให้ถูก', done: { type: 'flag', flag: 'found-old-mark' } }],
+    reward: { text: 'หลักฐาน: แผ่นหมุดสำรวจเก่า' },
   },
 ];
 
@@ -273,25 +366,25 @@ export const pongStory: StoryStep[] = [
   {
     order: 4,
     title: 'เปรียบเทียบพิกัดและตำแหน่งสัมพัทธ์',
-    objective: '(อยู่ระหว่างพัฒนา) สำรวจจุด A, B, C แล้วตรวจพิกัดกับตำแหน่งสัมพัทธ์',
+    objective: 'สำรวจจุด A, B, C (กด E) แล้วกด C เปิดกระดานวิเคราะห์พิกัด เลือกจุดที่ตรงหลักฐานครบ 3 ชนิด',
     landmarkId: 'rp-2',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'grid-checked' },
   },
   {
     order: 5,
-    title: 'สำรวจและปักหมุด',
-    objective: '(อยู่ระหว่างพัฒนา)',
+    title: 'สำรวจและยืนยันตำแหน่ง',
+    objective: 'เดินไปจุดที่วิเคราะห์ได้ กด E ตรวจยืนยัน แล้วเปิดแผนที่ (M) ปักหมุดและเลือกประเภทสถานที่',
     landmarkId: 'site-b',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'pin-verified' },
   },
   {
     order: 6,
-    title: 'รับรหัสลับชิ้นที่ 3',
-    objective: '(อยู่ระหว่างพัฒนา)',
+    title: 'ส่งรายงานและรับรหัส',
+    objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
     landmarkId: 'school',
-    status: 'planned',
+    status: 'playable',
     completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];

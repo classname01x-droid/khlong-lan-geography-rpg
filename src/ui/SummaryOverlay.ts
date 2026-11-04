@@ -4,7 +4,8 @@ import { DEFAULT_LEVEL_SKILLS, SKILL_LABEL, type SkillId } from '../core/mission
 import type { CodePiece } from '../core/progress/ProgressStore';
 import type { GameSession } from '../core/session/GameSession';
 import { fmtDuration, fmtMeters } from './format';
-import { COLORS, textStyle } from './theme';
+import { wrapThaiText } from './textWrap';
+import { COLORS, FONT_FAMILY, textStyle } from './theme';
 
 /** หน้าจอสรุปผลเมื่อจบด่าน */
 export class SummaryOverlay {
@@ -47,12 +48,13 @@ export class SummaryOverlay {
         `${s.level.title}`,
         '',
         `ระยะทางเดินทั้งหมด: ${fmtMeters(sum.distanceMeters)}`,
-        `เบาะแสที่ค้นพบ: ${sum.cluesFound}/${sum.cluesTotal}`,
+        `เบาะแสที่ค้นพบ: ${sum.cluesFound}/${sum.cluesTotal} · หลักฐาน: ${s.evidence.length}/${s.level.evidence?.length ?? 0}`,
         `จำนวนครั้งที่ตอบผิด: ${sum.mistakes}`,
         `   (${[
           `ปริศนา ${sum.mistakesBy.quiz}`,
           s.level.routeAnalysis ? `เส้นทาง ${sum.mistakesBy.route}` : '',
           s.level.mapComparison ? `เทียบแผนที่ ${sum.mistakesBy.compare}` : '',
+          s.level.gridSiteAnalysis ? `วิเคราะห์พิกัด ${sum.mistakesBy.compare}` : '',
           s.level.pinTask ? `ปักหมุด ${sum.mistakesBy.pin}` : '',
         ]
           .filter(Boolean)
@@ -61,9 +63,14 @@ export class SummaryOverlay {
         `ภารกิจ: หลัก ${sum.quests.main.done}/${sum.quests.main.total} · รอง ${sum.quests.side.done}/${sum.quests.side.total} · ปริศนา ${sum.quests.mystery.done}/${sum.quests.mystery.total}`,
       ].join('\n'),
     );
+    // ตัดบรรทัดให้อยู่ในกรอบ (ชื่อทักษะบางข้อยาว)
     this.skills.setText(
-      ['ทักษะภูมิศาสตร์ที่ใช้', ...((s.level.skills as SkillId[] | undefined) ?? DEFAULT_LEVEL_SKILLS).map((k) => `${sum.skills.includes(k) ? '●' : '○'} ${SKILL_LABEL[k]}`)].join(
-        '\n',
+      wrapThaiText(
+        ['ทักษะภูมิศาสตร์ที่ใช้', ...((s.level.skills as SkillId[] | undefined) ?? DEFAULT_LEVEL_SKILLS).map((k) => `${sum.skills.includes(k) ? '●' : '○'} ${SKILL_LABEL[k]}`)].join(
+          '\n',
+        ),
+        GAME_WIDTH - 100 - 500,
+        `16px ${FONT_FAMILY}`,
       ),
     );
     const e = s.level.ending;
