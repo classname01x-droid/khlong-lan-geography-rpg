@@ -8,3 +8,5 @@ export const REGISTRY_CODE_PIECES = 'codePieces';
 /** ProgressStore ตัวเดียวที่ทุกฉากใช้ร่วมกัน (ถ้า localStorage ใช้ไม่ได้ ข้อมูลในหน่วยความจำจะไม่หายระหว่างเปลี่ยนฉาก) */
 export const REGISTRY_PROGRESS = 'progress';
 export const REGISTRY_SETTINGS = 'settings';
+/** true = เล่นบนจอสัมผัส (แสดงปุ่มสัมผัสและข้อความ DOM ตัวใหญ่) */
+export const REGISTRY_TOUCH_UI = 'touchUi';

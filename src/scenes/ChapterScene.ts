@@ -94,6 +94,10 @@ export class ChapterScene extends Phaser.Scene {
     this.showLine();
 
     this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.onKey(ev.code));
+    // จอสัมผัส/เมาส์: แตะที่ใดก็ได้เพื่ออ่านบรรทัดถัดไป (หลังอ่านจบใช้ปุ่ม "ออกเดินทาง" ซึ่งแตะได้อยู่แล้ว)
+    this.input.on('pointerdown', () => {
+      if (this.stage === 'dialogue' && !this.nav) this.onKey('Space');
+    });
     this.installTestHooks();
   }
 
@@ -112,7 +116,7 @@ export class ChapterScene extends Phaser.Scene {
     const text = resolveChapterText(line.text, getProgress(this).data);
     this.speaker.setText(line.speaker);
     this.body.setText(wrapThaiText(text, PANEL.w - 56, `19px ${FONT_FAMILY}`));
-    this.hint.setText(`${this.lineIndex + 1}/${this.intro.lines.length} · Space / Enter ต่อไป · Esc กลับแผนที่การเดินทาง`);
+    this.hint.setText(`${this.lineIndex + 1}/${this.intro.lines.length} · แตะหรือกด Space เพื่ออ่านต่อ`);
   }
 
   private onKey(code: string): void {

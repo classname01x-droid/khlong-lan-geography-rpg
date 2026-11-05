@@ -1,0 +1,386 @@
+import { describe, expect, it } from 'vitest';
+import { khlongLanPattanaLevel as L4 } from '../src/content/levels/khlonglanpattana';
+import { sakNgamLevel as L1 } from '../src/content/levels/sakngam';
+import { ALL_LEVELS } from '../src/content/registry';
+import type { LevelDefinition, ObjectiveCondition, StepCondition } from '../src/content/types';
+import { buildQuestTracker, HintTracker, hintTierFor, stepKind } from '../src/core/guide/QuestGuide';
+import { interactionTargets, pickInteraction } from '../src/core/input/Interaction';
+import {
+  ACTION_KEY,
+  buildTouchContext,
+  choiceKey,
+  exploreActionForKey,
+  joystickVector,
+  TapGuard,
+  type TouchContextInput,
+} from '../src/core/input/InputMapping';
+import type { GameSession } from '../src/core/session/GameSession';
+import { computeMobileLayout, GAME_ASPECT } from '../src/core/ui/MobileLayout';
+import { newSession, runDialogue, talk } from './helpers';
+
+const NPC_RADIUS = 2;
+
+const baseInput = (over: Partial<TouchContextInput> = {}): TouchContextInput => ({
+  mode: 'explore',
+  interact: null,
+  analysis: null,
+  dialogue: null,
+  map: { pinStage: 'none', canSwitchSheet: false, wisdomChoices: [] },
+  notebook: { routeChoices: [] },
+  compareChoices: [],
+  grid: { choices: [], selected: null, solved: false },
+  ...over,
+});
+
+describe('Input mapping: ปุ่มสัมผัส ↔ คีย์บอร์ด', () => {
+  it('โหมดสำรวจ: จอยสติก + ปุ่มไอคอนพร้อมชื่อไทย (ไม่ใช่ตัวอักษร E/M/R/C)', () => {
+    const ctx = buildTouchContext(baseInput({ interact: { label: 'พูดคุยกับครูเนม', verb: 'คุย' }, analysis: { available: true, label: 'วิเคราะห์' } }));
+    expect(ctx.joystick).toBe(true);
+    expect(ctx.actions.map((a) => a.id)).toEqual(['interact', 'map', 'notebook', 'measure', 'analysis', 'grid', 'menu']);
+    for (const a of ctx.actions) {
+      expect(a.label).toMatch(/[฀-๿]/); // มีอักษรไทย
+      expect(['E', 'M', 'R', 'C', 'N']).not.toContain(a.label);
+      expect(a.icon.length).toBeGreaterThan(0);
+    }
+    expect(ctx.actions[0]).toMatchObject({ label: 'คุย', enabled: true, primary: true });
+  });
+
+  it('ปุ่มสัมผัสส่งรหัสปุ่มเดียวกับคีย์บอร์ด (โหมดสำรวจใช้กติกาเดียวกัน)', () => {
+    const ctx = buildTouchContext(baseInput({ interact: { label: 'x', verb: 'x' }, analysis: { available: true, label: 'วิเคราะห์' } }));
+    for (const a of ctx.actions) expect(exploreActionForKey(a.code)).toBe(a.id);
+    expect(ACTION_KEY.interact).toBe('KeyE');
+    expect(ACTION_KEY.map).toBe('KeyM');
+    expect(ACTION_KEY.measure).toBe('KeyR');
+    expect(ACTION_KEY.analysis).toBe('KeyC');
+    expect(ACTION_KEY.menu).toBe('Escape');
+  });
+
+  it('ปุ่มที่ใช้ไม่ได้ถูกปิด/ซ่อน: ไม่มีอะไรในระยะ → ปุ่มโต้ตอบปิด · ด่านไม่มีการวิเคราะห์ → ไม่มีปุ่มวิเคราะห์', () => {
+    const ctx = buildTouchContext(baseInput());
+    expect(ctx.actions.find((a) => a.id === 'interact')!.enabled).toBe(false);
+    expect(ctx.actions.some((a) => a.id === 'analysis')).toBe(false);
+    const locked = buildTouchContext(baseInput({ analysis: { available: false, label: 'วิเคราะห์' } }));
+    expect(locked.actions.find((a) => a.id === 'analysis')!.enabled).toBe(false);
+  });
+
+  it('บทสนทนา: แตะเพื่อไปต่อ · คำถาม: ตัวเลือกเป็นปุ่มใหญ่ส่ง Digit1..n · ไม่มีจอยสติก', () => {
+    const line = buildTouchContext(baseInput({ mode: 'dialogue', dialogue: { kind: 'line', choices: [] } }));
+    expect(line).toMatchObject({ joystick: false, tapToAdvance: true });
+    expect(line.sheet!.options[0].code).toBe('Space');
+    const quiz = buildTouchContext(baseInput({ mode: 'dialogue', dialogue: { kind: 'quiz', choices: ['40 ม.', '400 ม.', '4,000 ม.'] } }));
+    expect(quiz.sheet!.options.map((o) => [o.label, o.code])).toEqual([
+      ['40 ม.', 'Digit1'],
+      ['400 ม.', 'Digit2'],
+      ['4,000 ม.', 'Digit3'],
+    ]);
+    expect(quiz.tapToAdvance).toBe(false);
+  });
+
+  it('แผนที่: ปักหมุด/สลับแผ่น/ปิด · ขั้นเลือกประเภทสถานที่เป็นแผ่นตัวเลือก', () => {
+    const map = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'cursor', canSwitchSheet: true, wisdomChoices: [] } }));
+    expect(map.actions.map((a) => [a.id, a.code])).toEqual([
+      ['pinHere', 'Space'],
+      ['sheet', 'Tab'],
+      ['close', 'KeyM'],
+    ]);
+    const wisdom = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'wisdom', canSwitchSheet: false, wisdomChoices: ['วัด', 'ศูนย์เรียนรู้'] } }));
+    expect(wisdom.sheet!.options.map((o) => o.code)).toEqual(['Digit1', 'Digit2']);
+    expect(wisdom.actions[0].code).toBe('Escape');
+  });
+
+  it('กระดานวิเคราะห์: เลือก A/B/C ได้ แต่ "ยืนยัน" กดได้เมื่อเลือกแล้วเท่านั้น · ผ่านแล้วปิดการเลือก', () => {
+    const g = (selected: number | null, solved = false) =>
+      buildTouchContext(baseInput({ mode: 'gridcheck', grid: { choices: ['จุด A', 'จุด B', 'จุด C'], selected, solved } }));
+    expect(g(null).actions.find((a) => a.id === 'confirm')!.enabled).toBe(false);
+    const sel = g(1);
+    expect(sel.actions.find((a) => a.id === 'confirm')).toMatchObject({ enabled: true, code: 'Enter' });
+    expect(sel.actions.filter((a) => a.id === 'choice').map((a) => a.selected)).toEqual([false, true, false]);
+    expect(g(1, true).actions.filter((a) => a.id === 'choice').every((a) => !a.enabled)).toBe(true);
+  });
+
+  it('สมุด เปรียบเทียบ สรุปผล และเมนูหยุดเกม', () => {
+    const nb = buildTouchContext(baseInput({ mode: 'notebook', notebook: { routeChoices: ['ก', 'ข', 'ค'] } }));
+    expect(nb.actions.map((a) => a.code)).toEqual(['ArrowLeft', 'ArrowRight', 'KeyN']);
+    expect(nb.sheet!.options.map((o) => o.code)).toEqual(['Digit1', 'Digit2', 'Digit3']);
+    const cmp = buildTouchContext(baseInput({ mode: 'compare', compareChoices: ['ฉบับ A', 'ฉบับ B'] }));
+    expect(cmp.actions.map((a) => a.code)).toEqual(['Digit1', 'Digit2', 'Escape']);
+    const sum = buildTouchContext(baseInput({ mode: 'summary' }));
+    expect(sum.actions.map((a) => a.code)).toEqual(['Enter', 'Escape']);
+    expect(buildTouchContext(baseInput({ mode: 'pause' })).actions).toEqual([]); // เมนูหยุดเกมมีปุ่มแตะได้ของตัวเอง
+    expect(choiceKey(0)).toBe('Digit1');
+  });
+});
+
+describe('จอยสติก 8 ทิศ และการกันแตะซ้ำ', () => {
+  it('ลากไม่ถึง deadzone = หยุด · ปล่อยนิ้ว (0,0) = หยุด', () => {
+    expect(joystickVector(0, 0, 50)).toEqual({ dir: null, x: 0, y: 0 });
+    expect(joystickVector(10, 0, 50).dir).toBeNull(); // 20% < 25%
+  });
+
+  it('ปัดเป็น 8 ทิศ (ขึ้นจอ = เหนือ) และเวกเตอร์ยาว 1 เสมอ', () => {
+    const cases: Array<[number, number, string]> = [
+      [0, -40, 'N'],
+      [30, -30, 'NE'],
+      [40, 0, 'E'],
+      [30, 30, 'SE'],
+      [0, 40, 'S'],
+      [-30, 30, 'SW'],
+      [-40, 0, 'W'],
+      [-30, -30, 'NW'],
+      [40, -10, 'E'], // 76° → ตะวันออก
+      [40, -25, 'NE'], // 58° → ตะวันออกเฉียงเหนือ
+    ];
+    for (const [dx, dy, dir] of cases) {
+      const v = joystickVector(dx, dy, 50);
+      expect(v.dir, `${dx},${dy}`).toBe(dir);
+      expect(Math.hypot(v.x, v.y)).toBeCloseTo(1, 6);
+    }
+    // ลากเลยรัศมีก็ยังเดินด้วยความเร็วเท่าเดิม
+    expect(joystickVector(500, 0, 50)).toMatchObject({ dir: 'E', x: 1, y: 0 });
+  });
+
+  it('TapGuard: แตะครั้งเดียวส่งคำสั่งครั้งเดียว (pointerdown ซ้ำ/เมาส์จำลองถูกตัด) แต่กดปุ่มอื่นพร้อมกันได้', () => {
+    const g = new TapGuard(280);
+    expect(g.accept('map', 1000)).toBe(true);
+    expect(g.accept('map', 1010)).toBe(false);
+    expect(g.accept('interact', 1015)).toBe(true); // คนละปุ่ม
+    expect(g.accept('map', 1300)).toBe(true);
+  });
+});
+
+describe('Contextual interaction', () => {
+  it('ใกล้ NPC → "พูดคุยกับ…" · ไกลเกินระยะ → ไม่มีเป้าหมาย', () => {
+    const s = newSession(L4);
+    s.playerTile = { x: 10, y: 50 };
+    expect(pickInteraction(s, NPC_RADIUS)).toMatchObject({ kind: 'npc', id: 'teacher-nem', label: 'พูดคุยกับครูเนม', verb: 'คุย' });
+    s.playerTile = { x: 30, y: 50 };
+    expect(pickInteraction(s, NPC_RADIUS)).toBeNull();
+  });
+
+  it('จุดสำรวจที่ยังไม่เปิดตามเนื้อเรื่อง ไม่ถูกเสนอ · เปิดแล้วแสดงชื่อจุด', () => {
+    const s = newSession(L4);
+    s.playerTile = { x: 21, y: 39 };
+    expect(pickInteraction(s, NPC_RADIUS)).toBeNull(); // หมุดเปิดตั้งแต่ฉาก 2
+    talk(s, 'teacher-nem', [1]);
+    expect(pickInteraction(s, NPC_RADIUS)).toMatchObject({ kind: 'inspect', id: 'rp-1-read', label: 'สำรวจหมุดอ้างอิงพิกัด RP-1' });
+  });
+
+  it('หลายเป้าหมายในระยะ: เลือกตัวที่ใกล้ที่สุด · ระยะเท่ากันเลือก NPC ก่อน (ไม่สุ่ม)', () => {
+    const level: LevelDefinition = {
+      ...L4,
+      inspectPoints: [
+        { id: 'near-a', at: { x: 11, y: 50 }, radiusTiles: 2, when: {}, nodes: [{ speaker: 'ป้ายทดสอบ', text: 'x' }] },
+        ...L4.inspectPoints!,
+      ],
+    };
+    const s = newSession(level);
+    s.playerTile = { x: 10, y: 50 }; // ครูเนม (9,50) ห่าง 1 · ป้าย (11,50) ห่าง 1
+    const list = interactionTargets(s, NPC_RADIUS);
+    expect(list.map((t) => t.id)).toEqual(['teacher-nem', 'near-a']);
+    s.playerTile = { x: 11, y: 51 }; // ป้ายห่าง 1 · ครูเนมห่าง 2.24 (เกินระยะ)
+    expect(pickInteraction(s, NPC_RADIUS)!.id).toBe('near-a');
+    for (let i = 0; i < 5; i++) expect(pickInteraction(s, NPC_RADIUS)!.id).toBe('near-a');
+  });
+
+  it('จุดตรวจยืนยัน (บท 4 ฉาก 6) แสดง "ตรวจสอบหลักฐานที่…"', () => {
+    const s = newSession(L4);
+    s.flags.add('analysis-done');
+    s.playerTile = { x: 64, y: 25 };
+    expect(pickInteraction(s, NPC_RADIUS)).toMatchObject({ kind: 'verify', label: 'ตรวจสอบหลักฐานที่จุด B', verb: 'ตรวจสอบ' });
+  });
+});
+
+/* ---------------- Quest Tracker ---------------- */
+
+/** ทำให้ฉากก่อนหน้าทั้งหมดผ่าน (ตั้งสถานะตรง ๆ) เพื่อดูแถบภารกิจของฉากที่ต้องการ */
+function satisfy(s: GameSession, c: StepCondition | ObjectiveCondition): void {
+  switch (c.type) {
+    case 'flag':
+      s.flags.add(c.flag);
+      return;
+    case 'talk':
+      (s as unknown as { talkedTo: Set<string> }).talkedTo.add(c.npcId);
+      return;
+    case 'all':
+      for (const o of c.of) satisfy(s, o);
+      return;
+    case 'discover':
+      s.discoveredLandmarks.add(c.landmarkId);
+      return;
+    case 'clue':
+      s.clues.push(c.clueId);
+      return;
+    case 'evidence':
+      s.evidence.push(c.evidenceId);
+      return;
+    default:
+      return;
+  }
+}
+
+function sessionAtStep(level: LevelDefinition, order: number): GameSession {
+  const s = newSession(level);
+  for (const st of level.story) if (st.order < order && st.completeWhen) satisfy(s, st.completeWhen);
+  s.updateQuests(true);
+  return s;
+}
+
+describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () => {
+  it('บท 1 เริ่มเกม: ชื่อบท ภารกิจ เป้าหมาย ความคืบหน้า', () => {
+    const s = newSession(L1);
+    const t = buildQuestTracker(s, { chapterOrder: 1 });
+    expect(t.chapterLabel).toBe(`บทที่ 1: ${L1.quests!.find((q) => q.kind === 'main')!.title}`);
+    expect(t.questTitle).toBe(L1.story[0].title);
+    expect(t.objective).toBe(L1.story[0].objective);
+    expect(t.progress).toEqual({ done: 0, total: L1.story.length, label: 'ฉาก' });
+    expect(t.hint).toBeNull();
+  });
+
+  it('เป้าหมายเปลี่ยนเองเมื่อสำเร็จ: ฉากแบบหลายเป้าหมายแสดงทีละข้อ + ความคืบหน้า 2/4', () => {
+    const s = sessionAtStep(L4, 2);
+    let t = buildQuestTracker(s, { chapterOrder: 4 });
+    expect(t.progress).toEqual({ done: 0, total: 4, label: 'เป้าหมายย่อย' });
+    expect(t.objective).toBe('สำรวจหมุดอ้างอิงพิกัด RP-1');
+    s.flags.add('read-rp-1');
+    s.flags.add('read-rp-2');
+    t = buildQuestTracker(s, { chapterOrder: 4 });
+    expect(t.progress.done).toBe(2);
+    expect(t.objective).toBe('สำรวจหมุดอ้างอิงพิกัด RP-3');
+    expect(t.remaining).toEqual(['สำรวจหมุดอ้างอิงพิกัด RP-3', 'คุยกับพี่ต้นกล้า']);
+    s.flags.add('read-rp-3');
+    s.flags.add('distance-ok');
+    t = buildQuestTracker(s, { chapterOrder: 4 });
+    expect(t.questTitle).toBe(L4.story[2].title);
+    expect(t.step.current).toBe(3);
+  });
+
+  it('ทุกบททุกฉากมีเป้าหมายที่อ่านได้ และชนิดฉากถูกระบุ', () => {
+    for (const L of ALL_LEVELS) {
+      for (const st of L.story) {
+        const s = sessionAtStep(L, st.order);
+        const t = buildQuestTracker(s, { hintTier: 2 });
+        expect(t.questTitle, `${L.id}#${st.order}`).toBe(st.title);
+        expect(t.objective.length, `${L.id}#${st.order}`).toBeGreaterThan(3);
+        expect(t.hint?.length ?? 0, `${L.id}#${st.order}`).toBeGreaterThan(5);
+        expect(stepKind(L, st)).not.toBe('other');
+      }
+    }
+  });
+
+  it('จบภารกิจแล้ว → แสดงว่าสำเร็จ ไม่มีคำแนะนำค้าง', () => {
+    const s = sessionAtStep(L1, L1.story.length + 1);
+    const t = buildQuestTracker(s, { chapterOrder: 1 });
+    expect(t.complete).toBe(true);
+    expect(t.hint).toBeNull();
+  });
+
+  it('แสดงภารกิจรอง/ปริศนาที่กำลังทำ', () => {
+    const s = sessionAtStep(L4, 4);
+    s.clues.push('clue-straight-road'); // ได้จากพี่ต้นกล้าในฉาก 2
+    s.updateQuests(true);
+    expect(buildQuestTracker(s).sideQuests).toContain('สำรวจโครงข่ายถนน');
+  });
+});
+
+describe('คำแนะนำแบบเป็นระดับ (ไม่เฉลย)', () => {
+  it('ระดับเพิ่มตามเวลาในฉาก / จำนวนครั้งที่ผิด / การขอเพิ่ม และเริ่มใหม่เมื่อเปลี่ยนฉาก', () => {
+    expect(hintTierFor(0, 0)).toBe(0);
+    expect(hintTierFor(61_000, 0)).toBe(1);
+    expect(hintTierFor(0, 1)).toBe(1);
+    expect(hintTierFor(0, 3)).toBe(2);
+    expect(hintTierFor(200_000, 0)).toBe(2);
+    expect(hintTierFor(0, 0, 1)).toBe(1);
+    const h = new HintTracker();
+    expect(h.update(2, 1000, 0)).toBe(0);
+    expect(h.update(2, 30_000, 1)).toBe(1); // ผิด 1 ครั้งในฉากนี้
+    h.requestMore();
+    expect(h.update(2, 31_000, 1)).toBe(2);
+    expect(h.update(3, 32_000, 1)).toBe(0); // ฉากใหม่: นับใหม่
+  });
+
+  it('ระดับ 1 = วิธีคิด · ระดับ 2 = เครื่องมือ/ใคร/หลักฐานที่ขาด', () => {
+    const s = sessionAtStep(L4, 5);
+    const t1 = buildQuestTracker(s, { hintTier: 1 });
+    expect(t1.kind).toBe('analysis');
+    expect(t1.hint).toContain('ต้องตรงทุกชนิดพร้อมกัน');
+    const t2 = buildQuestTracker(s, { hintTier: 2 });
+    expect(t2.hint).toContain('กระดานวิเคราะห์');
+    expect(t2.hint).toContain('ยังไม่ได้สำรวจ: จุด A, จุด B, จุด C'); // บอกทุกจุดที่ยังไม่สำรวจ ไม่ชี้จุดเดียว
+    expect(t2.hint).toContain('ยังขาดหลักฐานประเภท');
+    const quiz = buildQuestTracker(sessionAtStep(L4, 3), { hintTier: 2 });
+    expect(quiz.kind).toBe('quiz');
+    expect(quiz.hint).toContain('ไปคุยกับป้าบัวลอย');
+  });
+
+  it('ไม่เฉลย: คำแนะนำทุกระดับของทุกบทไม่ระบุสถานที่คำตอบ', () => {
+    for (const L of ALL_LEVELS) {
+      const answerNames: string[] = [];
+      const def = L.integratedSiteAnalysis ?? L.gridSiteAnalysis;
+      if (def?.correctLandmarkId) {
+        answerNames.push(L.landmarks.find((l) => l.id === def.correctLandmarkId)!.name);
+        answerNames.push(def.candidates.find((c) => c.landmarkId === def.correctLandmarkId)!.label);
+      }
+      if (L.pinTask && L.pinTask.targetId !== 'site-analysis') answerNames.push(L.landmarks.find((l) => l.id === L.pinTask!.targetId)!.name);
+      const correctRoute = L.routeAnalysis?.routes.find((r) => r.id === L.routeAnalysis!.correctRouteId);
+      for (const st of L.story) {
+        const s = sessionAtStep(L, st.order);
+        for (const c of def?.candidates ?? []) if (c.evidenceId) s.evidence.push(c.evidenceId); // สำรวจครบ → ไม่มีรายการจุด
+        for (const tier of [1, 2]) {
+          const hint = buildQuestTracker(s, { hintTier: tier }).hint ?? '';
+          for (const name of answerNames) expect(hint, `${L.id}#${st.order} tier ${tier}`).not.toContain(name);
+          if (correctRoute) expect(hint).not.toContain(correctRoute.description);
+        }
+      }
+    }
+  });
+
+  it('คำแนะนำมาจากข้อมูลจริง: คุยแล้ว/ตอบแล้ว เป้าหมายเลื่อนตาม', () => {
+    const s = newSession(L4);
+    expect(buildQuestTracker(s, { hintTier: 2 }).hint).toContain('ไปคุยกับครูเนม');
+    talk(s, 'teacher-nem', [1]);
+    runDialogue(s);
+    expect(buildQuestTracker(s).questTitle).toBe(L4.story[1].title);
+  });
+});
+
+describe('Mobile layout (แนวนอน/แนวตั้ง/รอยบาก)', () => {
+  const none = { top: 0, right: 0, bottom: 0, left: 0 };
+
+  it('มือถือแนวนอน 844×390: ภาพเกมสูงเต็มจอ คงสัดส่วน 3:2 ปุ่มอยู่ข้างภาพ ไม่ทับฉาก', () => {
+    const l = computeMobileLayout(844, 390, none, true);
+    expect(l.portrait).toBe(false);
+    expect(l.sideColumns).toBe(true);
+    expect(l.game.h).toBe(390);
+    expect(l.game.w / l.game.h).toBeCloseTo(GAME_ASPECT, 6);
+    expect(l.left.x + l.left.w).toBeLessThanOrEqual(l.game.x + 0.5);
+    expect(l.right.x).toBeGreaterThanOrEqual(l.game.x + l.game.w - 0.5);
+    expect(l.compact).toBe(true);
+    expect(l.button).toBeGreaterThanOrEqual(44);
+  });
+
+  it('เครื่องมีรอยบาก (safe-area ซ้าย–ขวา 47): ย่อภาพเกมเล็กน้อยเพื่อให้ปุ่มไม่ทับ และไม่วางอะไรในรอยบาก', () => {
+    const l = computeMobileLayout(844, 390, { top: 0, right: 47, bottom: 21, left: 47 }, true);
+    expect(l.sideColumns).toBe(true);
+    expect(l.left.x).toBe(47);
+    expect(l.right.x + l.right.w).toBeCloseTo(844 - 47, 6);
+    expect(l.game.y + l.game.h).toBeLessThanOrEqual(390 - 21 + 0.5);
+    expect(l.game.w / l.game.h).toBeCloseTo(GAME_ASPECT, 6);
+  });
+
+  it('จอ 4:3 (แท็บเล็ต): ไม่มีที่ข้างภาพ → ปุ่มซ้อนบนขอบภาพ (ภาพไม่ถูกบีบ)', () => {
+    const l = computeMobileLayout(1024, 768, none, true);
+    expect(l.sideColumns).toBe(false);
+    expect(l.game.w / l.game.h).toBeCloseTo(GAME_ASPECT, 6);
+  });
+
+  it('แนวตั้ง: ตรวจพบเพื่อแสดงคำแนะนำให้หมุนจอ', () => {
+    expect(computeMobileLayout(390, 844, none, true).portrait).toBe(true);
+  });
+
+  it('คอมพิวเตอร์ (ไม่มีจอสัมผัส): ภาพเกมพอดีจอ ไม่มีคอลัมน์ปุ่ม', () => {
+    const l = computeMobileLayout(1440, 900, none, false);
+    expect(l.sideColumns).toBe(false);
+    expect(l.game.h).toBe(900);
+    expect(l.left.w).toBe(0);
+  });
+});

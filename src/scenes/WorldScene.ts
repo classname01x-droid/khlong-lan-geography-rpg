@@ -13,6 +13,7 @@ import type { TilePoint } from '../core/world/types';
 import { Character, Player } from '../entities/Player';
 import { FOG_EDGE_TILE, FOG_SOLID_TILE, OBJECT_TILE, TERRAIN_TILE, TILESET_KEY } from '../graphics/tileIndex';
 import { pinProblemText, ROUTE_CHECK_TEXT } from '../ui/format';
+import { pickInteraction } from '../core/input/Interaction';
 import { FONT_FAMILY } from '../ui/theme';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
@@ -56,6 +57,8 @@ export class WorldScene extends Phaser.Scene {
   private progress!: ProgressStore;
   private resetArmedAt = 0;
   private startData: Partial<LevelStartData> = {};
+  /** ทิศเดินจากจอยสติกสัมผัส */
+  private readonly touchVector = new Phaser.Math.Vector2(0, 0);
   /** false ระหว่างที่ create ยังไม่เสร็จ หรือเมื่อถูกส่งกลับหน้าเลือกด่าน */
   private ready = false;
 
@@ -182,7 +185,7 @@ export class WorldScene extends Phaser.Scene {
     this.gridOverlay = this.add.graphics().setDepth(DEPTH.grid).setVisible(false);
     this.drawGrid(grid.width, grid.height);
 
-    kb.on('keydown', (ev: KeyboardEvent) => this.onKey(ev));
+    kb.on('keydown', (ev: KeyboardEvent) => this.handleCode(ev.code));
 
     // ---- ความคืบหน้า: เล่นต่อจากที่บันทึกไว้ (เพิ่ม ?new=1 ใน URL เพื่อเริ่มใหม่) ----
     this.progress = getProgress(this);
@@ -268,7 +271,9 @@ export class WorldScene extends Phaser.Scene {
     const s = this.session;
     if (!s.completed && s.mode !== 'pause') s.elapsedMs += delta;
 
-    const v = this.player.handleInput(s.mode === 'explore', this.scriptedDirection(delta));
+    const scripted = this.scriptedDirection(delta);
+    const touch = this.touchVector.lengthSq() > 0 ? this.touchVector : null;
+    const v = this.player.handleInput(s.mode === 'explore', scripted ?? touch);
     if (v.lengthSq() > 0) s.updateFacing(v.x, v.y);
 
     // ระยะทางจากตำแหน่งจริงหลังชน (ไม่ใช่จากความเร็ว)
@@ -281,9 +286,22 @@ export class WorldScene extends Phaser.Scene {
    * Input — ทุกปุ่มผ่านจุดเดียว แยกตามโหมด
    * ========================================================= */
 
-  private onKey(ev: KeyboardEvent): void {
+  /**
+   * จุดรับคำสั่งเดียวของเกม: คีย์บอร์ดและปุ่มสัมผัส (TouchLayer) ส่งรหัสปุ่มเดียวกันเข้ามาที่นี่
+   * กติกาของแต่ละโหมดจึงไม่ถูกเขียนซ้ำ
+   */
+  dispatchCode(code: string): void {
+    if (!this.ready || !this.session) return;
+    this.handleCode(code);
+  }
+
+  /** ทิศเดินจากจอยสติกสัมผัส (0,0 = หยุด) — ใช้เมื่อไม่มีการเดินอัตโนมัติ */
+  setTouchVector(x: number, y: number): void {
+    this.touchVector.set(x, y);
+  }
+
+  private handleCode(code: string): void {
     const s = this.session;
-    const code = ev.code;
     const digit = /^(Digit|Numpad)([1-9])$/.exec(code);
     const choice = digit ? Number(digit[2]) - 1 : -1;
     const confirm = code === 'Space' || code === 'Enter' || code === 'NumpadEnter' || code === 'KeyE';
@@ -480,35 +498,28 @@ export class WorldScene extends Phaser.Scene {
 
   /* ---------------- บทสนทนา ---------------- */
 
+  /**
+   * โต้ตอบกับเป้าหมายที่เลือกโดย pickInteraction (เกณฑ์เดียวกับข้อความ "พูดคุยกับ…/สำรวจ…" บนจอ)
+   * ใช้ทั้งปุ่ม E และปุ่มสัมผัส — ไม่มีอะไรในระยะ = ไม่ทำอะไร
+   */
   private interact(): void {
-    const npc = this.findNearbyNpc();
-    if (npc) {
-      this.startTalk(npc);
+    const s = this.session;
+    const target = pickInteraction(s, INTERACT_RADIUS_TILES);
+    if (!target) return;
+    this.cancelWalk();
+    this.player.setVelocity(0, 0);
+    if (target.kind === 'npc') {
+      const npc = this.npcs.find((n) => n.def.id === target.id);
+      if (npc) this.startTalk(npc);
       return;
     }
-    // ไม่มี NPC ใกล้ ๆ → ลองตรวจค้นจุดที่ยืนอยู่ (เช่น ภารกิจปริศนา)
-    const point = this.session.inspectPointAt(this.session.playerTile);
-    if (point) {
-      this.cancelWalk();
-      this.player.setVelocity(0, 0);
-      this.withStepToasts(() => this.session.inspect(point));
+    if (target.kind === 'inspect') {
+      const point = s.level.inspectPoints?.find((p) => p.id === target.id);
+      if (point) this.withStepToasts(() => s.inspect(point));
       return;
     }
-    // ฉาก 5 ด่านพิกัด: ตรวจยืนยันภาคสนามที่จุดเป้าหมาย
-    const site = this.session.gridVerifyAt(this.session.playerTile);
-    if (site) {
-      this.cancelWalk();
-      this.player.setVelocity(0, 0);
-      this.withStepToasts(() => this.session.startGridVerify(site));
-      return;
-    }
-    // บท 4 ฉาก 6: ตรวจยืนยันด้วยหลักฐานรวมและบันทึกข้อมูลภูมิปัญญา
-    const site4 = this.session.integratedVerifyAt(this.session.playerTile);
-    if (site4) {
-      this.cancelWalk();
-      this.player.setVelocity(0, 0);
-      this.withStepToasts(() => this.session.startIntegratedVerify(site4));
-    }
+    // ตรวจยืนยันภาคสนาม (บท 3 ด่านพิกัด / บท 4 หลักฐานรวม)
+    this.withStepToasts(() => (s.level.gridSiteAnalysis ? s.startGridVerify(target.id) : s.startIntegratedVerify(target.id)));
   }
 
   private startTalk(npc: NpcInstance): void {
@@ -516,20 +527,6 @@ export class WorldScene extends Phaser.Scene {
     this.player.setVelocity(0, 0);
     npc.sprite.faceTowards(this.player.x, this.player.y);
     this.withStepToasts(() => this.session.talkTo(npc.def));
-  }
-
-  private findNearbyNpc(): NpcInstance | undefined {
-    const maxDist = INTERACT_RADIUS_TILES * S;
-    let best: NpcInstance | undefined;
-    let bestDist = Infinity;
-    for (const n of this.npcs) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y);
-      if (d <= maxDist && d < bestDist) {
-        best = n;
-        bestDist = d;
-      }
-    }
-    return best;
   }
 
   private refreshMarkers(): void {

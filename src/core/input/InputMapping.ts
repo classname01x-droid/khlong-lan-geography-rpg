@@ -1,0 +1,242 @@
+import { DIRECTIONS_8, type Direction8 } from '../direction/Compass';
+
+/**
+ * การจับคู่คำสั่งผู้เล่น ↔ ปุ่มคีย์บอร์ด ↔ ปุ่มสัมผัส (ตรรกะล้วน ทดสอบได้)
+ *
+ * ปุ่มสัมผัสทุกปุ่ม "ส่งรหัสปุ่มคีย์บอร์ดเดียวกัน" เข้า WorldScene.dispatchCode() — เกมจึงมีเส้นทางคำสั่งเดียว
+ * (กติกาของแต่ละโหมดอยู่ที่เดิม ไม่เขียนซ้ำ) และคีย์บอร์ดเดิมยังใช้ได้ทุกปุ่ม
+ */
+export type ActionId =
+  | 'interact'
+  | 'map'
+  | 'notebook'
+  | 'measure'
+  | 'analysis'
+  | 'grid'
+  | 'menu'
+  | 'next'
+  | 'confirm'
+  | 'close'
+  | 'tabPrev'
+  | 'tabNext'
+  | 'pinHere'
+  | 'sheet'
+  | 'continue'
+  | 'journey'
+  | 'choice';
+
+/** รหัสปุ่มคีย์บอร์ดของแต่ละคำสั่ง (ตรงกับที่ WorldScene รับอยู่เดิม) */
+export const ACTION_KEY: Record<Exclude<ActionId, 'choice' | 'close'>, string> = {
+  interact: 'KeyE',
+  map: 'KeyM',
+  notebook: 'KeyN',
+  measure: 'KeyR',
+  analysis: 'KeyC',
+  grid: 'KeyG',
+  menu: 'Escape',
+  next: 'Space',
+  confirm: 'Enter',
+  tabPrev: 'ArrowLeft',
+  tabNext: 'ArrowRight',
+  pinHere: 'Space',
+  sheet: 'Tab',
+  continue: 'Enter',
+  journey: 'Escape',
+};
+
+export const choiceKey = (index: number): string => `Digit${index + 1}`;
+
+/** คำสั่งที่คีย์บอร์ดแต่ละปุ่มหมายถึงในโหมดสำรวจ (ใช้ตรวจว่าแป้นพิมพ์กับปุ่มสัมผัสตรงกัน) */
+export function exploreActionForKey(code: string): ActionId | null {
+  switch (code) {
+    case 'KeyE':
+    case 'Space':
+    case 'Enter':
+    case 'NumpadEnter':
+      return 'interact';
+    case 'KeyM':
+      return 'map';
+    case 'KeyN':
+      return 'notebook';
+    case 'KeyR':
+      return 'measure';
+    case 'KeyC':
+      return 'analysis';
+    case 'KeyG':
+      return 'grid';
+    case 'Escape':
+      return 'menu';
+    default:
+      return null;
+  }
+}
+
+export interface TouchAction {
+  id: ActionId;
+  /** ชื่อภาษาไทย (แสดงคู่กับไอคอน) */
+  label: string;
+  icon: string;
+  /** รหัสปุ่มที่ส่งเข้าเกม */
+  code: string;
+  enabled: boolean;
+  /** ปุ่มหลักของสถานการณ์ (แสดงเด่น) */
+  primary?: boolean;
+  /** ตัวเลือกที่กำลังเลือกอยู่ (เช่น จุดบนกระดานวิเคราะห์) */
+  selected?: boolean;
+}
+
+/** สถานะเกมที่ใช้ตัดสินว่าจะแสดงปุ่มใด (สร้างจาก GameSession — ไม่ผูกกับ Phaser) */
+export interface TouchContextInput {
+  mode: 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare' | 'gridcheck';
+  /** ข้อความของเป้าหมายที่โต้ตอบได้ (null = ไม่มีอะไรในระยะ) */
+  interact: { label: string; verb: string } | null;
+  /** ด่านนี้มีหน้าวิเคราะห์ (กระดานวิเคราะห์ หรือ เปรียบเทียบแผนที่) */
+  analysis: { available: boolean; label: string } | null;
+  dialogue: { kind: 'line' | 'quiz'; choices: string[] } | null;
+  map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; wisdomChoices: string[] };
+  notebook: { routeChoices: string[] };
+  compareChoices: string[];
+  grid: { choices: string[]; selected: number | null; solved: boolean };
+}
+
+export interface TouchSheet {
+  title: string;
+  options: TouchAction[];
+}
+
+export interface TouchContext {
+  /** แสดงจอยสติก (เดินได้เฉพาะโหมดสำรวจ) */
+  joystick: boolean;
+  /** ปุ่มด้านข้าง */
+  actions: TouchAction[];
+  /** แผ่นตัวเลือกด้านล่าง (ตัวเลือกที่มีข้อความยาว) */
+  sheet: TouchSheet | null;
+  /** แตะกล่องบทสนทนาเพื่อไปต่อ */
+  tapToAdvance: boolean;
+}
+
+const act = (id: Exclude<ActionId, 'choice'>, label: string, icon: string, code: string, enabled = true, primary = false): TouchAction => ({
+  id,
+  label,
+  icon,
+  code,
+  enabled,
+  primary,
+});
+
+const choices = (labels: string[], selected: number | null = null, enabled = true): TouchAction[] =>
+  labels.map((label, i) => ({ id: 'choice', label, icon: String(i + 1), code: choiceKey(i), enabled, selected: selected === i }));
+
+/** ปุ่มที่ควรแสดงในสถานการณ์ปัจจุบัน — ปุ่มที่ใช้ไม่ได้ถูกซ่อนหรือปิด */
+export function buildTouchContext(i: TouchContextInput): TouchContext {
+  const none: TouchContext = { joystick: false, actions: [], sheet: null, tapToAdvance: false };
+  switch (i.mode) {
+    case 'explore': {
+      const actions = [
+        act('interact', i.interact ? i.interact.verb : 'โต้ตอบ', '✋', ACTION_KEY.interact, !!i.interact, true),
+        act('map', 'แผนที่', '🗺️', ACTION_KEY.map),
+        act('notebook', 'สมุด', '📒', ACTION_KEY.notebook),
+        act('measure', 'วัดระยะ', '📏', ACTION_KEY.measure),
+      ];
+      if (i.analysis) actions.push(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available));
+      actions.push(act('grid', 'ตาราง', '#', ACTION_KEY.grid), act('menu', 'เมนู', '☰', ACTION_KEY.menu));
+      return { joystick: true, actions, sheet: null, tapToAdvance: false };
+    }
+    case 'dialogue':
+      if (!i.dialogue) return none;
+      if (i.dialogue.kind === 'quiz') return { ...none, sheet: { title: 'เลือกคำตอบ', options: choices(i.dialogue.choices) } };
+      return { ...none, tapToAdvance: true, sheet: { title: '', options: [act('next', 'ไปต่อ', '▶', ACTION_KEY.next, true, true)] } };
+    case 'map': {
+      if (i.map.pinStage === 'wisdom') {
+        return {
+          ...none,
+          sheet: { title: 'สถานที่ที่ปักหมุดคืออะไร?', options: choices(i.map.wisdomChoices) },
+          actions: [act('close', 'ย้ายหมุด', '↩', 'Escape')],
+        };
+      }
+      const actions: TouchAction[] = [];
+      if (i.map.pinStage === 'cursor') actions.push(act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true));
+      if (i.map.canSwitchSheet) actions.push(act('sheet', 'สลับแผ่น', '🔁', ACTION_KEY.sheet));
+      if (i.analysis) actions.push(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available));
+      actions.push(act('close', 'ปิดแผนที่', '✕', 'KeyM'));
+      return { ...none, actions };
+    }
+    case 'notebook':
+      return {
+        ...none,
+        actions: [act('tabPrev', 'หน้าก่อน', '◀', ACTION_KEY.tabPrev), act('tabNext', 'หน้าถัดไป', '▶', ACTION_KEY.tabNext), act('close', 'ปิดสมุด', '✕', 'KeyN')],
+        sheet: i.notebook.routeChoices.length ? { title: 'เลือกเส้นทางที่ตรงกับเบาะแส', options: choices(i.notebook.routeChoices) } : null,
+      };
+    case 'compare':
+      return { ...none, actions: [...choices(i.compareChoices), act('close', 'ปิด', '✕', 'Escape')] };
+    case 'gridcheck': {
+      const solved = i.grid.solved;
+      return {
+        ...none,
+        actions: [
+          ...choices(i.grid.choices, i.grid.selected, !solved),
+          act('confirm', 'ยืนยัน', '✔', ACTION_KEY.confirm, !solved && i.grid.selected !== null, true),
+          act('close', 'ปิด', '✕', 'Escape'),
+        ],
+      };
+    }
+    case 'summary':
+      return {
+        ...none,
+        actions: [act('continue', 'รับภารกิจถัดไป', '▶', ACTION_KEY.continue, true, true), act('journey', 'แผนที่การเดินทาง', '🧭', ACTION_KEY.journey)],
+      };
+    case 'pause':
+      // เมนูหยุดเกมมีปุ่มแตะได้ของตัวเองอยู่แล้ว
+      return none;
+  }
+}
+
+/* ---------------- จอยสติก ---------------- */
+
+/** เวกเตอร์หนึ่งหน่วยของ 8 ทิศ (y บวก = ลงด้านล่างจอ = ทิศใต้) */
+const UNIT: Record<Direction8, { x: number; y: number }> = {
+  N: { x: 0, y: -1 },
+  NE: { x: Math.SQRT1_2, y: -Math.SQRT1_2 },
+  E: { x: 1, y: 0 },
+  SE: { x: Math.SQRT1_2, y: Math.SQRT1_2 },
+  S: { x: 0, y: 1 },
+  SW: { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
+  W: { x: -1, y: 0 },
+  NW: { x: -Math.SQRT1_2, y: -Math.SQRT1_2 },
+};
+
+export interface JoystickState {
+  dir: Direction8 | null;
+  x: number;
+  y: number;
+}
+
+/**
+ * แปลงระยะที่ลากนิ้วจากจุดกึ่งกลางจอยสติก (พิกเซลหน้าจอ) เป็นทิศเดิน 8 ทิศ
+ * ลากไม่ถึง deadzone (สัดส่วนของรัศมี) = หยุด · ปัดเป็นทิศที่ใกล้ที่สุดทุก 45°
+ */
+export function joystickVector(dx: number, dy: number, radius: number, deadzone = 0.25): JoystickState {
+  const dist = Math.hypot(dx, dy);
+  if (radius <= 0 || dist < radius * deadzone) return { dir: null, x: 0, y: 0 };
+  const deg = (Math.atan2(dx, -dy) * 180) / Math.PI; // 0 = ขึ้น (เหนือ) ตามเข็มนาฬิกา
+  const idx = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  const dir = DIRECTIONS_8[idx];
+  return { dir, ...UNIT[dir] };
+}
+
+/**
+ * กันการส่งคำสั่งซ้ำจากการแตะครั้งเดียว (เช่น touch + mouse จำลอง หรือ pointerdown ซ้ำ)
+ * — ปุ่มเดียวกันรับได้ครั้งเดียวภายในช่วงเวลา gapMs
+ */
+export class TapGuard {
+  private readonly last = new Map<string, number>();
+
+  constructor(private readonly gapMs = 150) {}
+
+  accept(key: string, now: number): boolean {
+    const prev = this.last.get(key);
+    if (prev !== undefined && now - prev < this.gapMs) return false;
+    this.last.set(key, now);
+    return true;
+  }
+}

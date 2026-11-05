@@ -8,7 +8,7 @@ import { MapOverlay } from '../ui/MapOverlay';
 import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
-import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_UNLOCKED } from './events';
+import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { getSettings, SCENE } from './navigation';
 import { GridSystem } from '../core/world/GridSystem';
 import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
@@ -37,6 +37,9 @@ export class UIScene extends Phaser.Scene {
   private compare!: CompareOverlay;
   private gridBoard!: GridBoardOverlay;
   private controlsHint!: Phaser.GameObjects.Text;
+  /** เล่นบนจอสัมผัส: ข้อความสำคัญแสดงด้วย TouchLayer (DOM ตัวอักษรใหญ่) แทนบางส่วนของ HUD */
+  private touchUi = false;
+  private hudParts: Phaser.GameObjects.GameObject[] = [];
   private renderedVersion = -1;
 
   constructor() {
@@ -51,10 +54,21 @@ export class UIScene extends Phaser.Scene {
     this.renderedVersion = -1;
     this.toastQueue = [];
     this.toastBusy = false;
+    this.touchUi = this.registry.get(REGISTRY_TOUCH_UI) === true;
     this.createHud();
     this.createScaleBar();
     this.createCompass();
     this.dialogueBox = new DialogueBox(this);
+    // แตะ/คลิกบนแผนที่ = ย้ายหมุดไปช่องนั้น (ใช้ได้ทั้งจอสัมผัสและเมาส์ — คีย์ลูกศรเดิมยังใช้ได้)
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const s = this.session;
+      if (!s || s.mode !== 'map' || s.pinStage !== 'cursor') return;
+      const tile = this.mapOverlay.tileAt(p.x, p.y);
+      if (!tile) return;
+      s.pinCursor = tile;
+      s.pinFeedback = null;
+      s.uiVersion++;
+    });
     this.mapOverlay = new MapOverlay(this, this.session);
     this.notebook = new NotebookOverlay(this, this.session.notebookTabs(), this.session.level.tambon);
     this.compare = new CompareOverlay(this);
@@ -108,7 +122,8 @@ export class UIScene extends Phaser.Scene {
 
     if (s.uiVersion !== this.renderedVersion) {
       this.renderedVersion = s.uiVersion;
-      this.dialogueBox.render(s.mode === 'dialogue' ? s.dialogueView : null);
+      // จอสัมผัส: บทสนทนาแสดงในกล่อง DOM ตัวอักษรใหญ่พร้อมปุ่มตัวเลือก (TouchLayer)
+      this.dialogueBox.render(s.mode === 'dialogue' && !this.touchUi ? s.dialogueView : null);
       this.mapOverlay.render();
       this.notebook.render(s);
       this.compare.render(s);
@@ -119,7 +134,7 @@ export class UIScene extends Phaser.Scene {
         (this.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
       );
       const hintShown = getSettings(this).settings.showControlsHint;
-      this.controlsHint.setVisible(hintShown);
+      this.controlsHint.setVisible(hintShown && !this.touchUi);
       this.pause.render(s, hintShown);
     } else if (s.mode === 'map') {
       this.mapOverlay.updatePlayer();
@@ -133,17 +148,12 @@ export class UIScene extends Phaser.Scene {
     const panel = this.add.graphics();
     panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, 236, 8);
     panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, 236, 8);
-    this.add.text(24, 18, `${s.level.tambon}\n${s.level.title}`, { ...textStyle(16, COLORS.accent), lineSpacing: 0 });
+    const title = this.add.text(24, 18, `${s.level.tambon}\n${s.level.title}`, { ...textStyle(16, COLORS.accent), lineSpacing: 0 });
     this.hudText = this.add.text(24, 70, '', { ...textStyle(15), lineSpacing: 2 });
+    this.hudParts = [panel, title, this.hudText];
 
-    // กล่องภารกิจ อยู่ระหว่าง HUD (ซ้าย) กับเข็มทิศ (ขวา)
-    const ox = 356;
-    const ow = GAME_WIDTH - 124 - ox;
-    const op = this.add.graphics();
-    op.fillStyle(COLORS.panel, 0.82).fillRoundedRect(ox, 12, ow, 62, 8);
-    this.objectiveText = this.add
-      .text(ox + ow / 2, 18, '', { ...textStyle(14), align: 'center', wordWrap: { width: ow - 16 } })
-      .setOrigin(0.5, 0);
+    // เป้าหมายของฉากแสดงที่แถบติดตามภารกิจ (TouchLayer — มุมขวาบน) แทนกล่องเดิม
+    this.objectiveText = this.add.text(0, 0, '').setVisible(false);
 
     // ซ่อน/แสดงได้จาก ตั้งค่า (เมนูหลัก) หรือเมนูหยุดเกม (Esc)
     this.controlsHint = this.add
@@ -154,6 +164,11 @@ export class UIScene extends Phaser.Scene {
         { ...textStyle(14, COLORS.text), backgroundColor: '#10141fcc', padding: { x: 10, y: 4, top: 6 } },
       )
       .setOrigin(0.5, 1);
+    // จอสัมผัส: ตำแหน่ง/ระยะแสดงที่แถบสถานะ DOM (อ่านง่ายบนจอเล็ก) และไม่มีคำแนะนำปุ่มคีย์บอร์ด
+    if (this.touchUi) {
+      for (const o of this.hudParts) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(false);
+      this.controlsHint.setVisible(false);
+    }
   }
 
   /** แถบมาตราส่วนบนจอ — ความยาวคำนวณจากมาตราส่วนโลกเกม × การซูมกล้อง */
@@ -177,8 +192,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createCompass(): void {
-    const cx = GAME_WIDTH - 62;
-    const cy = 66;
+    // คอมพิวเตอร์: มุมขวาล่าง (มุมขวาบนเป็นแถบติดตามภารกิจ)
+    // จอสัมผัส: ขอบซ้ายใต้แถบสถานะ — มุมขวาอาจมีปุ่มสัมผัสซ้อนอยู่บนจอแคบ และจอยสติกอยู่ซ้ายล่าง
+    const cx = this.touchUi ? 62 : GAME_WIDTH - 62;
+    const cy = this.touchUi ? 196 : GAME_HEIGHT - 132;
     const g = this.add.graphics();
     g.fillStyle(COLORS.panel, 0.82).fillCircle(cx, cy, 48);
     g.lineStyle(2, COLORS.panelBorder, 0.9).strokeCircle(cx, cy, 48);

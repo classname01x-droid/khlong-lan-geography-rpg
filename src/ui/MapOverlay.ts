@@ -101,6 +101,14 @@ export class MapOverlay {
       .setVisible(false);
   }
 
+  /** ช่องแผนที่ ณ ตำแหน่งบนจอ (ใช้กับการแตะ/คลิกเพื่อวางหมุด) — นอกแผนที่ = null */
+  tileAt(px: number, py: number): { x: number; y: number } | null {
+    const { x: mx, y: my, cell } = this.geom;
+    const x = Math.floor((px - mx) / cell);
+    const y = Math.floor((py - my) / cell);
+    return x >= 0 && y >= 0 && x < this.s.grid.width && y < this.s.grid.height ? { x, y } : null;
+  }
+
   render(): void {
     const s = this.s;
     if (s.mode !== 'map') {
