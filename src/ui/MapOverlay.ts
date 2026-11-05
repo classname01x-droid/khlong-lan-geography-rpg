@@ -3,11 +3,15 @@ import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import type { GameSession } from '../core/session/GameSession';
 import { MAP_COLOR_OBJECT, MAP_COLOR_TERRAIN } from '../graphics/tileIndex';
 import type { MapSymbol } from '../core/world/types';
-import { drawMapSymbol, SYMBOL_LABEL } from './mapSymbols';
-import { drawBaseSheet, drawFlowArrow } from './sheetRenderer';
-import { GridSystem } from '../core/world/GridSystem';
+import { drawMapSymbol } from './mapSymbols';
+import { drawLegendIcon, legendEntries, legendLabel } from './legend';
+import { drawBaseSheet } from './sheetRenderer';
+import { mapHint, mapInfo, mapPinLines } from './views/mapText';
 import { wrapThaiText } from './textWrap';
 import { COLORS, FONT_FAMILY, textStyle } from './theme';
+import { fitCell, MAP_ZOOMS, type ViewRect } from '../core/ui/MapViewport';
+import { setTouchView, touchView } from './touch/touchViewState';
+import { ZoomPanLayer } from './ZoomPanLayer';
 
 /**
  * ระบบเปิดแผนที่ (M): แสดงเฉพาะพื้นที่ที่สำรวจแล้ว มาตราส่วน 1:10,000
@@ -15,6 +19,9 @@ import { COLORS, FONT_FAMILY, textStyle } from './theme';
  *
  * ด่านที่มีข้อมูลเพิ่มเติมจะแสดง: เส้นชั้นความสูงทุก 10 ม. + จุดระดับความสูง (▲),
  * สัญลักษณ์แผนที่พร้อมคำอธิบาย และแผ่นที่สอง "แผนที่เก่า" (กด Tab สลับ) — ทั้งหมดใช้พิกัด/มาตราส่วนเดียวกัน
+ *
+ * จอสัมผัส: แผนที่อยู่ในชั้นที่ขยาย/ลากเลื่อนได้ (ZoomPanLayer) เพื่อให้ชื่อสถานที่อ่านได้บนจอเล็ก
+ * หัวแผนที่/มาตราส่วน/สถานะหมุดแสดงเป็นแถบ DOM ตัวอักษรใหญ่ (TouchLayer) และคำอธิบายสัญลักษณ์เปิด/ปิดได้
  */
 const CONTOUR_INTERVAL_M = 10;
 export class MapOverlay {
@@ -25,12 +32,24 @@ export class MapOverlay {
   private readonly cursor: Phaser.GameObjects.Rectangle;
   private readonly pinPanel: Phaser.GameObjects.Text;
   private readonly hint: Phaser.GameObjects.Text;
-  private readonly geom: { x: number; y: number; cell: number };
+  private geom: { x: number; y: number; cell: number };
+  /** ชั้นที่มีตัวแผนที่ (คอมพิวเตอร์: อยู่ใน root ที่ตำแหน่งเดิม · จอสัมผัส: ชั้นขยาย/เลื่อนได้) */
+  private readonly layer: Phaser.GameObjects.Container;
+  private readonly zp: ZoomPanLayer | null = null;
+  private readonly legendRoot: Phaser.GameObjects.Container;
+  private readonly legendG: Phaser.GameObjects.Graphics;
+  private readonly legendLabels: Phaser.GameObjects.Container;
+  private touchKey = '';
+  private appliedZoom = -1;
   private open = false;
   private drawnSheet = 'current';
   private readonly title: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, private readonly s: GameSession) {
+  constructor(
+    scene: Phaser.Scene,
+    private readonly s: GameSession,
+    touch = false,
+  ) {
     const { width, height } = s.grid;
     const cell = Math.floor(Math.min((GAME_WIDTH - 160) / width, (GAME_HEIGHT - 210) / height));
     const mw = width * cell;
@@ -48,11 +67,7 @@ export class MapOverlay {
       .text(
         GAME_WIDTH / 2,
         52,
-        s.coords
-          ? `มาตราส่วน ${s.scale.ratioLabel} · 1 ช่อง = ${s.scale.config.metersPerTile} ม. · เส้นกริดทุก 100 ม. · ` +
-              `พิกัดจำลอง: E เพิ่มไปทางตะวันออก · N เพิ่มไปทางเหนือ`
-          : `มาตราส่วน ${s.scale.ratioLabel} · 1 ช่อง = ${s.scale.config.metersPerTile} ม. · ` +
-              `1 ซม. บนแผนที่ = ${s.scale.mapCmToMeters(1)} ม. · เส้นตารางหนา = ทุก 100 ม.`,
+        mapInfo(s),
         textStyle(14, COLORS.text),
       )
       .setOrigin(0.5, 0);
@@ -81,28 +96,67 @@ export class MapOverlay {
     this.hint = scene.add.text(mx + mw, by + 4, '', textStyle(13, COLORS.textDim)).setOrigin(1, 0);
     const north = scene.add.text(mx + mw + 18, my, '▲\nN\nเหนือ', { ...textStyle(14, COLORS.accent), align: 'center' });
     this.pinPanel = scene.add.text(40, by + 28, '', { ...textStyle(15), lineSpacing: 2 });
+    this.legendG = scene.add.graphics();
+    this.legendLabels = scene.add.container(0, 0);
+    this.legendRoot = scene.add.container(0, 0, [this.legendG, this.legendLabels]);
 
-    this.root = scene.add
-      .container(0, 0, [
-        dim,
-        title,
-        info,
-        this.graphics,
-        this.labels,
-        this.playerDot,
-        this.cursor,
-        bar,
-        barText,
-        this.hint,
-        north,
-        this.pinPanel,
-      ])
-      .setDepth(20)
-      .setVisible(false);
+    const mapParts = [this.graphics, this.labels, this.playerDot, this.cursor];
+    if (touch) {
+      // ข้อความหัว/มาตราส่วน/สถานะหมุด → แถบ DOM (TouchLayer) · ตัวแผนที่ → ชั้นขยาย/เลื่อนได้ (อยู่ชั้นบนสุด ไม่ซ้อนใน container อื่นเพื่อให้ mask ทำงาน)
+      this.zp = new ZoomPanLayer(scene);
+      this.layer = this.zp.content;
+      this.layer.add(mapParts);
+      this.layer.setDepth(21).setVisible(false);
+      this.legendRoot.setVisible(false);
+      this.root = scene.add.container(0, 0, [dim]).setDepth(20).setVisible(false);
+      for (const o of [title, info, bar, barText, this.hint, north, this.pinPanel]) o.setVisible(false);
+    } else {
+      this.layer = scene.add.container(0, 0, mapParts);
+      this.root = scene.add
+        .container(0, 0, [dim, title, info, this.layer, this.legendRoot, bar, barText, this.hint, north, this.pinPanel])
+        .setDepth(20)
+        .setVisible(false);
+    }
+  }
+
+  /** จอสัมผัส: พื้นที่แสดงแผนที่ = ภาพเกมลบส่วนที่แถบ DOM บัง แล้วตั้งขนาดช่องให้ทั้งแผนที่พอดีที่ระดับ 1× */
+  private syncTouchGeometry(): void {
+    const ins = touchView.mapInsets;
+    const view: ViewRect = {
+      x: Math.round(ins.left),
+      y: Math.round(ins.top),
+      w: Math.max(200, Math.round(GAME_WIDTH - ins.left - ins.right)),
+      h: Math.max(160, Math.round(GAME_HEIGHT - ins.top - ins.bottom)),
+    };
+    const key = JSON.stringify(view);
+    if (key === this.touchKey) return;
+    this.touchKey = key;
+    const cell = fitCell(this.s.grid.width, this.s.grid.height, view);
+    this.geom = { x: 0, y: 0, cell };
+    this.zp!.configure(view, cell, this.s.grid.width, this.s.grid.height);
+    this.playerDot.setSize(cell + 2, cell + 2);
+    this.cursor.setSize(cell * 3, cell * 3);
+    this.open = false; // วาดใหม่ด้วยขนาดช่องใหม่
+    this.appliedZoom = -1;
+  }
+
+  /** ขนาดตัวอักษรบนแผนที่ — จอสัมผัสใหญ่ขึ้น (ก่อนขยาย) ให้อ่านได้บนจอ 5–6 นิ้ว */
+  private labelSize(desktop: number): number {
+    return this.zp ? desktop + 2 : desktop;
+  }
+
+  /** ลากเลื่อนแผนที่ (จอสัมผัส) */
+  panFrom(start: { x: number; y: number }, dx: number, dy: number): void {
+    this.zp?.panBy(dx, dy, start);
+  }
+
+  get panPosition(): { x: number; y: number } | null {
+    return this.zp ? this.zp.position : null;
   }
 
   /** ช่องแผนที่ ณ ตำแหน่งบนจอ (ใช้กับการแตะ/คลิกเพื่อวางหมุด) — นอกแผนที่ = null */
   tileAt(px: number, py: number): { x: number; y: number } | null {
+    if (this.zp) return this.zp.tileAt(px, py);
     const { x: mx, y: my, cell } = this.geom;
     const x = Math.floor((px - mx) / cell);
     const y = Math.floor((py - my) / cell);
@@ -112,17 +166,35 @@ export class MapOverlay {
   render(): void {
     const s = this.s;
     if (s.mode !== 'map') {
+      if (this.open && this.zp) setTouchView({ mapCellPx: 0 });
       this.open = false;
+      this.appliedZoom = -1;
       this.root.setVisible(false);
+      this.layer.setVisible(false);
+      this.legendRoot.setVisible(false);
       return;
     }
+    if (this.zp) this.syncTouchGeometry();
+    const opening = !this.open;
     if (!this.open || this.drawnSheet !== s.mapSheet) {
       this.drawnSheet = s.mapSheet;
       if (s.mapSheet !== 'current' && s.availableSheets().some((m) => m.id === s.mapSheet)) this.drawSheet(s.mapSheet);
       else this.drawBase();
       this.open = true;
+      this.zp?.contentChanged();
     }
     this.root.setVisible(true);
+    this.layer.setVisible(true);
+    // คอมพิวเตอร์: คำอธิบายสัญลักษณ์อยู่ข้างแผนที่เสมอ · จอสัมผัส: แผง DOM (เปิดจากปุ่ม)
+    this.legendRoot.setVisible(!this.zp);
+    if (this.zp) {
+      // ขยายครั้งแรกรอบหมุด/ตัวผู้เล่น · เปลี่ยนระดับขยายรอบจุดกลางจอเดิม
+      const zi = touchView.mapZoomIndex;
+      if (opening || this.appliedZoom < 0) this.zp.setZoom(MAP_ZOOMS[zi], s.pinCursor ?? s.playerTile);
+      else if (zi !== this.appliedZoom) this.zp.setZoom(MAP_ZOOMS[zi], this.zp.centerTile());
+      this.appliedZoom = zi;
+      setTouchView({ mapCellPx: this.zp.cellPx });
+    }
     this.updatePlayer();
     const { x: mx, y: my, cell } = this.geom;
 
@@ -131,32 +203,10 @@ export class MapOverlay {
     if (s.pinCursor) {
       this.cursor.setPosition(mx + (s.pinCursor.x + 0.5) * cell, my + (s.pinCursor.y + 0.5) * cell);
     }
-    this.hint.setText(
-      s.pinStage === 'wisdom'
-        ? 'Esc: กลับไปเลื่อนหมุด'
-        : s.availableSheets().length >= 2
-          ? 'Tab: สลับแผนที่ (สำรวจ → A → B) · C: เปรียบเทียบ · M/Esc: ปิด'
-          : s.availableSheets().length === 1
-            ? 'Tab: สลับแผนที่ · M หรือ Esc: ปิด'
-            : 'กด M หรือ Esc เพื่อปิด',
-    );
-
-    const lines: string[] = [];
-    if (pinning && s.pinCursor) {
-      const pin = s.level.pinTask!;
-      const where = s.coords
-        ? `พิกัดหมุด: ${GridSystem.format(s.coords.tileToGrid(s.pinCursor))}`
-        : `ตำแหน่งหมุด: ช่อง X ${s.pinCursor.x}, Y ${s.pinCursor.y}`;
-      if (s.pinStage === 'cursor') {
-        lines.push(`โหมดปักหมุด · ${where} · WASD/ลูกศร: เลื่อน · Space: ปักหมุด`);
-      } else {
-        lines.push(`โหมดปักหมุด · ${where}`);
-        lines.push(`${pin.wisdomPrompt}:  ${pin.wisdomChoices.map((c, i) => `${i + 1}) ${c.label}`).join('    ')}`);
-      }
-    }
-    if (s.pinFeedback) lines.push(s.pinFeedback);
-    this.pinPanel.setText(wrapThaiText(lines.join('\n'), GAME_WIDTH - 80, `15px ${FONT_FAMILY}`));
-    this.pinPanel.setColor(s.pinFeedback && s.pinStage === 'cursor' ? '#ffb4a3' : COLORS.text);
+    this.hint.setText(mapHint(s));
+    const pin = mapPinLines(s);
+    this.pinPanel.setText(wrapThaiText(pin.lines.join('\n'), GAME_WIDTH - 80, `15px ${FONT_FAMILY}`));
+    this.pinPanel.setColor(pin.problem ? '#ffb4a3' : COLORS.text);
   }
 
   /** วาดแผนที่จากข้อมูลหมอก (เฉพาะตอนเปิด) */
@@ -183,12 +233,12 @@ export class MapOverlay {
     for (let x = 0; x <= width; x += 10) {
       g.lineBetween(mx + x * cell, my, mx + x * cell, my + height * cell);
       const xl = s.coords ? `E${s.coords.eastingAtColumnEdge(x)}` : `${x}`;
-      this.labels.add(scene.add.text(mx + x * cell, my - 4, xl, textStyle(s.coords ? 9 : 11, COLORS.textDim)).setOrigin(0.5, 1));
+      this.labels.add(scene.add.text(mx + x * cell, my - 4, xl, textStyle(this.labelSize(s.coords ? 9 : 11), COLORS.textDim)).setOrigin(0.5, 1));
     }
     for (let y = 0; y <= height; y += 10) {
       g.lineBetween(mx, my + y * cell, mx + width * cell, my + y * cell);
       const yl = s.coords ? `N${s.coords.northingAtRowEdge(y)}` : `${y}`;
-      this.labels.add(scene.add.text(mx - 6, my + y * cell, yl, textStyle(s.coords ? 9 : 11, COLORS.textDim)).setOrigin(1, 0.5));
+      this.labels.add(scene.add.text(mx - 6, my + y * cell, yl, textStyle(this.labelSize(s.coords ? 9 : 11), COLORS.textDim)).setOrigin(1, 0.5));
     }
     g.lineStyle(2, COLORS.panelBorder, 1).strokeRect(mx, my, width * cell, height * cell);
 
@@ -218,7 +268,7 @@ export class MapOverlay {
         g.fillStyle(0x10141f, 1).fillTriangle(px - 4, py + 3, px + 4, py + 3, px, py - 4);
         this.labels.add(
           scene.add
-            .text(px + 5, py - 2, `${elev.meters(p)}`, { ...textStyle(11, '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
+            .text(px + 5, py - 2, `${elev.meters(p)}`, { ...textStyle(this.labelSize(11), '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
             .setOrigin(0, 0.5),
         );
       }
@@ -240,7 +290,7 @@ export class MapOverlay {
         side === 'left' ? [lx - 10, ly, 1, 0.5] : side === 'right' ? [lx + 10, ly, 0, 0.5] : side === 'below' ? [lx, ly + 8, 0.5, 0] : [lx, ly - 6, 0.5, 1];
       this.labels.add(
         scene.add
-          .text(tx, ty, lm.name, { ...textStyle(12, '#ffffff'), stroke: '#10141f', strokeThickness: 3 })
+          .text(tx, ty, lm.name, { ...textStyle(this.labelSize(12), '#ffffff'), stroke: '#10141f', strokeThickness: 3 })
           .setOrigin(ox, oy),
       );
     }
@@ -251,38 +301,25 @@ export class MapOverlay {
   }
 
   /** คำอธิบายสัญลักษณ์ (เฉพาะสัญลักษณ์ที่ปรากฏบนแผ่นนี้) */
-  private drawLegend(items: Array<MapSymbol | 'contour' | 'spot' | 'flow'>): void {
-    if (items.length === 0) return;
+  private drawLegend(input: Array<MapSymbol | 'contour' | 'spot' | 'flow'>): void {
+    this.legendG.clear();
+    this.legendLabels.removeAll(true);
+    if (this.zp) {
+      // จอสัมผัส: แผงคำอธิบาย DOM ตัวอักษรใหญ่ (เปิดจากปุ่ม "สัญลักษณ์") ใช้ไอคอนที่วาดด้วยโค้ดเดียวกับแผนที่
+      setTouchView({ legendItems: legendEntries(this.root.scene, ['you', 'dot', 'pinned', ...input]) });
+      return;
+    }
+    if (input.length === 0) return;
     const scene = this.root.scene;
-    const g = this.graphics;
+    const g = this.legendG;
     const { x: mx, y: my, cell } = this.geom;
     const x = mx + this.s.grid.width * cell + 10;
     let y = my + 78;
-    this.labels.add(scene.add.text(x, y, 'สัญลักษณ์', textStyle(13, COLORS.accent)));
+    this.legendLabels.add(scene.add.text(x, y, 'สัญลักษณ์', textStyle(13, COLORS.accent)));
     y += 24;
-    for (const item of items) {
-      const cx = x + 9;
-      const cy = y + 9;
-      if (item === 'contour') {
-        g.lineStyle(1.5, 0xf0c27a, 1).lineBetween(x + 1, cy + 3, x + 17, cy - 3);
-      } else if (item === 'spot') {
-        g.fillStyle(0xf4efe1, 1).fillTriangle(cx - 4, cy + 3, cx + 4, cy + 3, cx, cy - 4);
-      } else if (item === 'flow') {
-        g.fillStyle(0xf4efe1, 0.9).fillCircle(cx, cy, 8);
-        drawFlowArrow(g, cx, cy + 3, 'N', 6);
-      } else {
-        g.fillStyle(0xf4efe1, 0.9).fillCircle(cx, cy, 8);
-        drawMapSymbol(g, item, cx, cy);
-      }
-      const label =
-        item === 'contour'
-          ? 'เส้นชั้นความสูง 10 ม.'
-          : item === 'spot'
-            ? 'ระดับความสูง (ม.)'
-            : item === 'flow'
-              ? 'ทิศน้ำไหล (ตามแผนที่)'
-              : SYMBOL_LABEL[item];
-      this.labels.add(scene.add.text(x + 22, y, label, textStyle(11, COLORS.text)));
+    for (const item of input) {
+      drawLegendIcon(g, item, x + 9, y + 9, x);
+      this.legendLabels.add(scene.add.text(x + 22, y, legendLabel(item), textStyle(11, COLORS.text)));
       y += 21;
     }
   }
@@ -295,13 +332,14 @@ export class MapOverlay {
     this.title.setText(sheet.title);
     this.graphics.clear();
     this.labels.removeAll(true);
-    const legend = drawBaseSheet(this.root.scene, this.graphics, this.labels, sheet, {
-      x,
-      y,
-      cell,
-      width: s.grid.width,
-      height: s.grid.height,
-    });
+    const legend = drawBaseSheet(
+      this.root.scene,
+      this.graphics,
+      this.labels,
+      sheet,
+      { x, y, cell, width: s.grid.width, height: s.grid.height },
+      { labelSize: this.labelSize(12) },
+    );
     this.drawLegend(sheet.flowArrows?.length ? [...legend, 'flow'] : legend);
   }
 

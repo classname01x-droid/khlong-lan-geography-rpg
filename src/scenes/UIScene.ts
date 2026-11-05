@@ -8,7 +8,7 @@ import { MapOverlay } from '../ui/MapOverlay';
 import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
-import { REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
+import { EVENT_TOUCH_TOAST, REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { getSettings, SCENE } from './navigation';
 import { GridSystem } from '../core/world/GridSystem';
 import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
@@ -17,6 +17,8 @@ import { CompareOverlay } from '../ui/CompareOverlay';
 import { GridBoardOverlay } from '../ui/GridBoardOverlay';
 import { IN_DEVELOPMENT_MESSAGE } from '../core/campaign/Campaign';
 import type { CodePiece } from '../core/progress/ProgressStore';
+import { DRAG_THRESHOLD } from '../core/ui/MapViewport';
+import { touchView } from '../ui/touch/touchViewState';
 
 /**
  * ชั้น UI ซ้อนบนโลกเกม (กล้องไม่ซูม ตัวอักษรคมชัด)
@@ -25,7 +27,7 @@ import type { CodePiece } from '../core/progress/ProgressStore';
 export class UIScene extends Phaser.Scene {
   private hudText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
-  private compassNeedleText!: Phaser.GameObjects.Text;
+  private compassNeedleText: Phaser.GameObjects.Text | null = null;
   private toastText!: Phaser.GameObjects.Text;
   private toastQueue: string[] = [];
   private toastBusy = false;
@@ -41,6 +43,9 @@ export class UIScene extends Phaser.Scene {
   private touchUi = false;
   private hudParts: Phaser.GameObjects.GameObject[] = [];
   private renderedVersion = -1;
+  private renderedTouchVersion = -1;
+  /** นิ้ว/เมาส์ที่กำลังลากแผนที่ (จอสัมผัส) — ไม่ขยับเกิน DRAG_THRESHOLD = แตะเลือกช่อง */
+  private drag: { id: number; x: number; y: number; from: { x: number; y: number } | null; moved: boolean } | null = null;
 
   constructor() {
     super('UIScene');
@@ -52,26 +57,22 @@ export class UIScene extends Phaser.Scene {
 
   create(): void {
     this.renderedVersion = -1;
+    this.renderedTouchVersion = -1;
+    this.drag = null;
     this.toastQueue = [];
     this.toastBusy = false;
     this.touchUi = this.registry.get(REGISTRY_TOUCH_UI) === true;
     this.createHud();
-    this.createScaleBar();
-    this.createCompass();
+    // จอสัมผัส: แถบมาตราส่วนและเข็มทิศอยู่ในแถบสถานะ DOM (ตัวอักษรใหญ่ ไม่ทับจอยสติก/ปุ่ม)
+    if (!this.touchUi) {
+      this.createScaleBar();
+      this.createCompass();
+    }
     this.dialogueBox = new DialogueBox(this);
-    // แตะ/คลิกบนแผนที่ = ย้ายหมุดไปช่องนั้น (ใช้ได้ทั้งจอสัมผัสและเมาส์ — คีย์ลูกศรเดิมยังใช้ได้)
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      const s = this.session;
-      if (!s || s.mode !== 'map' || s.pinStage !== 'cursor') return;
-      const tile = this.mapOverlay.tileAt(p.x, p.y);
-      if (!tile) return;
-      s.pinCursor = tile;
-      s.pinFeedback = null;
-      s.uiVersion++;
-    });
-    this.mapOverlay = new MapOverlay(this, this.session);
+    this.bindMapPointer();
+    this.mapOverlay = new MapOverlay(this, this.session, this.touchUi);
     this.notebook = new NotebookOverlay(this, this.session.notebookTabs(), this.session.level.tambon);
-    this.compare = new CompareOverlay(this);
+    this.compare = new CompareOverlay(this, this.touchUi);
     this.gridBoard = new GridBoardOverlay(this);
     this.summary = new SummaryOverlay(this);
     this.pause = new PauseOverlay(this, PAUSE_ITEMS, (i) => (this.scene.get(SCENE.level) as WorldScene).pauseAction(i));
@@ -105,12 +106,14 @@ export class UIScene extends Phaser.Scene {
           : `ฉาก ${step.order}/${s.level.story.length} · ${step.title}\n${step.objective}`
         : 'ภารกิจสำเร็จแล้ว! สำรวจต่อได้ หรือเปิดสมุดภาคสนาม (N) อ่านสรุป',
     );
-    this.compassNeedleText.setText(THAI_DIRECTION[s.facing].replace('ทิศ', ''));
+    this.compassNeedleText?.setText(THAI_DIRECTION[s.facing].replace('ทิศ', ''));
 
     // แจ้งเตือนแสดงเฉพาะตอนสำรวจ/คุย เพื่อไม่ทับหน้าสมุด แผนที่ หรือหน้าสรุปผล
     // (หน้าเหล่านั้นแสดงผลลัพธ์ของตัวเองอยู่แล้ว) และไม่เก็บข้อความเก่าค้างไว้หลังจบด่าน
     for (const msg of s.drainToasts()) {
-      if (this.toastQueue[this.toastQueue.length - 1] !== msg) this.toastQueue.push(msg);
+      // จอสัมผัส: แสดงเป็นข้อความ DOM ตัวอักษรใหญ่ (TouchLayer) แทนข้อความใน canvas
+      if (this.touchUi) this.game.events.emit(EVENT_TOUCH_TOAST, msg);
+      else if (this.toastQueue[this.toastQueue.length - 1] !== msg) this.toastQueue.push(msg);
     }
     if (s.mode === 'summary') {
       this.toastQueue = [];
@@ -120,25 +123,69 @@ export class UIScene extends Phaser.Scene {
     if (!canToast && this.toastText.alpha > 0) this.toastText.setAlpha(0);
     if (canToast && !this.toastBusy && this.toastQueue.length > 0) this.showNextToast();
 
-    if (s.uiVersion !== this.renderedVersion) {
+    if (s.uiVersion !== this.renderedVersion || touchView.version !== this.renderedTouchVersion) {
       this.renderedVersion = s.uiVersion;
+      this.renderedTouchVersion = touchView.version;
       // จอสัมผัส: บทสนทนาแสดงในกล่อง DOM ตัวอักษรใหญ่พร้อมปุ่มตัวเลือก (TouchLayer)
       this.dialogueBox.render(s.mode === 'dialogue' && !this.touchUi ? s.dialogueView : null);
       this.mapOverlay.render();
-      this.notebook.render(s);
       this.compare.render(s);
-      this.gridBoard.render(s);
-      this.summary.render(
-        s,
-        (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,
-        (this.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
-      );
       const hintShown = getSettings(this).settings.showControlsHint;
       this.controlsHint.setVisible(hintShown && !this.touchUi);
-      this.pause.render(s, hintShown);
+      if (this.touchUi) {
+        // จอสัมผัส: สมุด กระดานวิเคราะห์ หน้าสรุป และเมนูหยุดเกม แสดงเป็นหน้าอ่าน DOM ตัวอักษรใหญ่ (TouchLayer)
+        for (const o of [this.notebook, this.gridBoard, this.summary, this.pause]) o.root.setVisible(false);
+      } else {
+        this.notebook.render(s);
+        this.gridBoard.render(s);
+        this.summary.render(
+          s,
+          (this.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,
+          (this.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
+        );
+        this.pause.render(s, hintShown);
+      }
     } else if (s.mode === 'map') {
       this.mapOverlay.updatePlayer();
     }
+  }
+
+  /**
+   * แตะ/คลิกบนแผนที่ = ย้ายหมุดไปช่องนั้น · ลากนิ้ว = เลื่อนแผนที่ที่ขยายอยู่ (จอสัมผัส)
+   * แยกการแตะกับการลากด้วยระยะ DRAG_THRESHOLD และใช้เฉพาะนิ้วแรก — คีย์ลูกศรเดิมยังใช้ได้
+   */
+  private bindMapPointer(): void {
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const s = this.session;
+      if (!s || (s.mode !== 'map' && s.mode !== 'compare') || this.drag) return;
+      const from = s.mode === 'map' ? this.mapOverlay.panPosition : this.compare.panPosition;
+      this.drag = { id: p.id, x: p.x, y: p.y, from, moved: false };
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      const d = this.drag;
+      if (!d || p.id !== d.id || !p.isDown) return;
+      const dx = p.x - d.x;
+      const dy = p.y - d.y;
+      if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      d.moved = true;
+      if (!d.from) return;
+      if (this.session.mode === 'map') this.mapOverlay.panFrom(d.from, dx, dy);
+      else if (this.session.mode === 'compare') this.compare.panFrom(d.from, dx, dy);
+    });
+    const end = (p: Phaser.Input.Pointer) => {
+      const d = this.drag;
+      if (!d || p.id !== d.id) return;
+      this.drag = null;
+      const s = this.session;
+      if (d.moved || !s || s.mode !== 'map' || s.pinStage !== 'cursor') return;
+      const tile = this.mapOverlay.tileAt(p.x, p.y);
+      if (!tile) return;
+      s.pinCursor = tile;
+      s.pinFeedback = null;
+      s.uiVersion++;
+    };
+    this.input.on('pointerup', end);
+    this.input.on('pointerupoutside', end);
   }
 
   /* ---------------- HUD ---------------- */
@@ -192,10 +239,9 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createCompass(): void {
-    // คอมพิวเตอร์: มุมขวาล่าง (มุมขวาบนเป็นแถบติดตามภารกิจ)
-    // จอสัมผัส: ขอบซ้ายใต้แถบสถานะ — มุมขวาอาจมีปุ่มสัมผัสซ้อนอยู่บนจอแคบ และจอยสติกอยู่ซ้ายล่าง
-    const cx = this.touchUi ? 62 : GAME_WIDTH - 62;
-    const cy = this.touchUi ? 196 : GAME_HEIGHT - 132;
+    // มุมขวาล่าง (มุมขวาบนเป็นแถบติดตามภารกิจ) — จอสัมผัสใช้เข็มทิศในแถบสถานะ DOM แทน
+    const cx = GAME_WIDTH - 62;
+    const cy = GAME_HEIGHT - 132;
     const g = this.add.graphics();
     g.fillStyle(COLORS.panel, 0.82).fillCircle(cx, cy, 48);
     g.lineStyle(2, COLORS.panelBorder, 0.9).strokeCircle(cx, cy, 48);

@@ -358,6 +358,8 @@ export class WorldScene extends Phaser.Scene {
         else if (code === 'ArrowUp' || code === 'KeyW') this.movePause(-1);
         else if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.movePause(1);
         else if (confirm) this.pauseAction(s.pauseIndex);
+        // เลือกรายการโดยตรง: ปุ่มตัวเลข 1–4 (ปุ่มเมนูขนาดใหญ่บนจอสัมผัสส่งรหัสนี้)
+        else if (choice >= 0 && choice < PAUSE_ITEMS.length) this.pauseAction(choice);
         return;
 
       case 'dialogue': {

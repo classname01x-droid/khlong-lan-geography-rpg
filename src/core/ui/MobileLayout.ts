@@ -35,8 +35,8 @@ export interface MobileLayout {
 }
 
 export const GAME_ASPECT = 960 / 640;
-/** ความกว้างขั้นต่ำของคอลัมน์ปุ่มข้างภาพเกม */
-export const MIN_COLUMN = 108;
+/** ความกว้างขั้นต่ำของคอลัมน์ปุ่มข้างภาพเกม — พอวางปุ่ม 2 ปุ่มต่อแถว (ปุ่มละ ≥ 52 px) */
+export const MIN_COLUMN = 116;
 
 export function computeMobileLayout(vw: number, vh: number, insets: Insets, touch: boolean): MobileLayout {
   const portrait = vh > vw;
@@ -79,4 +79,15 @@ export function computeMobileLayout(vw: number, vh: number, insets: Insets, touc
   const left = { x: insets.left, y: insets.top, w: colW, h: availH };
   const right = { x: insets.left + availW - colW, y: insets.top, w: colW, h: availH };
   return { portrait, game, sideColumns, left, right, compact, button };
+}
+
+/**
+ * ความกว้างของแถบด้านบนภาพเกม (CSS px): แถบสถานะซ้ายบน + แถบติดตามภารกิจขวาบน
+ * รับประกันว่าทั้งสองไม่ทับกัน (รวมระยะขอบ 8 px สามช่วง) · จอแคบ → แถบสถานะแบบย่อ
+ */
+export function hudWidths(canvasW: number, compact: boolean): { tracker: number; status: number; tightStatus: boolean } {
+  const gap = 8;
+  const tracker = Math.round(Math.min(compact ? 290 : 340, canvasW * (compact ? 0.48 : 0.42)));
+  const status = Math.max(0, Math.floor(canvasW - tracker - gap * 3));
+  return { tracker, status, tightStatus: status < 250 };
 }

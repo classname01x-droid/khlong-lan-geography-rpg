@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { DEFAULT_LEVEL_SKILLS, SKILL_LABEL, type SkillId } from '../core/mission/skills';
 import type { CodePiece } from '../core/progress/ProgressStore';
 import type { GameSession } from '../core/session/GameSession';
-import { fmtDuration, fmtMeters } from './format';
+import { buildSummaryView } from './views/summaryView';
 import { wrapThaiText } from './textWrap';
 import { COLORS, FONT_FAMILY, textStyle } from './theme';
 
@@ -41,50 +40,13 @@ export class SummaryOverlay {
       this.root.setVisible(false);
       return;
     }
-    const sum = s.summary();
-    this.text.setText(
-      [
-        `${s.level.tambon}`,
-        `${s.level.title}`,
-        '',
-        `ระยะทางเดินทั้งหมด: ${fmtMeters(sum.distanceMeters)}`,
-        `เบาะแสที่ค้นพบ: ${sum.cluesFound}/${sum.cluesTotal} · หลักฐาน: ${s.evidence.length}/${s.level.evidence?.length ?? 0}`,
-        `จำนวนครั้งที่ตอบผิด: ${sum.mistakes}`,
-        `   (${[
-          `ปริศนา ${sum.mistakesBy.quiz}`,
-          s.level.routeAnalysis ? `เส้นทาง ${sum.mistakesBy.route}` : '',
-          s.level.mapComparison ? `เทียบแผนที่ ${sum.mistakesBy.compare}` : '',
-          s.level.gridSiteAnalysis ? `วิเคราะห์พิกัด ${sum.mistakesBy.compare}` : '',
-          s.level.pinTask ? `ปักหมุด ${sum.mistakesBy.pin}` : '',
-        ]
-          .filter(Boolean)
-          .join(' · ')})`,
-        `เวลาที่ใช้: ${fmtDuration(sum.elapsedMs)}`,
-        `ภารกิจ: หลัก ${sum.quests.main.done}/${sum.quests.main.total} · รอง ${sum.quests.side.done}/${sum.quests.side.total} · ปริศนา ${sum.quests.mystery.done}/${sum.quests.mystery.total}`,
-      ].join('\n'),
-    );
+    const v = buildSummaryView(s, unlockedName, collected);
+    this.text.setText([...v.heading, '', ...v.stats].join('\n'));
     // ตัดบรรทัดให้อยู่ในกรอบ (ชื่อทักษะบางข้อยาว)
     this.skills.setText(
-      wrapThaiText(
-        ['ทักษะภูมิศาสตร์ที่ใช้', ...((s.level.skills as SkillId[] | undefined) ?? DEFAULT_LEVEL_SKILLS).map((k) => `${sum.skills.includes(k) ? '●' : '○'} ${SKILL_LABEL[k]}`)].join(
-          '\n',
-        ),
-        GAME_WIDTH - 100 - 500,
-        `16px ${FONT_FAMILY}`,
-      ),
+      wrapThaiText(['ทักษะภูมิศาสตร์ที่ใช้', ...v.skills.map((k) => `${k.done ? '●' : '○'} ${k.label}`)].join('\n'), GAME_WIDTH - 100 - 500, `16px ${FONT_FAMILY}`),
     );
-    const e = s.level.ending;
-    this.reward.setText(
-      [
-        e?.codePiece ? `ได้รับรหัสลับชิ้นที่ ${e.codePiece.index}/${e.codePiece.total}: "${e.codePiece.value}"  ·  ${e.rewardItem}` : e ? e.rewardItem : '',
-        e?.codePiece && collected.length > 0
-          ? `รหัสลับที่สะสม: ${Array.from({ length: e.codePiece.total }, (_, i) => collected.find((c) => c.index === i + 1)?.value ?? '?').join(' · ')}`
-          : '',
-        unlockedName ? `ปลดล็อก: ${unlockedName}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n'),
-    );
+    this.reward.setText(v.reward.join('\n'));
     this.root.setVisible(true);
   }
 }

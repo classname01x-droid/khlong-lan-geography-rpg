@@ -23,10 +23,13 @@ export type ActionId =
   | 'sheet'
   | 'continue'
   | 'journey'
-  | 'choice';
+  | 'choice'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'legend';
 
 /** รหัสปุ่มคีย์บอร์ดของแต่ละคำสั่ง (ตรงกับที่ WorldScene รับอยู่เดิม) */
-export const ACTION_KEY: Record<Exclude<ActionId, 'choice' | 'close'>, string> = {
+export const ACTION_KEY: Record<Exclude<ActionId, 'choice' | 'close' | 'zoomIn' | 'zoomOut' | 'legend'>, string> = {
   interact: 'KeyE',
   map: 'KeyM',
   notebook: 'KeyN',
@@ -83,6 +86,13 @@ export interface TouchAction {
   primary?: boolean;
   /** ตัวเลือกที่กำลังเลือกอยู่ (เช่น จุดบนกระดานวิเคราะห์) */
   selected?: boolean;
+  /**
+   * คำสั่งเฉพาะการแสดงผลบนจอสัมผัส (ขยายแผนที่ เปิดคำอธิบายสัญลักษณ์) — ไม่ใช่คำสั่งเกม จึงไม่ผ่าน dispatchCode
+   * และไม่มีรหัสคีย์บอร์ด (code = '')
+   */
+  ui?: string;
+  /** ปุ่มครึ่งความกว้าง (วางคู่กันในคอลัมน์) */
+  half?: boolean;
 }
 
 /** สถานะเกมที่ใช้ตัดสินว่าจะแสดงปุ่มใด (สร้างจาก GameSession — ไม่ผูกกับ Phaser) */
@@ -97,6 +107,10 @@ export interface TouchContextInput {
   notebook: { routeChoices: string[] };
   compareChoices: string[];
   grid: { choices: string[]; selected: number | null; solved: boolean };
+  /** การขยายแผนที่/แผนที่ฐานบนจอสัมผัส (ไม่ระบุ = ไม่มีปุ่มขยาย) */
+  view?: { zoomIndex: number; zoomLevels: number; legend: boolean; compareTab: 0 | 1 | 'text' };
+  /** รายการเมนูหยุดเกมที่แสดงบนจอสัมผัส (index = ลำดับใน PAUSE_ITEMS) */
+  pauseItems?: Array<{ index: number; label: string; icon: string }>;
 }
 
 export interface TouchSheet {
@@ -123,6 +137,26 @@ const act = (id: Exclude<ActionId, 'choice'>, label: string, icon: string, code:
   enabled,
   primary,
 });
+
+const uiAct = (id: 'zoomIn' | 'zoomOut' | 'legend', label: string, icon: string, ui: string, enabled = true, selected = false): TouchAction => ({
+  id,
+  label,
+  icon,
+  code: '',
+  ui,
+  enabled,
+  selected,
+  half: true,
+});
+
+/** ปุ่มขยาย/ย่อแผนที่ (ครึ่งความกว้าง วางคู่กัน) */
+function zoomActions(v: TouchContextInput['view']): TouchAction[] {
+  if (!v) return [];
+  return [
+    uiAct('zoomIn', 'ขยาย', '＋', 'map-zoom-in', v.zoomIndex < v.zoomLevels - 1),
+    uiAct('zoomOut', 'ย่อ', '－', 'map-zoom-out', v.zoomIndex > 0),
+  ];
+}
 
 const choices = (labels: string[], selected: number | null = null, enabled = true): TouchAction[] =>
   labels.map((label, i) => ({ id: 'choice', label, icon: String(i + 1), code: choiceKey(i), enabled, selected: selected === i }));
@@ -154,10 +188,11 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
           actions: [act('close', 'ย้ายหมุด', '↩', 'Escape')],
         };
       }
-      const actions: TouchAction[] = [];
-      if (i.map.pinStage === 'cursor') actions.push(act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true));
+      const actions: TouchAction[] = [...zoomActions(i.view)];
+      if (i.view) actions.push({ ...uiAct('legend', 'สัญลักษณ์', '📖', 'map-legend', true, i.view.legend), half: false });
       if (i.map.canSwitchSheet) actions.push(act('sheet', 'สลับแผ่น', '🔁', ACTION_KEY.sheet));
       if (i.analysis) actions.push(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available));
+      if (i.map.pinStage === 'cursor') actions.push(act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true));
       actions.push(act('close', 'ปิดแผนที่', '✕', 'KeyM'));
       return { ...none, actions };
     }
@@ -167,8 +202,14 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
         actions: [act('tabPrev', 'หน้าก่อน', '◀', ACTION_KEY.tabPrev), act('tabNext', 'หน้าถัดไป', '▶', ACTION_KEY.tabNext), act('close', 'ปิดสมุด', '✕', 'KeyN')],
         sheet: i.notebook.routeChoices.length ? { title: 'เลือกเส้นทางที่ตรงกับเบาะแส', options: choices(i.notebook.routeChoices) } : null,
       };
-    case 'compare':
-      return { ...none, actions: [...choices(i.compareChoices), act('close', 'ปิด', '✕', 'Escape')] };
+    case 'compare': {
+      // จอสัมผัส: ขยายได้เมื่อกำลังดูแผนที่ฐานทีละฉบับ (แท็บ ฉบับ 1/2)
+      const zoom =
+        i.view && i.view.compareTab !== 'text'
+          ? [...zoomActions(i.view), { ...uiAct('legend', 'สัญลักษณ์', '📖', 'map-legend', true, i.view.legend), half: false }]
+          : [];
+      return { ...none, actions: [...zoom, ...choices(i.compareChoices), act('close', 'ปิด', '✕', 'Escape')] };
+    }
     case 'gridcheck': {
       const solved = i.grid.solved;
       return {
@@ -186,8 +227,16 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
         actions: [act('continue', 'รับภารกิจถัดไป', '▶', ACTION_KEY.continue, true, true), act('journey', 'แผนที่การเดินทาง', '🧭', ACTION_KEY.journey)],
       };
     case 'pause':
-      // เมนูหยุดเกมมีปุ่มแตะได้ของตัวเองอยู่แล้ว
-      return none;
+      // จอสัมผัส: เมนูหยุดเกมเป็นปุ่มใหญ่กลางจอ (ส่งเลขรายการ — คีย์บอร์ดกดเลขได้เช่นกัน)
+      return i.pauseItems?.length
+        ? {
+            ...none,
+            sheet: {
+              title: 'หยุดเกม',
+              options: i.pauseItems.map((p) => ({ id: 'choice' as const, label: p.label, icon: p.icon, code: choiceKey(p.index), enabled: true })),
+            },
+          }
+        : none;
   }
 }
 

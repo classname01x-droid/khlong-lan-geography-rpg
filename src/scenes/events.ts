@@ -10,3 +10,6 @@ export const REGISTRY_PROGRESS = 'progress';
 export const REGISTRY_SETTINGS = 'settings';
 /** true = เล่นบนจอสัมผัส (แสดงปุ่มสัมผัสและข้อความ DOM ตัวใหญ่) */
 export const REGISTRY_TOUCH_UI = 'touchUi';
+
+/** เหตุการณ์บน game.events: ข้อความแจ้งเตือน (จอสัมผัสแสดงเป็น DOM ตัวอักษรใหญ่ แทนข้อความใน canvas) */
+export const EVENT_TOUCH_TOAST = 'touch-toast';

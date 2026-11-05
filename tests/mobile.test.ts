@@ -15,7 +15,12 @@ import {
   type TouchContextInput,
 } from '../src/core/input/InputMapping';
 import type { GameSession } from '../src/core/session/GameSession';
-import { computeMobileLayout, GAME_ASPECT } from '../src/core/ui/MobileLayout';
+import { computeMobileLayout, GAME_ASPECT, hudWidths } from '../src/core/ui/MobileLayout';
+import { centerOnTile, clampPan, fitCell, MAP_ZOOMS, readableZoomIndex, scaleBarLength, screenToTile } from '../src/core/ui/MapViewport';
+import { boardReader, esc, notebookReader } from '../src/ui/touch/readerHtml';
+import { boardTitle, buildBoardView } from '../src/ui/views/boardView';
+import { buildNotebookView, NOTEBOOK_TAB_LABEL } from '../src/ui/views/notebookView';
+import { KEYBOARD_HINT_RE, touchWording } from '../src/ui/views/touchWording';
 import { newSession, runDialogue, talk } from './helpers';
 
 const NPC_RADIUS = 2;
@@ -78,9 +83,10 @@ describe('Input mapping: ปุ่มสัมผัส ↔ คีย์บอ�
 
   it('แผนที่: ปักหมุด/สลับแผ่น/ปิด · ขั้นเลือกประเภทสถานที่เป็นแผ่นตัวเลือก', () => {
     const map = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'cursor', canSwitchSheet: true, wisdomChoices: [] } }));
+    // ปุ่มหลัก (ปักหมุด) อยู่ล่างใกล้นิ้วโป้ง ถัดไปคือปิดแผนที่
     expect(map.actions.map((a) => [a.id, a.code])).toEqual([
-      ['pinHere', 'Space'],
       ['sheet', 'Tab'],
+      ['pinHere', 'Space'],
       ['close', 'KeyM'],
     ]);
     const wisdom = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'wisdom', canSwitchSheet: false, wisdomChoices: ['วัด', 'ศูนย์เรียนรู้'] } }));
@@ -382,5 +388,170 @@ describe('Mobile layout (แนวนอน/แนวตั้ง/รอยบ�
     expect(l.sideColumns).toBe(false);
     expect(l.game.h).toBe(900);
     expect(l.left.w).toBe(0);
+  });
+});
+
+/* =====================================================================
+ * v0.13 — อ่านง่ายบนโทรศัพท์จริง: แผนที่ขยาย/เลื่อน · หน้าอ่านตัวอักษรใหญ่ · คำแนะนำปุ่มสัมผัส
+ * ===================================================================== */
+
+describe('แผนที่บนจอสัมผัส: ขยาย/เลื่อน (MapViewport)', () => {
+  const view = { x: 0, y: 80, w: 960, h: 500 };
+  it('ระดับ 1× ทั้งแผนที่พอดีพื้นที่แสดงผล', () => {
+    const cell = fitCell(80, 60, view);
+    expect(cell).toBe(8);
+    expect(80 * cell).toBeLessThanOrEqual(view.w);
+    expect(60 * cell).toBeLessThanOrEqual(view.h);
+  });
+  it('แผนที่เล็กกว่าพื้นที่ → จัดกึ่งกลาง · ใหญ่กว่า → เลื่อนได้แต่ไม่เลยขอบ', () => {
+    expect(clampPan({ x: -999, y: 999 }, 640, 480, view)).toEqual({ x: 160, y: 90 });
+    const big = { w: 80 * 16, h: 60 * 16 };
+    const p = clampPan({ x: 500, y: -5000 }, big.w, big.h, view);
+    expect(p.x).toBe(view.x); // ไม่เห็นขอบว่างด้านซ้าย
+    expect(p.y + big.h).toBe(view.y + view.h); // ขอบล่างของแผนที่ชิดขอบล่างพื้นที่
+  });
+  it('ขยายรอบช่องที่เลือก แล้วแตะกลับได้ช่องเดิม (พิกัดไม่เพี้ยนทุกระดับขยาย)', () => {
+    for (const z of MAP_ZOOMS) {
+      const c = 8 * z;
+      const tile = { x: 41, y: 27 };
+      const o = centerOnTile(tile, c, 80, 60, view);
+      const back = screenToTile(o.x + (tile.x + 0.5) * c, o.y + (tile.y + 0.5) * c, o, c, 80, 60, view);
+      expect(back).toEqual(tile);
+    }
+    expect(screenToTile(5, 5, { x: 0, y: 80 }, 8, 80, 60, view)).toBeNull(); // นอกพื้นที่แผนที่ (ใต้แถบหัว)
+  });
+  it('แถบมาตราส่วนบนจอยาวตามการขยาย: 100 ม. = 10 ช่องเสมอ (มาตราส่วนเดิม)', () => {
+    for (const z of MAP_ZOOMS) expect(scaleBarLength(100, 10, 8 * z)).toBe(10 * 8 * z);
+  });
+  it('ระดับขยายเริ่มต้นตามขนาดจอ: ชื่อสถานที่บนจอ ≥ 13 px', () => {
+    for (const k of [0.4, 0.5, 0.534, 0.6, 0.75, 1]) {
+      const i = readableZoomIndex(14, k);
+      expect(14 * MAP_ZOOMS[i] * k >= 13 || i === MAP_ZOOMS.length - 1).toBe(true);
+    }
+  });
+});
+
+describe('แถบด้านบนภาพเกม: แถบสถานะกับแถบภารกิจไม่ทับกัน', () => {
+  it('ทุกความกว้างตั้งแต่จอเล็ก (iPhone SE) ถึงแท็บเล็ต', () => {
+    for (let w = 360; w <= 1200; w += 20) {
+      for (const compact of [true, false]) {
+        const h = hudWidths(w, compact);
+        expect(h.status + h.tracker + 24).toBeLessThanOrEqual(w);
+        expect(h.tracker).toBeGreaterThan(150);
+      }
+    }
+  });
+});
+
+/** ข้อความทุกชิ้นในข้อมูลด่าน (เดินทุกค่า string แบบ recursive) */
+function allStrings(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => allStrings(x, out));
+  else if (v && typeof v === 'object') Object.values(v).forEach((x) => allStrings(x, out));
+  return out;
+}
+const numbersIn = (t: string) => (t.match(/\d[\d,.]*\d|\d{2,}/g) ?? []).sort();
+
+describe('คำแนะนำปุ่ม: คีย์บอร์ด → ปุ่มสัมผัส (เฉพาะจอสัมผัส)', () => {
+  it('ตัวอย่างการแปลง', () => {
+    expect(touchWording('เดินไปกด E ที่จุดนั้นก่อน')).toBe('เดินไปแตะ ✋ ที่จุดนั้นก่อน');
+    expect(touchWording('เปิดแผนที่ (M) เพื่อปักหมุด')).toBe('เปิดแผนที่ (🗺️ แผนที่) เพื่อปักหมุด');
+    expect(touchWording('จุดใดตรงกับหลักฐานครบทั้ง 3 ชนิด? กดเลข 1–3 เพื่อเลือก · Esc หรือ C ปิด')).toBe(
+      'จุดใดตรงกับหลักฐานครบทั้ง 3 ชนิด? แตะตัวเลือกทางขวาเพื่อเลือก',
+    );
+    expect(touchWording('กด C เปิดกระดาน', { analysisLabel: 'เทียบแผนที่' })).toBe('แตะ 🔍 เทียบแผนที่ เปิดกระดาน');
+  });
+
+  it('ข้อความทุกชิ้นของทุกบท: ไม่เหลือคำสั่งคีย์บอร์ด และตัวเลข/ระยะ/พิกัดไม่เปลี่ยน', () => {
+    let rewritten = 0;
+    for (const level of ALL_LEVELS) {
+      for (const text of allStrings(level)) {
+        const out = touchWording(text);
+        if (out !== text) rewritten++;
+        expect(out, `${level.id}: ${text}`).not.toMatch(KEYBOARD_HINT_RE);
+        // ปลอดภัยต่อเนื้อหา: ตัวเลขหลายหลัก (ระยะ ความสูง พิกัด) ต้องเหมือนเดิมทุกตัว
+        if (!/กด 1, 2|กด 1 หรือ 2|กดเลข/.test(text)) expect(numbersIn(out), text).toEqual(numbersIn(text));
+      }
+    }
+    // ทดสอบจริง (ไม่ผ่านแบบว่างเปล่า): เนื้อหามีคำสั่งคีย์บอร์ดหลายสิบจุด
+    expect(rewritten).toBeGreaterThan(30);
+  });
+
+  it('ข้อความที่ไม่มีคำสั่งคีย์บอร์ด → เหมือนเดิมทุกตัวอักษร', () => {
+    for (const level of ALL_LEVELS)
+      for (const text of allStrings(level)) if (!KEYBOARD_HINT_RE.test(text)) expect(touchWording(text)).toBe(text);
+  });
+});
+
+describe('หน้าอ่านตัวอักษรใหญ่ (สมุด/กระดานวิเคราะห์) ใช้ข้อมูลชุดเดียวกับ canvas', () => {
+  const w = (t: string) => touchWording(t);
+  const textOf = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+
+  it('สมุดทุกหน้า ทุกบท ทุกฉาก: สร้างได้ มีแท็บครบ และไม่มีคำสั่งคีย์บอร์ด', () => {
+    for (const level of ALL_LEVELS) {
+      for (const st of level.story) {
+        const s = sessionAtStep(level, st.order);
+        for (const tab of s.notebookTabs()) {
+          s.notebookTab = tab;
+          const view = buildNotebookView(s, { touch: true });
+          const r = notebookReader(view, s.notebookTabs(), NOTEBOOK_TAB_LABEL, level.tambon, w);
+          expect(r.tabs.filter((t) => t.active).map((t) => t.id)).toEqual([tab]);
+          expect(textOf(r.body + r.foot), `${level.id} ฉาก ${st.order} ${tab}`).not.toMatch(KEYBOARD_HINT_RE);
+          // บรรทัดเดียวกับที่ canvas วาด (แหล่งข้อความเดียว)
+          expect(view.lines.map((l) => l.text)).toEqual(buildNotebookView(s).lines.map((l) => l.text));
+        }
+      }
+    }
+  });
+
+  it('คอมพิวเตอร์ยังเห็นคำแนะนำคีย์บอร์ดเดิม (Delete 2 ครั้ง)', () => {
+    const s = newSession(L1);
+    s.notebookTab = 'records';
+    expect(buildNotebookView(s).footer.text).toContain('Delete');
+    expect(buildNotebookView(s, { touch: true }).footer.text).not.toContain('Delete');
+  });
+
+  it('กระดานวิเคราะห์ทุกฉาก: จอแคบแบ่งแท็บ · จอกว้างวางคู่ · ไม่มีคำสั่งคีย์บอร์ด', () => {
+    for (const level of ALL_LEVELS.filter((l) => l.gridSiteAnalysis || l.integratedSiteAnalysis)) {
+      for (const st of level.story) {
+        const s = sessionAtStep(level, st.order);
+        const view = buildBoardView(s);
+        if (!view) continue;
+        const narrow = boardReader(boardTitle(s), view, 'candidates', false, w);
+        expect(narrow.tabs.map((t) => t.id)).toEqual(['evidence', 'candidates', 'result']);
+        expect((narrow.body.match(/tl-card-h/g) ?? []).length).toBe(view.candidates.length);
+        expect(narrow.body).not.toContain('data-sec="evidence"');
+        const wide = boardReader(boardTitle(s), view, 'candidates', true, w);
+        expect(wide.tabs).toEqual([]);
+        expect(wide.body).toContain('data-sec="evidence"');
+        expect(textOf(wide.body), `${level.id} ฉาก ${st.order}`).not.toMatch(KEYBOARD_HINT_RE);
+      }
+    }
+  });
+
+  it('ข้อความในหน้าอ่านถูก escape (ไม่ฝัง HTML)', () => {
+    expect(esc('<b>"x" & y</b>')).toBe('&lt;b&gt;&quot;x&quot; &amp; y&lt;/b&gt;');
+  });
+});
+
+describe('ปุ่มสัมผัสใหม่: ขยายแผนที่ · คำอธิบายสัญลักษณ์ · เมนูหยุดเกม', () => {
+  const view = (zoomIndex: number, compareTab: 0 | 1 | 'text' = 0) => ({ zoomIndex, zoomLevels: 3, legend: true, compareTab });
+  it('ขยาย/ย่อ กดไม่ได้เมื่อสุดทาง · เป็นคำสั่งแสดงผล (ไม่ส่งรหัสคีย์บอร์ด)', () => {
+    const at = (i: number) => buildTouchContext(baseInput({ mode: 'map', view: view(i) })).actions;
+    expect(at(0).find((a) => a.id === 'zoomOut')!.enabled).toBe(false);
+    expect(at(2).find((a) => a.id === 'zoomIn')!.enabled).toBe(false);
+    const legend = at(1).find((a) => a.id === 'legend')!;
+    expect(legend).toMatchObject({ ui: 'map-legend', code: '', selected: true });
+  });
+  it('เปรียบเทียบแผนที่: ดูแผ่น → มีปุ่มขยาย/สัญลักษณ์ · หน้าหลักฐาน → ไม่มี', () => {
+    const ids = (tab: 0 | 'text') => buildTouchContext(baseInput({ mode: 'compare', compareChoices: ['A', 'B'], view: view(1, tab) })).actions.map((a) => a.id);
+    expect(ids(0)).toEqual(['zoomIn', 'zoomOut', 'legend', 'choice', 'choice', 'close']);
+    expect(ids('text')).toEqual(['choice', 'choice', 'close']);
+  });
+  it('เมนูหยุดเกม: ปุ่มใหญ่ส่งเลขรายการ (คีย์บอร์ดกดเลขได้เช่นกัน)', () => {
+    const ctx = buildTouchContext(
+      baseInput({ mode: 'pause', pauseItems: [{ index: 0, label: 'เล่นต่อ', icon: '▶' }, { index: 3, label: 'กลับเมนูหลัก', icon: '🏠' }] }),
+    );
+    expect(ctx.sheet!.options.map((o) => o.code)).toEqual(['Digit1', 'Digit4']);
   });
 });

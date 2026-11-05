@@ -4,13 +4,25 @@ import { THAI_DIRECTION } from '../../core/direction/Compass';
 import { buildQuestTracker, HintTracker, totalMistakes, type QuestTrackerView } from '../../core/guide/QuestGuide';
 import { pickInteraction, type InteractionTarget } from '../../core/input/Interaction';
 import { buildTouchContext, joystickVector, TapGuard, type TouchAction, type TouchContext, type TouchContextInput } from '../../core/input/InputMapping';
-import type { GameSession } from '../../core/session/GameSession';
-import type { MobileLayout } from '../../core/ui/MobileLayout';
+import type { CodePiece } from '../../core/progress/ProgressStore';
+import type { GameSession, NotebookTab } from '../../core/session/GameSession';
+import { MAP_ZOOMS, readableZoomIndex } from '../../core/ui/MapViewport';
+import { hudWidths, type MobileLayout } from '../../core/ui/MobileLayout';
 import { GridSystem } from '../../core/world/GridSystem';
-import { INTERACT_RADIUS_TILES } from '../../config/constants';
+import { CAMERA_ZOOM, GAME_WIDTH, INTERACT_RADIUS_TILES } from '../../config/constants';
+import { EVENT_TOUCH_TOAST, REGISTRY_CODE_PIECES, REGISTRY_UNLOCKED } from '../../scenes/events';
+import { PAUSE_ITEMS } from '../../scenes/WorldScene';
 import { FONT_FAMILY } from '../theme';
 import { fmtMeters } from '../format';
+import { boardTitle, buildBoardView } from '../views/boardView';
+import { buildCompareLines, COMPARE_TITLE } from '../views/compareView';
+import { mapInfoShort, mapPinLines, mapTitle } from '../views/mapText';
+import { buildNotebookView, NOTEBOOK_TAB_LABEL } from '../views/notebookView';
+import { buildSummaryView } from '../views/summaryView';
+import { touchWording } from '../views/touchWording';
+import { boardReader, compareReader, esc, notebookReader, summaryReader, type BoardTab, type ReaderContent } from './readerHtml';
 import { TOUCH_CSS } from './touchStyles';
+import { setTouchView, touchView } from './touchViewState';
 
 /** ส่วนของ WorldScene ที่ชั้นปุ่มสัมผัสเรียกใช้ */
 interface WorldControls {
@@ -19,12 +31,36 @@ interface WorldControls {
 }
 
 const ICON: Record<InteractionTarget['kind'], string> = { npc: '💬', inspect: '🔎', verify: '🧪' };
+const PAUSE_ICON: Record<string, string> = { เล่นต่อ: '▶', แผนที่การเดินทาง: '🧭', กลับเมนูหลัก: '🏠' };
+
+/** เข็มทิศเล็กในแถบสถานะ (แผนที่และโลกเกมหันทิศเหนือขึ้นด้านบนเสมอ) */
+const COMPASS_SVG =
+  '<svg class="tl-compass" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#10141f" stroke="#e8d9a8" stroke-width="2"/>' +
+  '<path d="M20 6 L25 20 L15 20 Z" fill="#d94b4b"/><path d="M20 34 L25 20 L15 20 Z" fill="#f4efe1"/>' +
+  '<text x="20" y="5.5" font-size="7" text-anchor="middle" fill="#ffd84d" dominant-baseline="hanging">N</text></svg>';
+
+type SigKey =
+  | 'actions'
+  | 'sheet'
+  | 'tracker'
+  | 'status'
+  | 'prompt'
+  | 'rdTitle'
+  | 'rdTabs'
+  | 'rdBody'
+  | 'rdFoot'
+  | 'mapbar'
+  | 'mapinfo'
+  | 'legend';
 
 /**
  * ชั้นควบคุมและข้อมูลบนจอ (DOM ซ้อนบน canvas)
  *   - ทุกอุปกรณ์: แถบติดตามภารกิจ (มุมขวาบน) · ข้อความโต้ตอบตามบริบท ("พูดคุยกับ…")
- *   - จอสัมผัส: จอยสติก 8 ทิศ · ปุ่มคำสั่งตามสถานการณ์ · กล่องบทสนทนา/ตัวเลือกตัวอักษรใหญ่ · แถบสถานะ · คำแนะนำให้หมุนจอ
- * ตรรกะการเลือกปุ่ม/เป้าหมาย/ภารกิจอยู่ใน core (ทดสอบได้) — ไฟล์นี้วาดและส่งรหัสปุ่มเข้า WorldScene.dispatchCode() เท่านั้น
+ *   - จอสัมผัส: จอยสติก 8 ทิศ · ปุ่มคำสั่งตามสถานการณ์ · กล่องบทสนทนา/ตัวเลือกตัวอักษรใหญ่ · แถบสถานะ (เข็มทิศ + แถบมาตราส่วน)
+ *     · หน้าอ่านตัวอักษรใหญ่ (สมุด กระดานวิเคราะห์ หลักฐาน หน้าสรุป เมนูหยุดเกม) แบ่งแท็บและเลื่อนอ่านได้
+ *     · แถบหัวแผนที่/สถานะหมุด · ข้อความแจ้งเตือน · คำแนะนำให้หมุนจอ
+ * ตรรกะการเลือกปุ่ม/เป้าหมาย/ภารกิจ/ข้อความอยู่ใน core และ ui/views (ทดสอบได้)
+ * ไฟล์นี้วาดและส่งรหัสปุ่มเข้า WorldScene.dispatchCode() เท่านั้น
  */
 export class TouchLayer {
   private readonly root: HTMLDivElement;
@@ -37,19 +73,52 @@ export class TouchLayer {
   private readonly status: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
   private readonly rotate: HTMLDivElement;
+  private readonly reader: HTMLDivElement;
+  private readonly rdTitle: HTMLDivElement;
+  private readonly rdTabs: HTMLDivElement;
+  private readonly rdBody: HTMLDivElement;
+  private readonly rdMore: HTMLDivElement;
+  private readonly rdFoot: HTMLDivElement;
+  private readonly mapbar: HTMLDivElement;
+  private readonly mapinfo: HTMLDivElement;
+  private readonly legend: HTMLDivElement;
+  private readonly toast: HTMLDivElement;
   private layout: MobileLayout | null = null;
   private readonly guard = new TapGuard(150);
   private readonly hints = new HintTracker();
   private joyPointer: number | null = null;
   private joyOrigin = { x: 0, y: 0 };
-  private lastSig = { actions: '', sheet: '', tracker: '', status: '', prompt: '' };
+  private readonly lastSig: Record<SigKey, string> = {
+    actions: '',
+    sheet: '',
+    tracker: '',
+    status: '',
+    prompt: '',
+    rdTitle: '',
+    rdTabs: '',
+    rdBody: '',
+    rdFoot: '',
+    mapbar: '',
+    mapinfo: '',
+    legend: '',
+  };
   private trackerCollapsed = false;
+  /** ผู้เล่นเลือกย่อ/ขยายเองแล้ว (ไม่ย่ออัตโนมัติอีก) */
+  private trackerUserSet = false;
   private trackerDetails = false;
   private paused = false;
+  private lastMode = '';
+  private boardTab: BoardTab = 'evidence';
+  private readerPage = '';
+  private resultSig = '';
+  private compareSig = '';
+  private readonly toastQueue: string[] = [];
+  private toastTimer: number | null = null;
   /** ข้อมูลล่าสุดสำหรับการทดสอบอัตโนมัติ */
   lastContext: TouchContext | null = null;
   lastTracker: QuestTrackerView | null = null;
   lastTarget: InteractionTarget | null = null;
+  lastReader: ReaderContent | null = null;
 
   constructor(
     private readonly game: Phaser.Game,
@@ -69,11 +138,23 @@ export class TouchLayer {
     this.joyZone = div('tl-joyzone', this.root);
     this.joyBase = div('tl-joybase', this.joyZone);
     this.joyKnob = div('tl-joyknob', this.joyBase);
+    this.mapbar = div('tl-mapbar', this.root);
+    this.mapinfo = div('tl-mapinfo', this.root);
+    this.legend = div('tl-legend', this.root);
+    this.reader = div('tl-reader', this.root);
+    const head = div('tl-rd-head', this.reader);
+    this.rdTitle = div('tl-rd-title', head);
+    this.rdTabs = div('tl-rd-tabs', head);
+    this.rdBody = div('tl-rd-body', this.reader);
+    this.rdMore = div('tl-rd-more', this.reader);
+    this.rdMore.textContent = '▼ เลื่อนลงเพื่ออ่านต่อ';
+    this.rdFoot = div('tl-rd-foot', this.reader);
     this.actions = div('tl-actions', this.root);
     this.sheet = div('tl-sheet', this.root);
     this.tracker = div('tl-tracker', this.root);
     this.status = div('tl-status', this.root);
     this.prompt = div('tl-prompt', this.root);
+    this.toast = div('tl-toast', this.root);
     this.rotate = div('tl-rotate', this.root);
     this.rotate.innerHTML =
       '<div class="tl-rotate-icon">📱↻</div><div class="tl-rotate-title">กรุณาหมุนโทรศัพท์เป็นแนวนอน</div>' +
@@ -81,10 +162,12 @@ export class TouchLayer {
 
     this.bindJoystick();
     this.bindTaps();
+    this.rdBody.addEventListener('scroll', () => this.updateMore(), { passive: true });
     // สลับแอป / ซ่อนหน้า / เสียโฟกัส → หยุดเดินทันที
     const stop = () => this.resetJoystick();
     window.addEventListener('blur', stop);
     document.addEventListener('visibilitychange', () => document.hidden && stop());
+    game.events.on(EVENT_TOUCH_TOAST, (msg: string) => this.pushToast(msg));
     window.setInterval(() => this.tick(), 100);
   }
 
@@ -106,6 +189,8 @@ export class TouchLayer {
     this.layout = l;
     const r = this.root.style;
     r.setProperty('--btn', `${l.button}px`);
+    // จอยสติกไม่กว้างเกินคอลัมน์ซ้าย (ไม่ล้นขอบจอ/รอยบาก)
+    r.setProperty('--joy', `${Math.round(Math.min(l.button * 2.3, l.left.w - 10))}px`);
     // คอลัมน์ปุ่ม: อยู่ข้างภาพเกม (ไม่ทับฉาก) หรือซ้อนบนขอบภาพเมื่อจอไม่มีที่ว่าง
     const place = (el: HTMLElement, rect: { x: number; y: number; w: number; h: number }) => {
       el.style.left = `${rect.x}px`;
@@ -117,6 +202,8 @@ export class TouchLayer {
     place(this.actions, l.right);
     this.root.classList.toggle('tl-columns', l.sideColumns);
     this.root.classList.toggle('tl-compact', l.compact);
+    // คอลัมน์ปุ่มแคบ: ไอคอนอยู่เหนือชื่อปุ่ม (ชื่อปุ่มไม่ถูกตัดกลางคำ)
+    this.root.classList.toggle('tl-narrowcol', l.right.w < 132);
     const showRotate = this.touch && l.portrait;
     this.rotate.style.display = showRotate ? 'flex' : 'none';
     // แนวตั้ง: หยุดเกมชั่วคราว (สถานะไม่หาย) · กลับแนวนอน: เล่นต่อ
@@ -166,7 +253,8 @@ export class TouchLayer {
   }
 
   private joyRadius(): number {
-    return (this.layout?.button ?? 48) * 1.15;
+    const l = this.layout;
+    return l ? Math.min(l.button * 2.3, l.left.w - 10) / 2 : 55;
   }
 
   private moveJoystick(x: number, y: number): void {
@@ -196,7 +284,7 @@ export class TouchLayer {
       e.preventDefault();
       e.stopPropagation();
       if (el.hasAttribute('disabled')) return;
-      const key = el.dataset.code ?? el.dataset.ui ?? '';
+      const key = el.dataset.code || el.dataset.ui || '';
       if (!this.guard.accept(key, performance.now())) return;
       if (el.dataset.code) this.send(el.dataset.code);
       else this.onUi(el.dataset.ui!);
@@ -207,21 +295,45 @@ export class TouchLayer {
     this.root.addEventListener('click', (e) => e.preventDefault());
   }
 
+  /** คำสั่งเฉพาะการแสดงผล (ไม่ใช่คำสั่งเกม) */
   private onUi(id: string): void {
-    if (id === 'tracker-toggle') this.trackerCollapsed = !this.trackerCollapsed;
-    if (id === 'tracker-details') this.trackerDetails = !this.trackerDetails;
-    if (id === 'tracker-hint') {
+    const [name, arg] = id.split(':');
+    if (name === 'tracker-toggle') {
+      this.trackerCollapsed = !this.trackerCollapsed;
+      this.trackerUserSet = true;
+    }
+    if (name === 'tracker-details') this.trackerDetails = !this.trackerDetails;
+    if (name === 'tracker-hint') {
       this.hints.requestMore();
       this.trackerDetails = true;
       this.trackerCollapsed = false;
+      this.trackerUserSet = true;
     }
+    if (name === 'map-zoom-in') setTouchView({ mapZoomIndex: Math.min(MAP_ZOOMS.length - 1, touchView.mapZoomIndex + 1) });
+    if (name === 'map-zoom-out') setTouchView({ mapZoomIndex: Math.max(0, touchView.mapZoomIndex - 1) });
+    if (name === 'map-legend') setTouchView({ legend: !touchView.legend });
+    if (name === 'compare-tab') setTouchView({ compareTab: arg === 'text' ? 'text' : arg === '1' ? 1 : 0 });
+    if (name === 'board-tab') this.boardTab = arg as BoardTab;
+    if (name === 'nb-tab') this.gotoNotebookTab(arg as NotebookTab);
     this.lastSig.tracker = '';
   }
 
+  /** แท็บสมุด: ใช้คำสั่งเปลี่ยนหน้าเดิม (ลูกศรขวา) ทีละหน้าจนถึงแท็บที่แตะ — เส้นทางคำสั่งเดียวกับคีย์บอร์ด */
+  private gotoNotebookTab(tab: NotebookTab): void {
+    const s = this.session();
+    if (!s || s.mode !== 'notebook') return;
+    const tabs = s.notebookTabs();
+    const steps = (tabs.indexOf(tab) - tabs.indexOf(s.notebookTab) + tabs.length) % tabs.length;
+    for (let i = 0; i < steps; i++) this.send('ArrowRight');
+  }
+
   private button(a: TouchAction, extra = ''): string {
-    const cls = ['tl-btn', `tl-a-${a.id}`, a.primary ? 'tl-primary' : '', a.selected ? 'tl-selected' : '', extra].join(' ');
+    const cls = ['tl-btn', `tl-a-${a.id}`, a.primary ? 'tl-primary' : '', a.selected ? 'tl-selected' : '', a.half ? 'tl-half' : '', extra]
+      .filter(Boolean)
+      .join(' ');
+    const data = a.ui ? `data-ui="${esc(a.ui)}"` : `data-code="${a.code}"`;
     return (
-      `<button class="${cls}" data-code="${a.code}"${a.enabled ? '' : ' disabled'} aria-label="${esc(a.label)}">` +
+      `<button class="${cls}" ${data}${a.enabled ? '' : ' disabled'} aria-label="${esc(a.label)}">` +
       `<span class="tl-icon">${esc(a.icon)}</span><span class="tl-label">${esc(a.label)}</span></button>`
     );
   }
@@ -251,7 +363,19 @@ export class TouchLayer {
       },
       compareChoices: s.availableSheets().map((m) => m.title),
       grid: { choices: (analysisDef?.candidates ?? []).map((c) => c.label), selected: s.gridSelection, solved: s.analysisSolved },
+      view: this.touch
+        ? { zoomIndex: touchView.mapZoomIndex, zoomLevels: MAP_ZOOMS.length, legend: touchView.legend, compareTab: touchView.compareTab }
+        : undefined,
+      pauseItems: this.touch
+        ? PAUSE_ITEMS.map((label, index) => ({ index, label, icon: PAUSE_ICON[label] ?? '' })).filter((p) => p.icon)
+        : undefined,
     };
+  }
+
+  private wording(s: GameSession): (t: string) => string {
+    if (!this.touch) return (t) => t;
+    const analysisLabel = s.level.mapComparison && !s.level.gridSiteAnalysis && !s.level.integratedSiteAnalysis ? 'เทียบแผนที่' : 'วิเคราะห์';
+    return (t) => touchWording(t, { analysisLabel });
   }
 
   private tick(): void {
@@ -260,13 +384,23 @@ export class TouchLayer {
     this.root.classList.toggle('tl-ingame', show);
     if (!s || !show) {
       if (this.joyPointer !== null) this.resetJoystick();
-      this.setHtml('actions', this.actions, '');
-      this.setHtml('sheet', this.sheet, '');
-      this.setHtml('tracker', this.tracker, '');
-      this.setHtml('status', this.status, '');
-      this.setHtml('prompt', this.prompt, '');
+      for (const [k, el] of [
+        ['actions', this.actions],
+        ['sheet', this.sheet],
+        ['tracker', this.tracker],
+        ['status', this.status],
+        ['prompt', this.prompt],
+        ['mapbar', this.mapbar],
+        ['mapinfo', this.mapinfo],
+        ['legend', this.legend],
+      ] as Array<[SigKey, HTMLElement]>)
+        this.setHtml(k, el, '');
+      this.renderReader(null, this.canvasRect());
+      if (!s) this.clearToast();
       return;
     }
+    const w = this.wording(s);
+    if (s.mode !== this.lastMode) this.onModeChange(s);
     const cr = this.canvasRect();
     const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     this.lastTarget = target;
@@ -279,36 +413,257 @@ export class TouchLayer {
     this.setHtml('actions', this.actions, this.touch ? ctx.actions.map((a) => this.button(a)).join('') : '');
     this.actions.classList.toggle('tl-explore', s.mode === 'explore');
 
+    // ---- แถบหัวแผนที่ / สถานะหมุด (จอสัมผัส) ----
+    const barH = this.renderMapBars(s, cr, w);
+
+    // ---- หน้าอ่านตัวอักษรใหญ่ (จอสัมผัส) ----
+    const reader = this.touch ? this.readerContent(s, ctx, cr, w) : null;
+    this.lastReader = reader;
+    this.renderReader(reader, cr, barH);
+
     // ---- กล่องบทสนทนา / แผ่นตัวเลือก (จอสัมผัส) ----
-    this.renderSheet(s, ctx, cr);
+    this.renderSheet(s, reader ? null : ctx, cr, w);
 
     // ---- แถบติดตามภารกิจ (ทุกอุปกรณ์ ขณะสำรวจ) ----
     const chapter = CHAPTERS.find((c) => c.levelId === s.level.id);
     const tier = this.hints.update(s.currentStepOrder, s.elapsedMs, totalMistakes(s));
     const tr = buildQuestTracker(s, { chapterOrder: chapter?.order, hintTier: tier });
     this.lastTracker = tr;
-    this.renderTracker(s.mode === 'explore' ? tr : null, cr);
+    // จอแคบที่ปุ่มซ้อนบนภาพเกม: แถบด้านบนใช้เฉพาะส่วนที่ไม่ถูกคอลัมน์ปุ่มบัง
+    const hudInset = this.touch ? this.overlayInset(cr) : 0;
+    const widths = hudWidths(cr.width - hudInset, this.layout?.compact ?? false);
+    // จอเตี้ยมาก: เริ่มแบบย่อ (ยังเห็นเป้าหมายบรรทัดเดียว) — ผู้เล่นแตะขยายได้
+    if (this.touch && !this.trackerUserSet && cr.height < 360) this.trackerCollapsed = true;
+    this.renderTracker(s.mode === 'explore' ? tr : null, cr, w, this.touch ? widths.tracker : Math.min(340, cr.width * 0.42), hudInset);
 
     // ---- แถบสถานะ (จอสัมผัส) และข้อความโต้ตอบ ----
-    if (this.touch && s.mode === 'explore') {
-      const pos = s.coords ? GridSystem.format(s.coords.tileToGrid(s.playerTile)) : `ช่อง X ${s.playerTile.x}, Y ${s.playerTile.y}`;
-      const html =
-        `<div>📍 ${esc(pos)}</div><div>🧭 หันไป${esc(THAI_DIRECTION[s.facing])} · เหนืออยู่ด้านบน</div>` +
-        `<div>📏 วัดระยะ ${esc(fmtMeters(s.odometer.tripMeters))} · รวม ${esc(fmtMeters(s.odometer.totalMeters))}</div>`;
-      this.setHtml('status', this.status, html);
-      this.status.style.left = `${cr.left + 8}px`;
-      this.status.style.top = `${cr.top + 8}px`;
-    } else this.setHtml('status', this.status, '');
+    if (this.touch && s.mode === 'explore') this.renderStatus(s, cr, widths);
+    else this.setHtml('status', this.status, '');
     if (target) {
       const key = this.touch ? '' : ' <span class="tl-key">E</span>';
       this.setHtml('prompt', this.prompt, `${ICON[target.kind]} ${esc(target.label)}${key}`);
       this.prompt.style.left = `${cr.left + cr.width / 2}px`;
       this.prompt.style.top = `${cr.bottom - (this.touch ? 12 : 56)}px`;
+      this.prompt.style.maxWidth = `${Math.max(160, cr.width - 2 * this.overlayInset(cr) - 24)}px`;
     } else this.setHtml('prompt', this.prompt, '');
+    this.placeToast(cr, s.mode === 'explore');
   }
 
-  private renderSheet(s: GameSession, ctx: TouchContext, cr: DOMRect): void {
-    if (!this.touch) {
+  /** เปลี่ยนโหมด: เริ่มหน้าอ่านใหม่จากแท็บแรก */
+  private onModeChange(s: GameSession): void {
+    this.lastMode = s.mode;
+    this.boardTab = 'evidence';
+    this.resultSig = '';
+    this.compareSig = '';
+    if (s.mode === 'compare') setTouchView({ compareTab: 0 });
+    // เปิดแผนที่: เริ่มที่ระดับขยายที่อ่านชื่อสถานที่ได้บนจอนี้ (ชื่อสถานที่บนแผนที่จอสัมผัส = 14 px ที่ 1×)
+    if (this.touch && (s.mode === 'map' || s.mode === 'compare')) {
+      setTouchView({ mapZoomIndex: readableZoomIndex(14, this.canvasRect().width / GAME_WIDTH) });
+    }
+    if (s.mode !== 'map' && s.mode !== 'compare') setTouchView({ legend: false });
+  }
+
+  /** ความกว้างของคอลัมน์ปุ่มที่ซ้อนบนภาพเกม (จอแคบ) — 0 เมื่อปุ่มอยู่ข้างภาพเกม */
+  private overlayInset(cr: DOMRect): number {
+    if (!this.touch || this.layout?.sideColumns || !this.actions.childElementCount) return 0;
+    return Math.max(0, cr.right - this.actions.getBoundingClientRect().left);
+  }
+
+  /* ---------------- หน้าอ่าน (จอสัมผัส) ---------------- */
+
+  private readerContent(s: GameSession, ctx: TouchContext, cr: DOMRect, w: (t: string) => string): ReaderContent | null {
+    switch (s.mode) {
+      case 'notebook': {
+        const r = notebookReader(buildNotebookView(s, { touch: true }), s.notebookTabs(), NOTEBOOK_TAB_LABEL, s.level.tambon, w);
+        // ตัวเลือกเส้นทาง (หน้า วิเคราะห์เส้นทาง) อยู่ท้ายหน้าอ่าน ไม่บังเนื้อหา
+        if (ctx.sheet?.options.length) {
+          r.foot += `<div class="tl-rd-choices">${ctx.sheet.options.map((o) => this.button(o, 'tl-option')).join('')}</div>`;
+        }
+        return r;
+      }
+      case 'gridcheck': {
+        const view = buildBoardView(s);
+        if (!view) return null;
+        const sig = view.result.join('|');
+        if (sig !== this.resultSig) {
+          // เพิ่งยืนยันคำตอบ → เปิดแท็บผลการตรวจให้เห็นคำอธิบายทันที
+          if (sig) this.boardTab = 'result';
+          this.resultSig = sig;
+        }
+        const width = cr.width - this.overlayInset(cr);
+        return boardReader(boardTitle(s), view, this.boardTab, width >= 640, w);
+      }
+      case 'compare': {
+        const sig = s.lastCompare ? JSON.stringify(s.lastCompare) : '';
+        if (sig !== this.compareSig) {
+          if (sig) setTouchView({ compareTab: 'text' });
+          this.compareSig = sig;
+        }
+        return touchView.compareTab === 'text' ? compareReader('หลักฐานและผลการเปรียบเทียบ', buildCompareLines(s), w) : null;
+      }
+      case 'summary':
+        return summaryReader(
+          buildSummaryView(
+            s,
+            (this.game.registry.get(REGISTRY_UNLOCKED) as string | undefined) ?? null,
+            (this.game.registry.get(REGISTRY_CODE_PIECES) as CodePiece[] | undefined) ?? [],
+          ),
+        );
+      case 'pause':
+        return ctx.sheet
+          ? {
+              theme: 'dark',
+              pageKey: 'pause',
+              title: '⏸ หยุดเกม',
+              tabs: [],
+              body: `<div class="tl-rd-choices tl-pause">${ctx.sheet.options.map((o) => this.button(o, 'tl-option')).join('')}</div>`,
+              foot: '<p class="tl-ln tl-muted">ความคืบหน้าบันทึกอัตโนมัติ</p>',
+              narrow: true,
+            }
+          : null;
+      default:
+        return null;
+    }
+  }
+
+  private renderReader(r: ReaderContent | null, cr: DOMRect, topInset = 0): void {
+    if (!r) {
+      this.reader.style.display = 'none';
+      this.readerPage = '';
+      // ล้างค่าที่จำไว้ให้ต่างจากทุกเนื้อหา → เปิดครั้งถัดไปวาดใหม่ทุกส่วน (กันแท็บเก่าค้าง)
+      for (const k of ['rdTitle', 'rdTabs', 'rdBody', 'rdFoot'] as const) this.lastSig[k] = '\u0000';
+      return;
+    }
+    this.reader.style.display = 'flex';
+    this.reader.className = `tl-reader tl-${r.theme}${r.narrow ? ' tl-narrow' : ''}`;
+    const pageChanged = r.pageKey !== this.readerPage;
+    this.readerPage = r.pageKey;
+    const keepScroll = this.rdBody.scrollTop;
+    this.setHtml('rdTitle', this.rdTitle, esc(r.title));
+    this.setHtml(
+      'rdTabs',
+      this.rdTabs,
+      r.tabs
+        .map((t) => `<button class="tl-tab${t.active ? ' tl-tab-on' : ''}" data-ui="${esc(t.ui)}" aria-pressed="${t.active}">${esc(t.label)}</button>`)
+        .join(''),
+    );
+    const bodyChanged = this.setHtml('rdBody', this.rdBody, r.body);
+    this.setHtml('rdFoot', this.rdFoot, r.foot);
+    if (pageChanged) this.rdBody.scrollTop = 0;
+    else if (bodyChanged) {
+      // เนื้อหาเดิมอัปเดต: คงตำแหน่งที่อ่านอยู่ · ถ้ามีผลการตรวจใหม่ เลื่อนไปให้เห็น
+      this.rdBody.scrollTop = keepScroll;
+      const anchor = r.focusAnchor ? this.rdBody.querySelector<HTMLElement>(`[data-anchor="${r.focusAnchor}"]`) : null;
+      if (anchor) this.rdBody.scrollTop = anchor.offsetTop - this.rdBody.offsetTop - 4;
+    }
+    // วางบนภาพเกม (ไม่ทับคอลัมน์ปุ่ม) — ไม่ย่อตัวอักษร ถ้าเนื้อหายาวให้เลื่อนอ่าน
+    const right = cr.right - this.overlayInset(cr);
+    const top = cr.top + Math.max(6, topInset + 4);
+    let left = cr.left + 6;
+    let width = right - 6 - left;
+    if (r.narrow) {
+      const nw = Math.min(width, 440);
+      left += (width - nw) / 2;
+      width = nw;
+    }
+    Object.assign(this.reader.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      [r.narrow ? 'maxHeight' : 'height']: `${cr.bottom - 6 - top}px`,
+      [r.narrow ? 'height' : 'maxHeight']: '',
+    });
+    this.updateMore();
+  }
+
+  /** แสดง "เลื่อนลงเพื่ออ่านต่อ" เมื่อยังมีเนื้อหาด้านล่าง */
+  private updateMore(): void {
+    const b = this.rdBody;
+    const more = b.scrollHeight - b.clientHeight - b.scrollTop > 6;
+    this.rdMore.style.display = more ? 'block' : 'none';
+  }
+
+  /* ---------------- แผนที่ (จอสัมผัส) ---------------- */
+
+  /** แถบหัวแผนที่และแถบสถานะหมุด — คืนความสูงแถบหัว (CSS px) และแจ้งพื้นที่ที่ถูกบังให้ canvas วางแผนที่ */
+  private renderMapBars(s: GameSession, cr: DOMRect, w: (t: string) => string): number {
+    const isMap = this.touch && s.mode === 'map';
+    const isCompare = this.touch && s.mode === 'compare';
+    if (!isMap && !isCompare) {
+      this.setHtml('mapbar', this.mapbar, '');
+      this.setHtml('mapinfo', this.mapinfo, '');
+      this.setHtml('legend', this.legend, '');
+      return 0;
+    }
+    const inset = this.overlayInset(cr);
+    const toCanvas = GAME_WIDTH / cr.width;
+    let bar = '';
+    if (isMap) {
+      const tiles100 = s.scale.metersToTiles(100);
+      const len = Math.round(touchView.mapCellPx * tiles100 * (cr.width / GAME_WIDTH));
+      bar =
+        `<div class="tl-mb-main"><div class="tl-mb-title">🗺️ ${esc(mapTitle(s))}</div>` +
+        `<div class="tl-mb-info">${esc(mapInfoShort(s))}${
+          s.coords ? ' · E เพิ่มไปทางตะวันออก · N เพิ่มไปทางเหนือ' : ''
+        }</div></div>` +
+        (len > 0 ? `<div class="tl-mb-scale"><span class="tl-sb" style="width:${len}px"></span><span>100 ม.</span></div>` : '') +
+        '<div class="tl-mb-north">▲<br>เหนือ</div>';
+    } else {
+      const sheets = s.availableSheets().slice(0, 2);
+      const tab = touchView.compareTab;
+      const tabBtn = (id: string, label: string, on: boolean) =>
+        `<button class="tl-tab${on ? ' tl-tab-on' : ''}" data-ui="compare-tab:${id}" aria-pressed="${on}">${esc(label)}</button>`;
+      bar =
+        `<div class="tl-mb-main"><div class="tl-mb-title">${esc(COMPARE_TITLE)}</div><div class="tl-rd-tabs">` +
+        sheets.map((m, i) => tabBtn(String(i), `📄 ${i + 1}) ${m.title}`, tab === i)).join('') +
+        tabBtn('text', s.lastCompare ? '📋 หลักฐาน/ผล ●' : '📋 หลักฐาน/ผล', tab === 'text') +
+        '</div></div>';
+    }
+    this.setHtml('mapbar', this.mapbar, bar);
+    Object.assign(this.mapbar.style, { left: `${cr.left}px`, top: `${cr.top}px`, width: `${cr.width - inset}px` });
+
+    // สถานะหมุด/ผลการปัก — ขั้นเลือกประเภทภูมิปัญญาใช้แผ่นตัวเลือกด้านล่างแทน
+    const pin = isMap && s.pinStage !== 'wisdom' ? mapPinLines(s) : { lines: [], problem: false };
+    const info = pin.lines.length
+      ? `<div class="${pin.problem ? 'tl-bad' : ''}">${pin.lines.map((l) => esc(w(l))).join('<br>')}</div>`
+      : '';
+    this.setHtml('mapinfo', this.mapinfo, info);
+    Object.assign(this.mapinfo.style, { left: `${cr.left}px`, bottom: `${window.innerHeight - cr.bottom}px`, width: `${cr.width - inset}px` });
+
+    const barH = this.mapbar.offsetHeight;
+
+    // แผงคำอธิบายสัญลักษณ์ (เปิด/ปิดจากปุ่ม "สัญลักษณ์") — ตัวอักษรใหญ่ เลื่อนดูได้ ไม่ทับคอลัมน์ปุ่ม
+    const showLegend = touchView.legend && touchView.legendItems.length > 0 && !(isCompare && touchView.compareTab === 'text');
+    this.setHtml(
+      'legend',
+      this.legend,
+      showLegend
+        ? '<div class="tl-lg-title">📖 สัญลักษณ์</div>' +
+            touchView.legendItems.map((it) => `<div class="tl-lg-row"><img src="${it.icon}" alt=""><span>${esc(it.label)}</span></div>`).join('')
+        : '',
+    );
+    Object.assign(this.legend.style, {
+      right: `${window.innerWidth - cr.right + inset + 6}px`,
+      top: `${cr.top + barH + 6}px`,
+      // ไม่ทับแถบสถานะหมุดด้านล่าง
+      maxHeight: `${Math.max(120, cr.height - barH - (info ? this.mapinfo.offsetHeight : 0) - 12)}px`,
+    });
+    const infoH = info ? this.mapinfo.offsetHeight : 0;
+    setTouchView({
+      mapInsets: {
+        top: Math.ceil(barH * toCanvas),
+        bottom: Math.ceil(infoH * toCanvas),
+        right: Math.ceil(inset * toCanvas),
+        left: 0,
+      },
+    });
+    return barH;
+  }
+
+  /* ---------------- บทสนทนา / ตัวเลือก ---------------- */
+
+  private renderSheet(s: GameSession, ctx: TouchContext | null, cr: DOMRect, w: (t: string) => string): void {
+    if (!this.touch || !ctx) {
       this.setHtml('sheet', this.sheet, '');
       return;
     }
@@ -319,41 +674,69 @@ export class TouchLayer {
       const body = view.kind === 'quiz' ? view.question : view.text;
       html += `<div class="tl-dlg${ctx.tapToAdvance ? ' tl-tap' : ''}"${ctx.tapToAdvance ? ' data-code="Space"' : ''}>`;
       html += `<div class="tl-speaker">${esc(view.speaker)} <span class="tl-step">${view.step}/${view.total}</span></div>`;
-      html += `<div class="tl-text">${esc(body)}</div>`;
-      if (view.kind === 'quiz' && view.feedback) html += `<div class="tl-feedback">${esc(view.feedback)}</div>`;
+      html += `<div class="tl-text">${esc(w(body))}</div>`;
+      if (view.kind === 'quiz' && view.feedback) html += `<div class="tl-feedback">${esc(w(view.feedback))}</div>`;
       html += '</div>';
     } else if (ctx.sheet?.title) {
       html += `<div class="tl-sheet-title">${esc(ctx.sheet.title)}</div>`;
     }
     if (ctx.sheet) html += `<div class="tl-options">${ctx.sheet.options.map((o) => this.button(o, 'tl-option')).join('')}</div>`;
     this.setHtml('sheet', this.sheet, html);
-    const margin = this.layout?.sideColumns ? 6 : (this.layout?.button ?? 48) * 2 + 20;
-    this.sheet.style.left = `${cr.left + margin}px`;
-    this.sheet.style.width = `${Math.max(240, cr.width - margin * 2)}px`;
+    // ระหว่างคุย/เลือกคำตอบไม่มีจอยสติก จึงใช้ความกว้างภาพเกมได้เต็ม (เว้นคอลัมน์ปุ่มที่ซ้อนอยู่ถ้ามี)
+    // เนื้อหายาวบนจอเตี้ย → เลื่อนอ่านในแผ่นนี้ได้ (ไม่ย่อตัวอักษร)
+    const inset = this.overlayInset(cr);
+    this.sheet.style.left = `${cr.left + 6}px`;
+    this.sheet.style.width = `${Math.max(240, cr.width - inset - 12)}px`;
     this.sheet.style.bottom = `${window.innerHeight - cr.bottom + 6}px`;
-    this.sheet.style.maxHeight = `${cr.height * 0.72}px`;
+    this.sheet.style.maxHeight = `${cr.height - 12}px`;
   }
 
-  private renderTracker(t: QuestTrackerView | null, cr: DOMRect): void {
+  /* ---------------- แถบสถานะ / แถบภารกิจ ---------------- */
+
+  private renderStatus(s: GameSession, cr: DOMRect, widths: ReturnType<typeof hudWidths>): void {
+    const pos = s.coords ? GridSystem.format(s.coords.tileToGrid(s.playerTile)) : `ช่อง X ${s.playerTile.x}, Y ${s.playerTile.y}`;
+    // แถบมาตราส่วน 50 ม. — ความยาวบนจอคำนวณจากมาตราส่วนโลกเกม × การซูมกล้อง × ขนาดภาพเกมบนจอ
+    const sbLen = Math.round(s.scale.metersToPx(50) * CAMERA_ZOOM * (cr.width / GAME_WIDTH));
+    const tiles = s.scale.metersToTiles(50);
+    const html =
+      COMPASS_SVG +
+      '<div class="tl-st-lines">' +
+      `<div>📍 ${esc(pos)}</div>` +
+      `<div>🧭 หันไป${esc(THAI_DIRECTION[s.facing])}<span class="tl-st-extra"> · เหนืออยู่ด้านบน</span></div>` +
+      `<div>📏 วัดระยะ ${esc(fmtMeters(s.odometer.tripMeters))} · รวม ${esc(fmtMeters(s.odometer.totalMeters))}</div>` +
+      `<div class="tl-scalebar"><span class="tl-sb" style="width:${sbLen}px"></span><span>50 ม. (${tiles} ช่อง)</span></div>` +
+      '</div>';
+    this.setHtml('status', this.status, html);
+    this.status.classList.toggle('tl-tight', widths.tightStatus);
+    this.status.style.left = `${cr.left + 8}px`;
+    this.status.style.top = `${cr.top + 8}px`;
+    this.status.style.maxWidth = `${widths.status}px`;
+  }
+
+  private renderTracker(t: QuestTrackerView | null, cr: DOMRect, wd: (t: string) => string, width: number, inset = 0): void {
     if (!t) {
       this.setHtml('tracker', this.tracker, '');
       return;
     }
     const compact = this.layout?.compact ?? false;
     const prog = `${t.progress.done}/${t.progress.total}`;
+    const objective = wd(t.objective);
     let html = '';
     if (this.trackerCollapsed) {
-      html = `<button class="tl-tr-pill" data-ui="tracker-toggle">📜 ภารกิจ ${esc(prog)} ▾</button>`;
+      // ย่อแล้วยังเห็นเป้าหมายปัจจุบัน (บรรทัดเดียว)
+      html =
+        `<button class="tl-tr-pill" data-ui="tracker-toggle" aria-label="ขยายแถบภารกิจ">` +
+        `<span class="tl-tr-pill-k">📜 ${esc(prog)}</span> <span class="tl-tr-pill-o">${esc(objective)}</span> ▾</button>`;
     } else {
       html += `<div class="tl-tr-head"><span class="tl-tr-chapter">${esc(t.chapterLabel)}</span>`;
       html += `<button class="tl-tr-mini" data-ui="tracker-toggle" aria-label="ย่อแถบภารกิจ">▴ ย่อ</button></div>`;
       html += `<div class="tl-tr-quest">ภารกิจ: ${esc(t.questTitle)}</div>`;
-      html += `<div class="tl-tr-obj"><span class="tl-tr-label">เป้าหมาย:</span> ${esc(t.objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
+      html += `<div class="tl-tr-obj"><span class="tl-tr-label">เป้าหมาย:</span> ${esc(objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
       const showDetails = this.trackerDetails || !compact;
-      if (t.hint && showDetails) html += `<div class="tl-tr-hint">💡 คำแนะนำ: ${esc(t.hint)}</div>`;
+      if (t.hint && showDetails) html += `<div class="tl-tr-hint">💡 คำแนะนำ: ${esc(wd(t.hint))}</div>`;
       if (this.trackerDetails) {
-        if (t.remaining.length > 1) html += `<div class="tl-tr-list">ยังเหลือ: ${t.remaining.map(esc).join(' · ')}</div>`;
-        if (t.sideQuests.length) html += `<div class="tl-tr-list">ภารกิจรอง/ปริศนา: ${t.sideQuests.map(esc).join(' · ')}</div>`;
+        if (t.remaining.length > 1) html += `<div class="tl-tr-list">ยังเหลือ: ${t.remaining.map((r) => esc(wd(r))).join(' · ')}</div>`;
+        if (t.sideQuests.length) html += `<div class="tl-tr-list">ภารกิจรอง/ปริศนา: ${t.sideQuests.map((q) => esc(wd(q))).join(' · ')}</div>`;
         html += `<div class="tl-tr-list">ฉาก ${t.step.current}/${t.step.total}</div>`;
       }
       html += '<div class="tl-tr-btns">';
@@ -362,20 +745,55 @@ export class TouchLayer {
       html += '</div>';
     }
     this.setHtml('tracker', this.tracker, html);
-    const w = Math.min(compact ? 290 : 340, cr.width * (compact ? 0.5 : 0.42));
-    this.tracker.style.width = this.trackerCollapsed ? 'auto' : `${w}px`;
-    this.tracker.style.right = `${window.innerWidth - cr.right + 8}px`;
+    this.tracker.style.width = this.trackerCollapsed ? 'auto' : `${width}px`;
+    this.tracker.style.maxWidth = `${width}px`;
+    this.tracker.style.maxHeight = `${cr.height * 0.62}px`;
+    this.tracker.style.right = `${window.innerWidth - cr.right + inset + 8}px`;
     this.tracker.style.top = `${cr.top + 8}px`;
   }
 
-  private setHtml(key: keyof TouchLayer['lastSig'], el: HTMLElement, html: string): void {
-    if (this.lastSig[key] === html) return;
+  /* ---------------- ข้อความแจ้งเตือน (จอสัมผัส) ---------------- */
+
+  private pushToast(msg: string): void {
+    const s = this.session();
+    const text = s ? this.wording(s)(msg) : msg;
+    if (this.toastQueue[this.toastQueue.length - 1] !== text) this.toastQueue.push(text);
+    if (this.toastTimer === null) this.nextToast();
+  }
+
+  private nextToast(): void {
+    const msg = this.toastQueue.shift();
+    if (msg === undefined) {
+      this.toastTimer = null;
+      this.toast.classList.remove('tl-show');
+      return;
+    }
+    this.toast.textContent = msg;
+    this.toast.classList.add('tl-show');
+    this.toastTimer = window.setTimeout(() => this.nextToast(), 2600);
+  }
+
+  private clearToast(): void {
+    this.toastQueue.length = 0;
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.toastTimer = null;
+    this.toast.classList.remove('tl-show');
+  }
+
+  /** สำรวจ: กลางจอ (เหนือตัวละคร) · หน้าอื่น: ขอบบน (ไม่บังตัวเลือก/เนื้อหาที่กำลังอ่าน และหายเองใน 2.6 วินาที) */
+  private placeToast(cr: DOMRect, explore: boolean): void {
+    const inset = this.overlayInset(cr);
+    this.toast.style.left = `${cr.left + (cr.width - inset) / 2}px`;
+    this.toast.style.top = `${cr.top + (explore ? cr.height * 0.36 : 4)}px`;
+    this.toast.style.maxWidth = `${Math.max(200, (cr.width - inset) * 0.8)}px`;
+  }
+
+  /** อัปเดต DOM เฉพาะเมื่อเนื้อหาเปลี่ยน — คืน true เมื่อมีการเปลี่ยน */
+  private setHtml(key: SigKey, el: HTMLElement, html: string): boolean {
+    if (this.lastSig[key] === html) return false;
     this.lastSig[key] = html;
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
+    return true;
   }
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
