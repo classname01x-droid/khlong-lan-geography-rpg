@@ -6,6 +6,8 @@
  *   - inProgress: สถานะการเล่นกลางด่าน (เล่นต่อได้หลังปิดเบราว์เซอร์)
  * รับ storage แบบ localStorage — ถ้าใช้ไม่ได้ (โหมดส่วนตัว/ถูกบล็อก) จะเก็บในหน่วยความจำแทน
  */
+import { parseTutorialSave, type TutorialSave } from '../tutorial/Tutorial';
+
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -42,6 +44,8 @@ export interface ProgressData {
   inProgress: Record<string, unknown>;
   /** ด่านที่เล่นล่าสุด (ใช้กับปุ่ม "เล่นต่อ" — ข้อมูลเก่าอาจไม่มี) */
   lastLevelId?: string;
+  /** สถานะบทแนะนำผู้เล่นใหม่ (เพิ่มใน v0.15 — ข้อมูลเก่าไม่มีช่องนี้ ยังเป็น version 2 เหมือนเดิม) */
+  tutorial?: TutorialSave;
 }
 
 export const PROGRESS_KEY = 'khlonglan-geo-rpg:progress';
@@ -157,6 +161,16 @@ export class ProgressStore {
   /** ลบความคืบหน้าทั้งหมด (ใช้กับ "เริ่มเกมใหม่" หลังผู้เล่นยืนยันแล้ว) */
   resetAll(): void {
     this.memory = emptyProgress(this.firstLevelId);
+    this.write();
+  }
+
+  /** สถานะบทแนะนำที่บันทึกไว้ (ไม่มี/ข้อมูลเสีย = null) */
+  tutorialSave(): TutorialSave | null {
+    return parseTutorialSave(this.memory.tutorial);
+  }
+
+  saveTutorial(t: TutorialSave): void {
+    this.memory.tutorial = t;
     this.write();
   }
 

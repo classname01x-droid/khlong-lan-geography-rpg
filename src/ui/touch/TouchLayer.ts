@@ -20,6 +20,7 @@ import { mapInfoShort, mapPinLines, mapTitle } from '../views/mapText';
 import { buildNotebookView, NOTEBOOK_TAB_LABEL } from '../views/notebookView';
 import { buildSummaryView } from '../views/summaryView';
 import { touchWording } from '../views/touchWording';
+import type { TutorialHighlight, TutorialView } from '../../core/tutorial/Tutorial';
 import { boardReader, compareReader, esc, notebookReader, summaryReader, type BoardTab, type ReaderContent } from './readerHtml';
 import { TOUCH_CSS } from './touchStyles';
 import { setTouchView, touchView } from './touchViewState';
@@ -28,6 +29,8 @@ import { setTouchView, touchView } from './touchViewState';
 interface WorldControls {
   dispatchCode(code: string): void;
   setTouchVector(x: number, y: number): void;
+  tutorialViewFor(touch: boolean): TutorialView | null;
+  tutorialAction(action: 'skip' | 'finish'): void;
 }
 
 const ICON: Record<InteractionTarget['kind'], string> = { npc: '💬', inspect: '🔎', verify: '🧪' };
@@ -51,7 +54,8 @@ type SigKey =
   | 'rdFoot'
   | 'mapbar'
   | 'mapinfo'
-  | 'legend';
+  | 'legend'
+  | 'coach';
 
 /**
  * ชั้นควบคุมและข้อมูลบนจอ (DOM ซ้อนบน canvas)
@@ -83,6 +87,12 @@ export class TouchLayer {
   private readonly mapinfo: HTMLDivElement;
   private readonly legend: HTMLDivElement;
   private readonly toast: HTMLDivElement;
+  /** การ์ดบทแนะนำผู้เล่นใหม่ */
+  private readonly coach: HTMLDivElement;
+  /** ปุ่ม/ส่วนที่บทแนะนำกำลังชี้ (ไฮไลต์) */
+  private coachHi: TutorialHighlight | null = null;
+  /** แตะ "ข้ามบทแนะนำ" ครั้งแรก = ถามยืนยัน (แตะซ้ำภายในเวลานี้จึงข้าม) */
+  private skipArmedUntil = 0;
   private layout: MobileLayout | null = null;
   private readonly guard = new TapGuard(150);
   private readonly hints = new HintTracker();
@@ -101,6 +111,7 @@ export class TouchLayer {
     mapbar: '',
     mapinfo: '',
     legend: '',
+    coach: '',
   };
   private trackerCollapsed = false;
   /** เป้าหมายล่าสุดที่แสดง (ใช้ตรวจว่าเปลี่ยนแล้ว) และเวลาที่ยังแสดง "เป้าหมายใหม่" */
@@ -122,6 +133,7 @@ export class TouchLayer {
   lastTracker: QuestTrackerView | null = null;
   lastTarget: InteractionTarget | null = null;
   lastReader: ReaderContent | null = null;
+  lastTutorial: TutorialView | null = null;
 
   constructor(
     private readonly game: Phaser.Game,
@@ -158,6 +170,10 @@ export class TouchLayer {
     this.status = div('tl-status', this.root);
     this.prompt = div('tl-prompt', this.root);
     this.toast = div('tl-toast', this.root);
+    this.coach = div('tl-coach-card', this.root);
+    // ส่วนที่วาดตามสถานะเริ่มแบบซ่อน (ไม่มีกรอบเปล่าค้างที่มุมจอก่อนมีเนื้อหา)
+    for (const el of [this.actions, this.sheet, this.tracker, this.status, this.prompt, this.mapbar, this.mapinfo, this.legend, this.coach])
+      el.style.display = 'none';
     this.rotate = div('tl-rotate', this.root);
     this.rotate.innerHTML =
       '<div class="tl-rotate-icon">📱↻</div><div class="tl-rotate-title">กรุณาหมุนโทรศัพท์เป็นแนวนอน</div>' +
@@ -306,6 +322,15 @@ export class TouchLayer {
       this.trackerUserSet = true;
     }
     if (name === 'tracker-details') this.trackerDetails = !this.trackerDetails;
+    if (name === 'tut-skip') {
+      // ข้ามบทแนะนำ: แตะ 2 ครั้ง (กันแตะโดนโดยไม่ตั้งใจ) — ภารกิจหลักไม่ถูกข้าม
+      const now = performance.now();
+      if (now < this.skipArmedUntil) {
+        this.skipArmedUntil = 0;
+        this.world()?.tutorialAction('skip');
+      } else this.skipArmedUntil = now + 3000;
+    }
+    if (name === 'tut-finish') this.world()?.tutorialAction('finish');
     if (name === 'tracker-hint') {
       this.hints.requestMore();
       this.trackerDetails = true;
@@ -331,7 +356,8 @@ export class TouchLayer {
   }
 
   private button(a: TouchAction, extra = ''): string {
-    const cls = ['tl-btn', `tl-a-${a.id}`, a.primary ? 'tl-primary' : '', a.selected ? 'tl-selected' : '', a.half ? 'tl-half' : '', extra]
+    const coach = this.coachHi !== null && this.coachHi === a.id ? 'tl-coach' : '';
+    const cls = ['tl-btn', `tl-a-${a.id}`, a.primary ? 'tl-primary' : '', a.selected ? 'tl-selected' : '', a.half ? 'tl-half' : '', coach, extra]
       .filter(Boolean)
       .join(' ');
     const data = a.ui ? `data-ui="${esc(a.ui)}"` : `data-code="${a.code}"`;
@@ -396,6 +422,7 @@ export class TouchLayer {
         ['mapbar', this.mapbar],
         ['mapinfo', this.mapinfo],
         ['legend', this.legend],
+        ['coach', this.coach],
       ] as Array<[SigKey, HTMLElement]>)
         this.setHtml(k, el, '');
       this.renderReader(null, this.canvasRect());
@@ -409,6 +436,13 @@ export class TouchLayer {
     this.lastTarget = target;
     const ctx = buildTouchContext(this.contextInput(s, target));
     this.lastContext = ctx;
+    // ---- บทแนะนำ: ขั้นปัจจุบัน + ส่วนที่ต้องไฮไลต์ ----
+    const tv = this.world()?.tutorialViewFor(this.touch) ?? null;
+    this.lastTutorial = tv;
+    this.coachHi = tv?.highlight ?? null;
+    this.joyZone.classList.toggle('tl-coach', this.coachHi === 'joystick');
+    this.status.classList.toggle('tl-coach', this.coachHi === 'status');
+    this.tracker.classList.toggle('tl-coach', this.coachHi === 'tracker');
     this.root.classList.toggle('tl-walk', this.touch && ctx.joystick);
     if (!ctx.joystick && this.joyPointer !== null) this.resetJoystick();
 
@@ -442,11 +476,13 @@ export class TouchLayer {
     // ---- แถบสถานะ (จอสัมผัส) และข้อความโต้ตอบ ----
     if (this.touch && s.mode === 'explore') this.renderStatus(s, cr, widths);
     else this.setHtml('status', this.status, '');
+    const coachTop = this.renderCoach(tv, s, cr);
     if (target) {
       const key = this.touch ? '' : ' <span class="tl-key">E</span>';
       this.setHtml('prompt', this.prompt, `${ICON[target.kind]} ${esc(target.label)}${key}`);
       this.prompt.style.left = `${cr.left + cr.width / 2}px`;
-      this.prompt.style.top = `${cr.bottom - (this.touch ? 12 : 56)}px`;
+      // การ์ดบทแนะนำอยู่ด้านล่าง → ข้อความโต้ตอบขึ้นไปอยู่เหนือการ์ด
+      this.prompt.style.top = `${coachTop !== null ? coachTop - 6 : cr.bottom - (this.touch ? 12 : 56)}px`;
       this.prompt.style.maxWidth = `${Math.max(160, cr.width - 2 * this.overlayInset(cr) - 24)}px`;
     } else this.setHtml('prompt', this.prompt, '');
     this.placeToast(cr, s.mode === 'explore');
@@ -692,6 +728,50 @@ export class TouchLayer {
     this.sheet.style.width = `${Math.max(240, cr.width - inset - 12)}px`;
     this.sheet.style.bottom = `${window.innerHeight - cr.bottom + 6}px`;
     this.sheet.style.maxHeight = `${cr.height - 12}px`;
+  }
+
+  /* ---------------- บทแนะนำผู้เล่นใหม่ ---------------- */
+
+  /**
+   * การ์ดบทแนะนำ: ทีละขั้น ข้อความสั้น ชื่อปุ่มเป็นป้ายสีเหลือง (ปุ่มจริงกะพริบ) · ปุ่มข้าม (แตะ 2 ครั้ง)
+   * สำรวจ/แผนที่/สมุด: ขอบล่างของภาพเกม · บทสนทนา: ขอบบน (กล่องบทสนทนาอยู่ด้านล่าง)
+   * คืนตำแหน่งขอบบนของการ์ดเมื่ออยู่ด้านล่าง (ใช้วางข้อความโต้ตอบไว้เหนือการ์ด)
+   */
+  private renderCoach(tv: TutorialView | null, s: GameSession, cr: DOMRect): number | null {
+    if (!tv) {
+      this.setHtml('coach', this.coach, '');
+      return null;
+    }
+    const explore = s.mode === 'explore';
+    const armed = performance.now() < this.skipArmedUntil;
+    const text = esc(tv.text).replace(/\[([^\]]+)\]/g, '<span class="tl-co-k">$1</span>');
+    let html = '<div class="tl-co-head">' + `<span class="tl-co-step">บทแนะนำ ${tv.index}/${tv.total}</span><b class="tl-co-title">${esc(tv.title)}</b>`;
+    if (explore && !tv.finishButton)
+      html += `<button class="tl-co-skip${armed ? ' tl-armed' : ''}" data-ui="tut-skip">${armed ? 'แตะอีกครั้งเพื่อข้าม' : 'ข้ามบทแนะนำ'}</button>`;
+    html += `</div><div class="tl-co-text">${text}</div>`;
+    if (tv.progress) html += `<div class="tl-co-prog">📏 ${esc(tv.progress)}</div>`;
+    if (tv.finishButton) html += '<button class="tl-co-go" data-ui="tut-finish">เริ่มภารกิจ ▶</button>';
+    this.setHtml('coach', this.coach, html);
+    this.coach.classList.toggle('tl-co-compact', !explore);
+    // ไม่ทับคอลัมน์ปุ่ม/จอยสติกที่ซ้อนบนภาพเกม (จอแคบ)
+    const leftIn = this.touch && this.layout && !this.layout.sideColumns ? Math.max(0, this.layout.left.x + this.layout.left.w - cr.left) : 0;
+    const rightIn = this.touch && this.layout && !this.layout.sideColumns ? Math.max(0, cr.right - this.layout.right.x) : 0;
+    const avail = cr.width - leftIn - rightIn - 16;
+    const width = Math.max(220, Math.min(520, avail));
+    this.coach.style.width = `${width}px`;
+    this.coach.style.left = `${cr.left + leftIn + 8 + Math.max(0, (avail - width) / 2)}px`;
+    this.coach.style.maxHeight = `${Math.round(cr.height * (explore ? 0.5 : 0.4))}px`;
+    if (s.mode === 'dialogue') {
+      // บทสนทนาอยู่ด้านล่าง → การ์ดขึ้นด้านบน
+      this.coach.style.top = `${cr.top + 8}px`;
+      this.coach.style.bottom = '';
+      return null;
+    }
+    // คอมพิวเตอร์: เว้นแถบคำแนะนำปุ่มด้านล่างของภาพเกม
+    const below = this.touch ? 8 : Math.round(40 * (cr.height / 640));
+    this.coach.style.top = '';
+    this.coach.style.bottom = `${window.innerHeight - cr.bottom + below}px`;
+    return explore ? this.coach.getBoundingClientRect().top : null;
   }
 
   /* ---------------- แถบสถานะ / แถบภารกิจ ---------------- */

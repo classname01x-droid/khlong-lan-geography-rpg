@@ -9,7 +9,7 @@ export const TOUCH_CSS = `
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .tl-root * { box-sizing: border-box; }
 .tl-root > div { display: none; }
-.tl-root.tl-ingame > .tl-tracker, .tl-root.tl-ingame > .tl-prompt { display: block; }
+.tl-root.tl-ingame > .tl-tracker, .tl-root.tl-ingame > .tl-prompt, .tl-root.tl-ingame > .tl-coach-card { display: block; }
 .tl-root.tl-touch.tl-ingame > .tl-actions, .tl-root.tl-touch.tl-ingame > .tl-sheet, .tl-root.tl-touch.tl-ingame > .tl-status,
 .tl-root.tl-touch.tl-ingame > .tl-mapbar { display: flex; }
 .tl-root.tl-touch.tl-ingame > .tl-mapinfo, .tl-root.tl-touch.tl-ingame > .tl-toast, .tl-root.tl-touch.tl-ingame > .tl-legend { display: block; }
@@ -185,4 +185,37 @@ export const TOUCH_CSS = `
 .tl-rotate-icon { font-size: 54px; }
 .tl-rotate-title { font-size: 20px; color: #ffd84d; font-weight: 700; }
 .tl-rotate-sub { font-size: 15px; color: #b9b3a3; }
+
+/* ---------- เป้าหมายโต้ตอบในระยะ: ปุ่ม "คุย/สำรวจ" เด่นขึ้น ---------- */
+@keyframes tlReady { 0%, 100% { box-shadow: 0 3px 0 #4a2f16, 0 0 0 0 rgba(255, 216, 77, 0.85); } 50% { box-shadow: 0 3px 0 #4a2f16, 0 0 0 5px rgba(255, 216, 77, 0.35); } }
+.tl-actions.tl-explore .tl-a-interact:not([disabled]) { animation: tlReady 1.3s ease-in-out infinite; }
+
+/* ---------- บทแนะนำผู้เล่นใหม่ ---------- */
+.tl-coach-card { position: fixed; z-index: 3; background: #f3ead2; color: #2b2118; border: 3px solid #4a2f16; border-radius: 12px;
+  box-shadow: 0 3px 0 #4a2f16, 0 0 0 3px rgba(255, 216, 77, 0.7); padding: 6px 10px 8px; font-size: 16px; line-height: 1.45;
+  overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.tl-co-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-co-step { font-size: 14px; font-weight: 700; color: #7a4e14; white-space: nowrap; }
+.tl-co-title { font-size: 18px; flex: 1 1 auto; white-space: nowrap; }
+.tl-co-skip { font: inherit; font-size: 14px; color: #4a2f16; background: #e2d4b0; border: 2px solid #4a2f16; border-radius: 8px;
+  min-height: 44px; min-width: 44px; padding: 2px 10px; margin-left: auto; }
+.tl-co-skip.tl-armed { background: #f08a5d; color: #1b1b24; }
+.tl-co-text { margin-top: 2px; }
+.tl-co-k { display: inline-block; background: #ffd84d; border: 2px solid #4a2f16; border-radius: 6px; padding: 0 6px; margin: 1px 0;
+  font-weight: 700; line-height: 1.3; }
+.tl-co-prog { margin-top: 4px; font-size: 15px; font-weight: 700; color: #2f5a25; }
+.tl-co-go { font: inherit; font-size: 17px; font-weight: 700; width: 100%; min-height: 48px; margin-top: 6px; color: #2b2118;
+  background: #ffd84d; border: 3px solid #4a2f16; border-radius: 10px; box-shadow: 0 3px 0 #4a2f16; }
+.tl-coach-card.tl-co-compact { padding: 4px 10px 6px; }
+.tl-coach-card.tl-co-compact .tl-co-title { display: none; }
+.tl-coach-card .tl-co-skip, .tl-coach-card .tl-co-go { pointer-events: auto; }
+.tl-coach-card { pointer-events: none; }
+/* ส่วนที่บทแนะนำชี้: กรอบเหลืองกะพริบ + ป้าย "แตะ" */
+@keyframes tlCoach { 0%, 100% { outline-color: rgba(255, 216, 77, 1); outline-offset: 2px; } 50% { outline-color: rgba(255, 216, 77, 0.3); outline-offset: 6px; } }
+.tl-btn.tl-coach { position: relative; outline: 4px solid #ffd84d; animation: tlCoach 1s ease-in-out infinite; z-index: 1; }
+.tl-btn.tl-coach::after { content: 'แตะ'; position: absolute; top: -12px; right: -6px; background: #d94b4b; color: #fff; font-size: 14px;
+  font-weight: 700; line-height: 1; padding: 3px 6px 2px; border-radius: 999px; border: 2px solid #fff; }
+.tl-joyzone.tl-coach .tl-joybase { border-color: #ffd84d; outline: 4px solid #ffd84d; animation: tlCoach 1s ease-in-out infinite; }
+.tl-joyzone.tl-coach .tl-joybase::after { content: 'ลากนิ้วที่นี่'; font-size: 14px; font-weight: 700; color: #ffd84d; bottom: -22px; }
+.tl-status.tl-coach, .tl-tracker.tl-coach { outline: 4px solid #ffd84d; animation: tlCoach 1s ease-in-out infinite; }
 `;
