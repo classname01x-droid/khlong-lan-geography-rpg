@@ -152,8 +152,12 @@ export const TOUCH_CSS = `
 .tl-tr-pill { font-size: 14px; min-height: 40px; max-width: 100%; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .tl-tr-pill-k { flex: none; font-weight: 700; }
 .tl-tr-pill-o { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tl-compact .tl-tr-obj { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.tl-compact .tl-tr-quest { display: none; }
+/* จอเตี้ย: ภารกิจ 1 บรรทัด · เป้าหมาย 2 บรรทัด · คำแนะนำ 2 บรรทัด (เปิด "รายละเอียด" เพื่ออ่านเต็ม) */
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-quest { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-obj,
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-hint { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tl-tr-new { color: #10141f; background: #9be08a; border-radius: 6px; padding: 1px 8px; margin-bottom: 3px; font-weight: 700; font-size: 14px; }
+.tl-tracker.tl-tr-flash { border-color: #9be08a; box-shadow: 0 0 0 2px rgba(155, 224, 138, 0.5); }
 
 /* ---------- แถบสถานะ (เข็มทิศ + ตำแหน่ง + ระยะ + แถบมาตราส่วน) ---------- */
 .tl-status { position: fixed; align-items: flex-start; gap: 6px; background: rgba(16, 20, 31, 0.82); border: 2px solid #e8d9a8;

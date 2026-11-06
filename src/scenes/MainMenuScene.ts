@@ -9,18 +9,9 @@ import { drawPixelFrame } from '../ui/pixel/PixelFrame';
 import { PIXEL } from '../ui/pixel/theme';
 import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
+import { GAME_TITLE, HOW_TO_GOAL, HOW_TO_SCALE, HOW_TO_TIPS, KEYBOARD_CONTROLS, menuView, NEW_GAME_CONFIRM, SETTINGS_NOTE, type MenuItemId } from '../ui/views/screens';
+import { REGISTRY_TOUCH_UI } from './events';
 import { beginChapter, continueStory, getProgress, getSettings, goToWorldMap, SCENE } from './navigation';
-
-const CONTROLS: Array<[string, string]> = [
-  ['W A S D / ปุ่มลูกศร', 'เดิน (เดินทแยงได้)'],
-  ['E / Space / Enter', 'คุยกับ NPC · ตรวจค้น · ไปบทพูดถัดไป'],
-  ['M', 'เปิดแผนที่สำรวจ (มาตราส่วน 1:10,000) · ปักหมุด'],
-  ['R', 'เริ่มวัดระยะเดินจริงจากจุดที่ยืน'],
-  ['N', 'สมุดภาคสนาม: ภารกิจ เบาะแส วิเคราะห์เส้นทาง หลักฐาน'],
-  ['G', 'เปิด/ปิดเส้นตาราง (1 ช่อง = 10 ม.)'],
-  ['1 2 3', 'เลือกคำตอบ / เลือกเส้นทาง / เลือกประเภทภูมิปัญญา'],
-  ['Esc', 'เมนูหยุดเกม (แผนที่การเดินทาง / เมนูหลัก)'],
-];
 
 const text = (scene: Phaser.Scene, x: number, y: number, s: string, size: number, color: string = PIXEL.ink) =>
   scene.add.text(x, y, s, { fontFamily: FONT_FAMILY, fontSize: `${size}px`, color, lineSpacing: 5, padding: { top: 4 } });
@@ -28,7 +19,6 @@ const text = (scene: Phaser.Scene, x: number, y: number, s: string, size: number
 /** หน้าเมนูหลัก: เริ่มเกมใหม่ · เล่นต่อ · แผนที่การเดินทาง · วิธีเล่น · ตั้งค่า */
 export class MainMenuScene extends Phaser.Scene {
   private navStack: MenuNavigator[] = [];
-  private continueButton!: PixelButton;
 
   constructor() {
     super(SCENE.menu);
@@ -37,14 +27,17 @@ export class MainMenuScene extends Phaser.Scene {
   create(): void {
     this.navStack = [];
     drawMenuBackground(this);
+    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.navStack[this.navStack.length - 1]?.handleKey(ev.code));
+    // จอสัมผัส: หัวเกม ปุ่มเมนู วิธีเล่น ตั้งค่า เป็น DOM ตัวอักษรใหญ่ (TouchScreens) — canvas เป็นภาพพื้นหลัง Pixel Art
+    if (this.registry.get(REGISTRY_TOUCH_UI) === true) return;
 
     const banner = this.add.graphics();
     drawPixelFrame(banner, 170, 28, 620, 150, 'wood');
     this.add
-      .text(GAME_WIDTH / 2, 50, 'Geography Mystery RPG', { fontFamily: FONT_FAMILY, fontSize: '20px', color: PIXEL.accent, padding: { top: 4 } })
+      .text(GAME_WIDTH / 2, 50, GAME_TITLE.kicker, { fontFamily: FONT_FAMILY, fontSize: '20px', color: PIXEL.accent, padding: { top: 4 } })
       .setOrigin(0.5, 0);
     this.add
-      .text(GAME_WIDTH / 2, 80, 'ปริศนาลับแห่งคลองลาน', {
+      .text(GAME_WIDTH / 2, 80, GAME_TITLE.title, {
         fontFamily: FONT_FAMILY,
         fontSize: '44px',
         color: PIXEL.light,
@@ -54,23 +47,22 @@ export class MainMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
     this.add
-      .text(GAME_WIDTH / 2, 140, 'เกมสืบสวนภูมิศาสตร์ 4 ตำบลของอำเภอคลองลาน', { fontFamily: FONT_FAMILY, fontSize: '16px', color: '#f3ead2', padding: { top: 4 } })
+      .text(GAME_WIDTH / 2, 140, GAME_TITLE.subtitle, { fontFamily: FONT_FAMILY, fontSize: '16px', color: '#f3ead2', padding: { top: 4 } })
       .setOrigin(0.5, 0);
 
-    const progress = getProgress(this);
-    const items: Array<[string, () => void]> = [
-      ['เริ่มเกมใหม่', () => this.newGame()],
-      ['เล่นต่อ', () => this.continueGame()],
-      ['แผนที่การเดินทาง', () => goToWorldMap(this)],
-      ['วิธีเล่น', () => this.showHowToPlay()],
-      ['ตั้งค่า', () => this.showSettings()],
-    ];
-    const buttons = items.map(
-      ([label, fn], i) => new PixelButton(this, GAME_WIDTH / 2 - 150, 200 + i * 60, label, { width: 300, height: 50, onClick: fn }),
+    const view = menuView(getProgress(this).data, this.hasSave());
+    const actions: Record<MenuItemId, () => void> = {
+      new: () => this.newGame(),
+      continue: () => this.continueGame(),
+      journey: () => goToWorldMap(this),
+      howto: () => this.showHowToPlay(),
+      settings: () => this.showSettings(),
+    };
+    const buttons = view.items.map(
+      (item, i) => new PixelButton(this, GAME_WIDTH / 2 - 150, 200 + i * 60, item.label, { width: 300, height: 50, onClick: actions[item.id] }),
     );
-    this.continueButton = buttons[1];
     // "เล่นต่อ" กดได้เฉพาะเมื่อมีข้อมูลบันทึกจริง
-    this.continueButton.setEnabled(progress.hasAnySave());
+    view.items.forEach((item, i) => buttons[i].setEnabled(item.enabled));
     this.navStack.push(new MenuNavigator(buttons));
 
     this.add
@@ -82,8 +74,38 @@ export class MainMenuScene extends Phaser.Scene {
         padding: { x: 12, y: 4, top: 6 },
       })
       .setOrigin(0.5, 1);
+  }
 
-    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.navStack[this.navStack.length - 1]?.handleKey(ev.code));
+  /* ---------- คำสั่งที่ใช้ร่วมกัน (ปุ่มบน canvas และปุ่มบนจอสัมผัส) ---------- */
+
+  hasSave(): boolean {
+    return getProgress(this).hasAnySave();
+  }
+
+  /** เริ่มบทที่ 1 — ถ้ามีบันทึก ต้องผ่านการยืนยันก่อน (confirmed = true) */
+  startNewGame(confirmed: boolean): boolean {
+    const progress = getProgress(this);
+    if (progress.hasAnySave() && !confirmed) return false;
+    if (progress.hasAnySave()) progress.resetAll();
+    beginChapter(this, CHAPTERS[0].id);
+    return true;
+  }
+
+  openJourney(): void {
+    goToWorldMap(this);
+  }
+
+  toggleSound(): boolean {
+    const settings = getSettings(this);
+    settings.update({ soundEnabled: !settings.settings.soundEnabled });
+    this.sound.mute = !settings.settings.soundEnabled;
+    return settings.settings.soundEnabled;
+  }
+
+  toggleControlsHint(): boolean {
+    const settings = getSettings(this);
+    settings.update({ showControlsHint: !settings.settings.showControlsHint });
+    return settings.settings.showControlsHint;
   }
 
   private pushModal(title: string, message: string, choices: Array<{ label: string; action: () => void }>): void {
@@ -92,30 +114,16 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private newGame(): void {
-    const progress = getProgress(this);
-    // เริ่มภารกิจตั้งแต่บทที่ 1 (ฉากเปิดเรื่องของครูเนม แล้วเข้าตำบลสักงาม)
-    if (!progress.hasAnySave()) {
-      beginChapter(this, CHAPTERS[0].id);
-      return;
-    }
-    this.pushModal(
-      'เริ่มเกมใหม่?',
-      'ความคืบหน้าทั้งหมดจะถูกลบ ได้แก่ ด่านที่ผ่านแล้ว รหัสลับที่สะสม และการเล่นที่ค้างอยู่ (การตั้งค่าจะไม่ถูกลบ)',
-      [
-        {
-          label: 'ยืนยัน: ลบและเริ่มใหม่',
-          action: () => {
-            progress.resetAll();
-            beginChapter(this, CHAPTERS[0].id);
-          },
-        },
-        { label: 'ยกเลิก', action: () => undefined },
-      ],
-    );
+    // เริ่มภารกิจตั้งแต่บทที่ 1 (ฉากเปิดเรื่องของครูเนม แล้วเข้าตำบลสักงาม) — มีบันทึกอยู่ต้องยืนยันก่อน
+    if (this.startNewGame(false)) return;
+    this.pushModal(NEW_GAME_CONFIRM.title, NEW_GAME_CONFIRM.message, [
+      { label: NEW_GAME_CONFIRM.confirm, action: () => this.startNewGame(true) },
+      { label: NEW_GAME_CONFIRM.cancel, action: () => undefined },
+    ]);
   }
 
   /** เล่นต่อ: กลับไปภารกิจหลักล่าสุด (ตำแหน่งและสถานะปริศนาเดิม) หรือรับภารกิจบทถัดไป */
-  private continueGame(): void {
+  continueGame(): void {
     if (!getProgress(this).hasAnySave()) return;
     continueStory(this);
   }
@@ -144,18 +152,11 @@ export class MainMenuScene extends Phaser.Scene {
     this.openPanel('วิธีเล่น', (root, top) => {
       const left = 122;
       const width = GAME_WIDTH - 260;
-      const goal =
-        'คุณคือนักสำรวจของครูเนม ออกเดินทางตามภารกิจผ่าน 4 ตำบลของอำเภอคลองลานตามลำดับ พูดคุยกับชาวบ้าน เก็บเบาะแสลงสมุดภาคสนาม ใช้ทิศทาง ระยะทาง และจุดสังเกตไขปริศนา รับรหัสลับตำบลละ 1 ชิ้น แล้วไขปริศนาสุดท้าย';
-      const scale =
-        'มาตราส่วน: 1 ช่องในเกม = 10 เมตร · แผนที่ 1:10,000 → 1 ซม. บนแผนที่ = 100 เมตร (เช่น 3 ซม. = 300 ม., 4 ซม. = 400 ม.)';
-      const tips =
-        'พื้นที่ที่ยังไม่สำรวจถูกหมอกบัง · ตอบผิดจะได้คำใบ้และลองใหม่ได้ · เกมบันทึกความคืบหน้าอัตโนมัติ · ' +
-        'มือถือ (แนวนอน): จอยสติกซ้าย = เดิน · ปุ่มขวา = คุย/สำรวจ แผนที่ สมุด วัดระยะ วิเคราะห์ เมนู · แตะตัวเลือกเพื่อตอบ';
       let yy = top;
       for (const [t, size, color] of [
-        [goal, 17, PIXEL.ink],
-        [scale, 16, PIXEL.good],
-        [tips, 16, PIXEL.inkSoft],
+        [HOW_TO_GOAL, 17, PIXEL.ink],
+        [HOW_TO_SCALE, 16, PIXEL.good],
+        [HOW_TO_TIPS, 16, PIXEL.inkSoft],
       ] as const) {
         const node = text(this, left, yy, wrapThaiText(t, width, `${size}px ${FONT_FAMILY}`), size, color);
         root.add(node);
@@ -168,7 +169,7 @@ export class MainMenuScene extends Phaser.Scene {
 
   private controlsTable(x: number, y: number): Phaser.GameObjects.Container {
     const c = this.add.container(0, 0);
-    CONTROLS.forEach(([keys, desc], i) => {
+    KEYBOARD_CONTROLS.forEach(([keys, desc], i) => {
       c.add(text(this, x, y + i * 27, keys, 16, PIXEL.warn));
       c.add(text(this, x + 230, y + i * 27, desc, 16, PIXEL.ink));
     });
@@ -185,8 +186,7 @@ export class MainMenuScene extends Phaser.Scene {
         height: 46,
         fontSize: 18,
         onClick: () => {
-          settings.update({ soundEnabled: !settings.settings.soundEnabled });
-          this.sound.mute = !settings.settings.soundEnabled;
+          this.toggleSound();
           sound.setLabel(soundLabel());
         },
       });
@@ -195,7 +195,7 @@ export class MainMenuScene extends Phaser.Scene {
         height: 46,
         fontSize: 17,
         onClick: () => {
-          settings.update({ showControlsHint: !settings.settings.showControlsHint });
+          this.toggleControlsHint();
           hint.setLabel(hintLabel());
         },
       });
@@ -204,7 +204,7 @@ export class MainMenuScene extends Phaser.Scene {
           this,
           160,
           top + 56,
-          wrapThaiText('ตอนนี้เกมยังไม่มีไฟล์เสียง การปรับระดับเสียงจะเพิ่มเมื่อมีระบบเสียงจริง', GAME_WIDTH - 320, `15px ${FONT_FAMILY}`),
+          wrapThaiText(SETTINGS_NOTE, GAME_WIDTH - 320, `15px ${FONT_FAMILY}`),
           15,
           PIXEL.inkMuted,
         ),

@@ -32,6 +32,8 @@ export interface MobileLayout {
   compact: boolean;
   /** ขนาดปุ่มสัมผัส (CSS px) */
   button: number;
+  /** ขอบปลอดภัยของเครื่อง (รอยบาก/มุมโค้ง) — หน้าจอเมนูเว้นตามนี้ */
+  insets: Insets;
 }
 
 export const GAME_ASPECT = 960 / 640;
@@ -51,7 +53,7 @@ export function computeMobileLayout(vw: number, vh: number, insets: Insets, touc
     const h = w / GAME_ASPECT;
     const game = { x: insets.left + (availW - w) / 2, y: insets.top + (availH - h) / 2, w, h };
     const empty = { x: 0, y: 0, w: 0, h: 0 };
-    return { portrait, game, sideColumns: false, left: empty, right: empty, compact, button };
+    return { portrait, game, sideColumns: false, left: empty, right: empty, compact, button, insets };
   }
 
   // ลองให้ภาพเกมสูงเต็มจอ แล้วดูว่าเหลือที่ว่างข้างละเท่าไร
@@ -78,7 +80,7 @@ export function computeMobileLayout(vw: number, vh: number, insets: Insets, touc
   const colW = sideColumns ? Math.max(MIN_COLUMN, game.x - insets.left) : Math.max(MIN_COLUMN, button * 2 + 24);
   const left = { x: insets.left, y: insets.top, w: colW, h: availH };
   const right = { x: insets.left + availW - colW, y: insets.top, w: colW, h: availH };
-  return { portrait, game, sideColumns, left, right, compact, button };
+  return { portrait, game, sideColumns, left, right, compact, button, insets };
 }
 
 /**

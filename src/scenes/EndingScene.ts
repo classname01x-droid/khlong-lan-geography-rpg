@@ -1,18 +1,15 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { finaleRows } from '../content/finale';
-import { LEVEL_SEQUENCE } from '../content/registry';
 import { CHAPTERS } from '../content/story/chapters';
 import { isCampaignComplete } from '../core/campaign/Campaign';
-import { summarizeJourney, type Known } from '../core/campaign/JourneySummary';
-import { SKILL_LABEL, type SkillId } from '../core/mission/skills';
-import { fmtDuration, fmtMeters } from '../ui/format';
 import { MenuNavigator } from '../ui/pixel/MenuNavigator';
 import { PixelButton } from '../ui/pixel/PixelButton';
 import { drawPixelFrame } from '../ui/pixel/PixelFrame';
 import { PIXEL } from '../ui/pixel/theme';
 import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
+import { endingSummary, endingView } from '../ui/views/screens';
+import { REGISTRY_TOUCH_UI } from './events';
 import { getProgress, goToMainMenu, goToWorldMap, SCENE } from './navigation';
 
 /**
@@ -33,19 +30,21 @@ export class EndingScene extends Phaser.Scene {
       this.time.delayedCall(0, () => goToWorldMap(this));
       return;
     }
-    const sum = summarizeJourney(
-      CHAPTERS.map((c) => c.levelId ?? c.id),
-      LEVEL_SEQUENCE.map((s) => s.id),
-      progress,
-    );
+    const sum = endingSummary(progress);
+    const view = endingView(progress, sum);
 
     const g = this.add.graphics();
     g.fillStyle(PIXEL.creamDark, 1).fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.nav?.handleKey(ev.code));
+    if (import.meta.env.DEV) (window as unknown as { __ENDING__: unknown }).__ENDING__ = sum;
+    // จอสัมผัส: เนื้อหาเป็น DOM ตัวอักษรใหญ่ แบ่งแท็บ เลื่อนอ่านได้ (TouchScreens) — canvas เป็นพื้นหลัง
+    if (this.registry.get(REGISTRY_TOUCH_UI) === true) {
+      this.nav = new MenuNavigator([], () => goToMainMenu(this));
+      return;
+    }
     drawPixelFrame(g, 150, 12, 660, 70, 'wood');
-    this.add
-      .text(GAME_WIDTH / 2, 20, 'จบการเดินทาง — สำรวจครบทั้ง 4 ตำบล', this.style(26, PIXEL.light, true))
-      .setOrigin(0.5, 0);
-    this.add.text(GAME_WIDTH / 2, 56, 'แผนที่ภูมิปัญญาอำเภอคลองลานฉบับสมบูรณ์', this.style(15, '#f3ead2')).setOrigin(0.5, 0);
+    this.add.text(GAME_WIDTH / 2, 20, view.title, this.style(26, PIXEL.light, true)).setOrigin(0.5, 0);
+    this.add.text(GAME_WIDTH / 2, 56, view.subtitle, this.style(15, '#f3ead2')).setOrigin(0.5, 0);
 
     // ---- ซ้าย: แผนที่ภูมิปัญญา 4 ตำบล ----
     drawPixelFrame(g, 16, 92, 470, 470, 'paper');
@@ -55,16 +54,13 @@ export class EndingScene extends Phaser.Scene {
       y += t.height + gap;
     };
     left('แผนที่ภูมิปัญญา 4 ตำบล', 19, PIXEL.ink, 8);
-    finaleRows().forEach((row, i) => {
-      const r = sum.chapters[i].result;
-      const code = sum.codes[i];
-      left(`${i + 1}. ${row.tambon} — ${row.site}`, 15, PIXEL.ink, 2);
-      left(`   ทักษะ: ${row.learning}`, 13, PIXEL.inkSoft, 2);
-      const ev = r && typeof r.evidenceFound === 'number' && typeof r.evidenceTotal === 'number' ? ` · หลักฐาน ${r.evidenceFound}/${r.evidenceTotal}` : '';
-      left(`   รหัสลับชิ้นที่ ${i + 1}: "${code?.value ?? '?'}"${ev}`, 13, PIXEL.good, 10);
-    });
-    left(`รหัสลับครบ 4 ชิ้น: ${sum.codes.map((c) => c?.value ?? '?').join(' · ')}`, 16, PIXEL.warn, 4);
-    left('สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้', 12, PIXEL.inkMuted, 0);
+    for (const w of view.wisdom) {
+      left(`${w.index}. ${w.tambon} — ${w.site}`, 15, PIXEL.ink, 2);
+      left(`   ทักษะ: ${w.learning}`, 13, PIXEL.inkSoft, 2);
+      left(`   รหัสลับชิ้นที่ ${w.index}: "${w.code}"${w.evidence ? ` · ${w.evidence}` : ''}`, 13, PIXEL.good, 10);
+    }
+    left(`รหัสลับครบ 4 ชิ้น: ${view.codes.join(' · ')}`, 16, PIXEL.warn, 4);
+    left(view.note, 12, PIXEL.inkMuted, 0);
 
     // ---- ขวา: ผลการเรียนรู้ ----
     drawPixelFrame(g, 498, 92, 446, 470, 'paper');
@@ -73,31 +69,22 @@ export class EndingScene extends Phaser.Scene {
       const t = this.add.text(514, y, wrapThaiText(text, 414, `${size}px ${FONT_FAMILY}`), this.style(size, color));
       y += t.height + gap;
     };
-    const note = (k: Known<unknown>) => (k.from < k.of ? ` (ทราบจาก ${k.from}/${k.of} บท)` : '');
     right('ผลการเรียนรู้ทั้งการเดินทาง', 19, PIXEL.ink, 8);
-    right(`บทที่ผ่าน: ${sum.completedCount}/${CHAPTERS.length}`, 15, PIXEL.ink);
-    right(
-      sum.quests ? `ภารกิจที่สำเร็จ: ${sum.quests.value.done}/${sum.quests.value.total}${note(sum.quests)}` : 'ภารกิจที่สำเร็จ: ไม่มีข้อมูลในบันทึก',
-      15,
-      PIXEL.ink,
-    );
-    right(
-      sum.evidence ? `หลักฐานที่ค้นพบ: ${sum.evidence.value.found}/${sum.evidence.value.total}${note(sum.evidence)}` : 'หลักฐานที่ค้นพบ: ไม่มีข้อมูลในบันทึก',
-      15,
-      PIXEL.ink,
-    );
-    right(`ระยะทางเดินรวม: ${fmtMeters(sum.distanceMeters.value)}${note(sum.distanceMeters)}`, 15, PIXEL.ink);
-    right(`เวลาเล่นรวม: ${fmtDuration(sum.elapsedMs.value)}${note(sum.elapsedMs)}`, 15, PIXEL.ink);
-    right(`จำนวนครั้งที่ตอบผิด: ${sum.mistakes.value}${note(sum.mistakes)}`, 15, PIXEL.ink, 10);
+    view.stats.forEach((line, i) => right(line, 15, PIXEL.ink, i === view.stats.length - 1 ? 10 : 4));
     right('ทักษะภูมิศาสตร์ที่ได้ใช้', 16, PIXEL.ink, 4);
-    const labels = sum.skills.map((k) => SKILL_LABEL[k as SkillId]).filter(Boolean);
-    right(labels.length ? labels.map((l) => `• ${l}`).join('\n') : 'ไม่มีข้อมูลในบันทึก', 13, PIXEL.good, 4);
+    right(view.skills.length ? view.skills.map((l) => `• ${l}`).join('\n') : 'ไม่มีข้อมูลในบันทึก', 13, PIXEL.good, 4);
 
-    const map = new PixelButton(this, 230, 576, 'แผนที่การเดินทาง', { width: 240, height: 50, fontSize: 18, onClick: () => goToWorldMap(this) });
-    const menu = new PixelButton(this, 490, 576, 'เมนูหลัก', { width: 240, height: 50, fontSize: 18, onClick: () => goToMainMenu(this) });
+    const map = new PixelButton(this, 230, 576, 'แผนที่การเดินทาง', { width: 240, height: 50, fontSize: 18, onClick: () => this.toJourney() });
+    const menu = new PixelButton(this, 490, 576, 'เมนูหลัก', { width: 240, height: 50, fontSize: 18, onClick: () => this.toMenu() });
     this.nav = new MenuNavigator([map, menu], () => goToMainMenu(this));
-    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.nav?.handleKey(ev.code));
-    if (import.meta.env.DEV) (window as unknown as { __ENDING__: unknown }).__ENDING__ = sum;
+  }
+
+  toJourney(): void {
+    goToWorldMap(this);
+  }
+
+  toMenu(): void {
+    goToMainMenu(this);
   }
 
   private style(size: number, color: string, stroke = false): Phaser.Types.GameObjects.Text.TextStyle {

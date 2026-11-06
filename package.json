@@ -1,7 +1,7 @@
 {
   "name": "khlong-lan-geography-rpg",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Geography Mystery RPG: ปริศนาลับแห่งคลองลาน — เกมสืบสวนภูมิศาสตร์ 2D Pixel Art เพื่อการศึกษา",
   "type": "module",
   "engines": {

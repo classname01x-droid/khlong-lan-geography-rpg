@@ -145,6 +145,40 @@ const totalMistakes = (s: GameSession) => {
 };
 export { totalMistakes };
 
+/**
+ * ระดับ 0 (แสดงตั้งแต่เริ่มฉาก): บอก "ทำอะไร/ใช้เครื่องมือไหน" สั้น ๆ ให้เด็กรู้ว่าต้องเริ่มอย่างไร
+ * ไม่บอกตำแหน่งลับ เส้นทางที่ถูก หรือคำตอบ · ตัวอักษรในวงเล็บเป็นปุ่มคีย์บอร์ด (จอสัมผัสแปลงเป็นชื่อปุ่มบนจอ)
+ */
+function starterHint(s: GameSession, step: StoryStep, kind: StepKind): string {
+  const c = step.completeWhen;
+  switch (kind) {
+    case 'talk': {
+      const name = c?.type === 'talk' ? s.level.npcs.find((n) => n.id === c.npcId)?.name : null;
+      return name ? `มองหา${name} (มีเครื่องหมาย ! เหนือหัว) เดินไปใกล้ ๆ แล้วกดคุย (E)` : 'เดินไปใกล้ตัวละครที่มีเครื่องหมาย ! แล้วกดคุย (E)';
+    }
+    case 'quiz':
+      return 'คุยกับตัวละครเพื่อรับคำถาม · ใช้มาตราส่วน 1 ช่อง = 10 ม. ช่วยคิด';
+    case 'collect':
+      return 'ทำเป้าหมายย่อยทีละข้อ · เปิดแผนที่ (M) ดูทิศทาง';
+    case 'inspect':
+      return 'เปิดแผนที่ (M) ดูทิศทาง แล้วเดินไปสำรวจ';
+    case 'route':
+      return 'เปิดสมุด (N) หน้าวิเคราะห์เส้นทาง';
+    case 'compare':
+      return 'เปิดหน้าเปรียบเทียบแผนที่ (C) แล้วตรวจทีละข้อ';
+    case 'analysis':
+      return 'เปิดกระดานวิเคราะห์ (C) แล้วเทียบหลักฐานทีละชนิด';
+    case 'verify':
+      return 'เดินไปยังจุดที่เลือก แล้วกดตรวจสอบ (E)';
+    case 'pin':
+      return 'เปิดแผนที่ (M) แล้วปักหมุดตรงจุดที่ยืนยันแล้ว';
+    case 'ending':
+      return 'ฟังครูเนมสรุปผลให้จบ';
+    default:
+      return 'เปิดแผนที่ (M) ดูทิศทาง และสมุด (N) ดูเบาะแส';
+  }
+}
+
 function methodHint(kind: StepKind): string {
   switch (kind) {
     case 'quiz':
@@ -260,7 +294,7 @@ export function buildQuestTracker(
     if (remaining.length) objective = remaining[0];
   }
   const tier = Math.max(0, Math.min(2, opts.hintTier ?? 0));
-  const hint = tier === 0 ? null : tier === 1 ? methodHint(kind) : toolHint(s, step, kind, remaining);
+  const hint = tier === 0 ? starterHint(s, step, kind) : tier === 1 ? methodHint(kind) : toolHint(s, step, kind, remaining);
   return {
     chapterLabel,
     questTitle: step.title,

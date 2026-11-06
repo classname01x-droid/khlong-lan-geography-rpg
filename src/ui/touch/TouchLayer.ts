@@ -103,6 +103,9 @@ export class TouchLayer {
     legend: '',
   };
   private trackerCollapsed = false;
+  /** เป้าหมายล่าสุดที่แสดง (ใช้ตรวจว่าเปลี่ยนแล้ว) และเวลาที่ยังแสดง "เป้าหมายใหม่" */
+  private trackerKey = '';
+  private trackerFlashUntil = 0;
   /** ผู้เล่นเลือกย่อ/ขยายเองแล้ว (ไม่ย่ออัตโนมัติอีก) */
   private trackerUserSet = false;
   private trackerDetails = false;
@@ -721,33 +724,46 @@ export class TouchLayer {
     const compact = this.layout?.compact ?? false;
     const prog = `${t.progress.done}/${t.progress.total}`;
     const objective = wd(t.objective);
+    // เป้าหมายเปลี่ยน (ทำสำเร็จ) → แจ้ง "เป้าหมายใหม่" สั้น ๆ ให้เด็กรู้ว่าภารกิจขยับแล้ว
+    const key = `${t.chapterLabel}|${t.questTitle}|${t.objective}`;
+    const now = performance.now();
+    if (this.trackerKey && key !== this.trackerKey) this.trackerFlashUntil = now + 2600;
+    this.trackerKey = key;
+    const flash = now < this.trackerFlashUntil;
+    this.tracker.classList.toggle('tl-tr-flash', flash);
     let html = '';
     if (this.trackerCollapsed) {
       // ย่อแล้วยังเห็นเป้าหมายปัจจุบัน (บรรทัดเดียว)
       html =
         `<button class="tl-tr-pill" data-ui="tracker-toggle" aria-label="ขยายแถบภารกิจ">` +
-        `<span class="tl-tr-pill-k">📜 ${esc(prog)}</span> <span class="tl-tr-pill-o">${esc(objective)}</span> ▾</button>`;
+        `<span class="tl-tr-pill-k">${flash ? '✓ ใหม่' : '📜'} ${esc(prog)}</span> <span class="tl-tr-pill-o">${esc(objective)}</span> ▾</button>`;
     } else {
-      html += `<div class="tl-tr-head"><span class="tl-tr-chapter">${esc(t.chapterLabel)}</span>`;
-      html += `<button class="tl-tr-mini" data-ui="tracker-toggle" aria-label="ย่อแถบภารกิจ">▴ ย่อ</button></div>`;
-      html += `<div class="tl-tr-quest">ภารกิจ: ${esc(t.questTitle)}</div>`;
-      html += `<div class="tl-tr-obj"><span class="tl-tr-label">เป้าหมาย:</span> ${esc(objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
-      const showDetails = this.trackerDetails || !compact;
-      if (t.hint && showDetails) html += `<div class="tl-tr-hint">💡 คำแนะนำ: ${esc(wd(t.hint))}</div>`;
+      const collapseBtn = '<button class="tl-tr-mini" data-ui="tracker-toggle" aria-label="ย่อแถบภารกิจ">▴ ย่อ</button>';
+      if (flash) html += '<div class="tl-tr-new">✓ สำเร็จ! เป้าหมายใหม่</div>';
+      // จอเตี้ย: ไม่มีแถวหัวบท (ประหยัดพื้นที่) แต่ยังเห็น ภารกิจ · เป้าหมาย · ความคืบหน้า · คำแนะนำ
+      if (!compact || this.trackerDetails) {
+        html += `<div class="tl-tr-head"><span class="tl-tr-chapter">${esc(t.chapterLabel)}</span>${compact ? '' : collapseBtn}</div>`;
+      }
+      html += `<div class="tl-tr-quest">📜 ภารกิจ: ${esc(t.questTitle)}</div>`;
+      html += `<div class="tl-tr-obj">🎯 <span class="tl-tr-label">เป้าหมาย:</span> ${esc(objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
+      if (t.hint) html += `<div class="tl-tr-hint">💡 ${t.hintTier > 0 ? 'คำแนะนำ: ' : ''}${esc(wd(t.hint))}</div>`;
       if (this.trackerDetails) {
         if (t.remaining.length > 1) html += `<div class="tl-tr-list">ยังเหลือ: ${t.remaining.map((r) => esc(wd(r))).join(' · ')}</div>`;
         if (t.sideQuests.length) html += `<div class="tl-tr-list">ภารกิจรอง/ปริศนา: ${t.sideQuests.map((q) => esc(wd(q))).join(' · ')}</div>`;
         html += `<div class="tl-tr-list">ฉาก ${t.step.current}/${t.step.total}</div>`;
       }
       html += '<div class="tl-tr-btns">';
-      if (compact) html += `<button class="tl-tr-mini" data-ui="tracker-details">${this.trackerDetails ? 'ซ่อนรายละเอียด' : 'รายละเอียด'}</button>`;
-      if (!t.complete && t.hintTier < 2) html += `<button class="tl-tr-mini" data-ui="tracker-hint">💡 ${t.hintTier === 0 ? 'ขอคำแนะนำ' : 'คำแนะนำเพิ่ม'}</button>`;
+      if (compact) html += collapseBtn;
+      if (compact) html += `<button class="tl-tr-mini" data-ui="tracker-details">${this.trackerDetails ? 'ซ่อน' : 'รายละเอียด'}</button>`;
+      if (!t.complete && t.hintTier < 2) html += `<button class="tl-tr-mini" data-ui="tracker-hint">💡 ${t.hintTier === 0 ? 'ช่วยหน่อย' : 'ช่วยเพิ่ม'}</button>`;
       html += '</div>';
     }
     this.setHtml('tracker', this.tracker, html);
+    this.tracker.classList.toggle('tl-tr-open', this.trackerDetails);
     this.tracker.style.width = this.trackerCollapsed ? 'auto' : `${width}px`;
     this.tracker.style.maxWidth = `${width}px`;
-    this.tracker.style.maxHeight = `${cr.height * 0.62}px`;
+    this.tracker.style.maxHeight = `${cr.height * (this.trackerDetails ? 0.8 : 0.62)}px`;
+    this.tracker.style.overflowY = this.trackerDetails ? 'auto' : 'hidden';
     this.tracker.style.right = `${window.innerWidth - cr.right + inset + 8}px`;
     this.tracker.style.top = `${cr.top + 8}px`;
   }

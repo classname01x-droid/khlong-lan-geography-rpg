@@ -10,6 +10,7 @@ import { WorldScene } from './scenes/WorldScene';
 import { REGISTRY_TOUCH_UI } from './scenes/events';
 import { computeMobileLayout, type Insets } from './core/ui/MobileLayout';
 import { TouchLayer } from './ui/touch/TouchLayer';
+import { TouchScreens } from './ui/touch/TouchScreens';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -59,6 +60,8 @@ function readInsets(): Insets {
 const touch = detectTouch();
 game.registry.set(REGISTRY_TOUCH_UI, touch);
 const touchLayer = new TouchLayer(game, touch);
+// จอสัมผัส: เมนูหลัก แผนที่การเดินทาง ฉากเชื่อมบท และฉากจบ เป็นหน้าจอ DOM ตัวอักษรใหญ่ (คอมพิวเตอร์ใช้หน้าจอบน canvas เดิม)
+const touchScreens = touch ? new TouchScreens(game) : null;
 const host = document.getElementById('game')!;
 
 function applyLayout(): void {
@@ -70,6 +73,7 @@ function applyLayout(): void {
   Object.assign(host.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
   game.scale.refresh();
   touchLayer.setLayout(layout);
+  touchScreens?.setLayout(layout);
 }
 applyLayout();
 window.addEventListener('resize', applyLayout);
@@ -83,4 +87,5 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 if (import.meta.env.DEV) {
   (window as unknown as { __GAME__: Phaser.Game }).__GAME__ = game;
   (window as unknown as { __TOUCH__: TouchLayer }).__TOUCH__ = touchLayer;
+  (window as unknown as { __SCREENS__: TouchScreens | null }).__SCREENS__ = touchScreens;
 }

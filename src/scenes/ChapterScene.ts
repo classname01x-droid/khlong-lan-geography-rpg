@@ -10,7 +10,11 @@ import { PIXEL } from '../ui/pixel/theme';
 import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
 import { FINALE_POINT, JOURNEY_LAYOUT } from './journeyLayout';
+import { REGISTRY_TOUCH_UI } from './events';
 import { getProgress, goToWorldMap, SCENE, startLevel, type ChapterStartData } from './navigation';
+
+/** เวลาขั้นต่ำระหว่างบรรทัด (มิลลิวินาที) — แตะรัวจะไม่ข้ามบทสนทนา */
+export const MIN_LINE_MS = 350;
 
 // อยู่ระหว่างพื้นที่ตำบลซ้าย–ขวา (x 184–776) เพื่อไม่บังเส้นทางเดินทาง
 const PANEL = { x: 196, y: 330, w: 568, h: 280 } as const;
@@ -28,7 +32,10 @@ export class ChapterScene extends Phaser.Scene {
   private body!: Phaser.GameObjects.Text;
   private hint!: Phaser.GameObjects.Text;
   private nav: MenuNavigator | null = null;
-  /** สถานะสำหรับการทดสอบ */
+  private touchUi = false;
+  /** เวลาที่เปลี่ยนบรรทัดล่าสุด — กันแตะรัวจนข้ามบทสนทนาโดยไม่ตั้งใจ */
+  private lineShownAt = 0;
+  /** สถานะ (ใช้โดยหน้าจอสัมผัสและการทดสอบ) */
   stage: 'dialogue' | 'ready' | 'in-development' = 'dialogue';
 
   constructor() {
@@ -49,6 +56,8 @@ export class ChapterScene extends Phaser.Scene {
     this.lineIndex = 0;
     this.nav = null;
     this.stage = 'dialogue';
+    this.touchUi = this.registry.get(REGISTRY_TOUCH_UI) === true;
+    this.lineShownAt = this.time.now;
 
     // ---- แผนที่การเดินทาง + เส้นทางจากตำบลเดิมไปตำบลใหม่ ----
     const states = chapterStates(CHAPTERS, progress);
@@ -74,6 +83,10 @@ export class ChapterScene extends Phaser.Scene {
       this.add.rectangle(0, -14, 4, 10, 0x2a1a0c),
     ]);
     this.tweens.add({ targets: marker, x: to.x, y: to.y, duration: 1600, ease: 'Sine.easeInOut' });
+    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.onKey(ev.code));
+    this.installTestHooks();
+    // จอสัมผัส: ชื่อบท เป้าหมายภารกิจใหม่ บทสนทนา และปุ่ม เป็น DOM ตัวอักษรใหญ่ (TouchScreens) — canvas แสดงเส้นทางเดินทาง
+    if (this.touchUi) return;
 
     // ---- ป้ายบท ----
     const banner = this.add.graphics();
@@ -93,12 +106,10 @@ export class ChapterScene extends Phaser.Scene {
       .setOrigin(1, 1);
     this.showLine();
 
-    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.onKey(ev.code));
-    // จอสัมผัส/เมาส์: แตะที่ใดก็ได้เพื่ออ่านบรรทัดถัดไป (หลังอ่านจบใช้ปุ่ม "ออกเดินทาง" ซึ่งแตะได้อยู่แล้ว)
+    // เมาส์: คลิกที่ใดก็ได้เพื่ออ่านบรรทัดถัดไป (หลังอ่านจบใช้ปุ่ม "ออกเดินทาง")
     this.input.on('pointerdown', () => {
-      if (this.stage === 'dialogue' && !this.nav) this.onKey('Space');
+      if (this.stage === 'dialogue' && !this.nav) this.advance(true);
     });
-    this.installTestHooks();
   }
 
   private style(size: number, color: string, stroke = false): Phaser.Types.GameObjects.Text.TextStyle {
@@ -112,6 +123,8 @@ export class ChapterScene extends Phaser.Scene {
   }
 
   private showLine(): void {
+    this.lineShownAt = this.time.now;
+    if (this.touchUi) return;
     const line = this.intro.lines[this.lineIndex];
     const text = resolveChapterText(line.text, getProgress(this).data);
     this.speaker.setText(line.speaker);
@@ -129,18 +142,48 @@ export class ChapterScene extends Phaser.Scene {
       return;
     }
     if (code !== 'Space' && code !== 'Enter' && code !== 'NumpadEnter' && code !== 'KeyE') return;
+    this.advance(false);
+  }
+
+  /* ---------- คำสั่งที่หน้าจอสัมผัสเรียกใช้ (ตรรกะเดียวกับคีย์บอร์ด) ---------- */
+
+  /**
+   * อ่านบรรทัดถัดไป / จบบทสนทนา
+   * @param guard แตะ/คลิก: ไม่รับคำสั่งที่มาเร็วเกินไป (กันแตะรัวจนข้ามบทสนทนาโดยไม่ตั้งใจ) · คีย์บอร์ดกดทีละครั้งอยู่แล้ว
+   */
+  advance(guard = true): boolean {
+    if (this.stage !== 'dialogue' || (guard && this.time.now - this.lineShownAt < MIN_LINE_MS)) return false;
     if (this.lineIndex < this.intro.lines.length - 1) {
       this.lineIndex++;
       this.showLine();
-      return;
+      return true;
     }
     this.finishDialogue();
+    return true;
+  }
+
+  /** ย้อนอ่านบรรทัดก่อนหน้า (จอสัมผัส) */
+  back(): void {
+    if (this.stage !== 'dialogue' || this.lineIndex === 0) return;
+    this.lineIndex--;
+    this.showLine();
+  }
+
+  /** ข้อมูลสำหรับหน้าจอสัมผัส */
+  get touchState(): { chapterId: string; lineIndex: number; total: number; stage: ChapterScene['stage']; readyAt: number } {
+    return { chapterId: this.chapter.id, lineIndex: this.lineIndex, total: this.intro.lines.length, stage: this.stage, readyAt: this.lineShownAt };
+  }
+
+  toJourney(): void {
+    goToWorldMap(this);
   }
 
   /** จบบทสนทนา: บทที่มีเนื้อหา → ปุ่มออกเดินทาง · ยังไม่มีเนื้อหา → แจ้งและกลับแผนที่การเดินทาง (ความคืบหน้าคงอยู่) */
   private finishDialogue(): void {
     const playable = this.chapter.playable && !!this.chapter.levelId;
     this.stage = playable ? 'ready' : 'in-development';
+    this.lineShownAt = this.time.now;
+    if (this.touchUi) return;
     this.speaker.setText(playable ? 'พร้อมออกเดินทาง' : IN_DEVELOPMENT_MESSAGE);
     this.body.setText(
       wrapThaiText(
@@ -162,7 +205,7 @@ export class ChapterScene extends Phaser.Scene {
     this.nav = new MenuNavigator([button], () => goToWorldMap(this));
   }
 
-  private depart(): void {
+  depart(): void {
     if (this.stage === 'ready' && this.chapter.levelId && startLevel(this, this.chapter.levelId, 'fresh')) return;
     goToWorldMap(this);
   }

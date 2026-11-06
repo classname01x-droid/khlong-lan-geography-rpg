@@ -239,7 +239,9 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
     expect(t.questTitle).toBe(L1.story[0].title);
     expect(t.objective).toBe(L1.story[0].objective);
     expect(t.progress).toEqual({ done: 0, total: L1.story.length, label: 'ฉาก' });
-    expect(t.hint).toBeNull();
+    // คำแนะนำสั้นแสดงตั้งแต่เริ่ม: บอกว่าต้องทำอะไร (ไม่บอกคำตอบ)
+    expect(t.hint).toContain('ครูเนม');
+    expect(t.hintTier).toBe(0);
   });
 
   it('เป้าหมายเปลี่ยนเองเมื่อสำเร็จ: ฉากแบบหลายเป้าหมายแสดงทีละข้อ + ความคืบหน้า 2/4', () => {
@@ -331,7 +333,7 @@ describe('คำแนะนำแบบเป็นระดับ (ไม่�
       for (const st of L.story) {
         const s = sessionAtStep(L, st.order);
         for (const c of def?.candidates ?? []) if (c.evidenceId) s.evidence.push(c.evidenceId); // สำรวจครบ → ไม่มีรายการจุด
-        for (const tier of [1, 2]) {
+        for (const tier of [0, 1, 2]) {
           const hint = buildQuestTracker(s, { hintTier: tier }).hint ?? '';
           for (const name of answerNames) expect(hint, `${L.id}#${st.order} tier ${tier}`).not.toContain(name);
           if (correctRoute) expect(hint).not.toContain(correctRoute.description);
