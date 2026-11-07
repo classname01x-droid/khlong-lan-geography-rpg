@@ -87,6 +87,8 @@ export class WorldScene extends Phaser.Scene {
   /** ตำแหน่งปัจจุบันของป้าย "คุย" (พิกัดโลกเกม) และด้านที่วาง */
   private cueRect: Box | null = null;
   private cueSide: CueSide = 'above';
+  /** (dev) ข้อมูลการวางป้ายล่าสุด สำหรับตรวจในการทดสอบ */
+  private cueDebug: unknown = null;
   /** ตำแหน่ง y ปกติของป้ายชื่อสถานที่ */
   private readonly labelBaseY = new Map<string, number>();
   /** จัดป้ายชื่อใหม่ทุก ~120 ms หรือทันทีเมื่อมีการเปลี่ยนแปลง */
@@ -536,14 +538,16 @@ export class WorldScene extends Phaser.Scene {
     // วางป้ายตามที่ว่าง: เหนือ → ขวา → ซ้าย → ใต้ ไม่ให้ถูกแถบภารกิจ/แถบสถานะ/การ์ดบทแนะนำบัง และเลี่ยงตัวผู้เล่น
     const size = { w: this.cueText.width + 6, h: this.cueText.height + 2 };
     const v = this.cameras.main.worldView;
-    const place = placeCue({
+    const cueInput = {
       target: tbox,
       size,
       gap: 1.5,
       view: { x: v.x + 1, y: v.y + 1, w: v.width - 2, h: v.height - 2 },
       obstacles: this.hudObstaclesWorld(),
       avoid: [{ x: this.player.x - 7, y: this.player.y - 8, w: 14, h: 16 }],
-    });
+    };
+    const place = placeCue(cueInput);
+    if (import.meta.env.DEV) this.cueDebug = { input: cueInput, place };
     const key = `${target.kind}:${target.id}:${this.labelFit}:${place.side}`;
     if (key !== this.cueKey) {
       this.cueKey = key;
@@ -1051,6 +1055,7 @@ export class WorldScene extends Phaser.Scene {
       session: this.session,
       walkTo: (x: number, y: number) => this.walkTo({ x, y }),
       tutorial: () => this.tutorial?.save ?? this.progress.tutorialSave(),
+      cueDebug: () => this.cueDebug,
       cue: () =>
         this.cue.visible && this.cueRect
           ? { text: this.cueText.text, x: this.cue.x, y: this.cue.y, side: this.cueSide, css: this.worldToCss(this.cueRect) }

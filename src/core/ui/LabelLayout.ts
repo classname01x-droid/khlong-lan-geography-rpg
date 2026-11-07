@@ -88,7 +88,11 @@ export function cueCandidates(i: Pick<CueInput, 'target' | 'size' | 'gap'>): Arr
     const slides: Array<[number, number]> =
       side === 'above' || side === 'below'
         ? [[0, 0], [-w / 2, 0], [w / 2, 0], [-w, 0], [w, 0]]
-        : [[0, 0], [0, -h], [0, h], [side === 'left' ? -w / 2 : w / 2, 0], [side === 'left' ? -w / 2 : w / 2, -h], [side === 'left' ? -w / 2 : w / 2, h]];
+        : [0, 0.5, 1].flatMap((k): Array<[number, number]> => {
+            // ด้านซ้าย/ขวา: ขยับออกจากเป้าหมายได้ถึง 1 ความกว้างป้าย (กรณี NPC อยู่ชิดขอบแถบบนจอ)
+            const dx = (side === 'left' ? -w : w) * k;
+            return [[dx, 0], [dx, -h], [dx, h]];
+          });
     for (const [dx, dy] of slides) {
       const box = { ...base, x: base.x + dx, y: base.y + dy };
       const dist = Math.hypot(box.x + w / 2 - tc.x, box.y + h / 2 - tc.y);

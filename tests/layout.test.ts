@@ -45,6 +45,22 @@ describe('ป้าย "คุย": วางตามที่ว่าง ไ�
     expect(cueCandidates({ target: npc, size, gap: 1.5 }).some((c) => c.side === p.side && c.box.x === p.box.x && c.box.y === p.box.y)).toBe(true);
   });
 
+  it('NPC เกือบทั้งตัวอยู่ใต้แถบภารกิจ (iPhone SE 3 ที่ช่อง 11,41) → ป้ายออกมาทางซ้ายพ้นแถบ ห่างไม่เกิน ~2 ช่อง', () => {
+    // ค่าจริงจากการทดสอบในเบราว์เซอร์ (พิกัดโลกเกม)
+    const target: Box = { x: 185.5, y: 635, w: 29, h: 32.5 };
+    const obstacles: Box[] = [
+      { x: 165.4, y: 557.6, w: 134.3, h: 115.2 }, // แถบภารกิจ
+      { x: 29.6, y: 557.6, w: 130.8, h: 45.8 }, // แถบสถานะ
+      { x: 140.6, y: 682.8, w: 88.9, h: 22.8 }, // ข้อความโต้ตอบ
+      { x: 70.4, y: 709, w: 229.3, h: 52.8 }, // การ์ดบทแนะนำ
+    ];
+    const p = placeCue({ target, size: { w: 29, h: 16 }, gap: 1.5, view: { x: 26, y: 554, w: 318, h: 211 }, obstacles });
+    expect(p.blocked).toBe(false);
+    expect(p.side).toBe('left');
+    expect(obstacles.some((o) => overlaps(p.box, o))).toBe(false);
+    expect(target.x - (p.box.x + p.box.w)).toBeLessThanOrEqual(32);
+  });
+
   it('แถบใหญ่บังกึ่งกลางทุกด้าน → เลื่อนตามขอบไปที่ว่างที่ใกล้ที่สุด (ยังติด NPC)', () => {
     // แถบภารกิจสูงเกินครึ่งจอ ขอบซ้ายอยู่เกือบชิดตัว NPC (กรณีที่พบบน iPhone SE 3)
     const tracker: Box = { x: 146, y: 0, w: 174, h: 125 };
