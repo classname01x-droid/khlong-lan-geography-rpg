@@ -396,7 +396,7 @@ export class TouchScreens {
       `<div class="ts-screen ts-chapter${w < 480 ? ' ts-narrow' : ''}">` +
       `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(v.heading)} · ${esc(v.tambon)}</h1><div class="ts-sub">${esc(v.title)}</div></header>` +
       '<div class="ts-chap-main">' +
-      `<aside class="ts-goal ts-paper"><div class="ts-goal-k">🎯 ภารกิจใหม่</div><p class="ts-p">${esc(v.goal)}</p>` +
+      `<aside class="ts-goal ts-paper ts-scroll" data-scroll="goal"><div class="ts-goal-k">🎯 ภารกิจใหม่</div><p class="ts-p">${esc(v.goal)}</p>` +
       (v.chest ? `<div class="ts-chest">${chestSvg()}<div><div class="ts-chest-k">🔒 ช่องรหัสบนหีบ</div>${chestSlotsHtml(v.chest.slots)}</div></div><p class="ts-small">${esc(v.chest.note)}</p>` : '') +
       '</aside>' +
       `<section class="ts-dlg ts-paper"><div class="ts-speaker"><span>${esc(speaker)}</span><small>${esc(counter)}</small></div>` +

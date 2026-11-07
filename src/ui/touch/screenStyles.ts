@@ -92,9 +92,10 @@ export const SCREEN_CSS = `
 .ts-codes .ts-chip { min-width: 34px; font-size: 15px; padding: 1px 6px; }
 
 /* ---------- ฉากเชื่อมบท ---------- */
-.ts-chap-main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr); gap: 8px; }
+.ts-chap-main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr); grid-template-rows: minmax(0, 1fr); gap: 8px; }
 .ts-chapter.ts-narrow .ts-chap-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-.ts-goal { padding: 10px 12px; }
+/* จอเตี้ย: กล่องภารกิจ+หีบสูงเกินแถว → เลื่อนในกล่องเอง ไม่ดันกล่องบทสนทนาเลยขอบจอ */
+.ts-goal { padding: 10px 12px; min-height: 0; overflow-y: auto; }
 .ts-goal-k { font-size: 15px; font-weight: 700; color: #a2541e; }
 .ts-chapter.ts-narrow .ts-goal .ts-p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ts-dlg { display: flex; flex-direction: column; min-height: 0; padding: 10px 14px; }

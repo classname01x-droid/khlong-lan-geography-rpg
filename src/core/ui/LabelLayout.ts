@@ -87,11 +87,12 @@ export function cueCandidates(i: Pick<CueInput, 'target' | 'size' | 'gap'>): Arr
     const base = cueBox(side, i);
     const slides: Array<[number, number]> =
       side === 'above' || side === 'below'
-        ? [[0, 0], [-w / 2, 0], [w / 2, 0], [-w, 0], [w, 0]]
-        : [0, 0.5, 1].flatMap((k): Array<[number, number]> => {
-            // ด้านซ้าย/ขวา: ขยับออกจากเป้าหมายได้ถึง 1 ความกว้างป้าย (กรณี NPC อยู่ชิดขอบแถบบนจอ)
+        ? [[0, 0], [-w / 2, 0], [w / 2, 0], [-w, 0], [w, 0], [-1.5 * w, 0], [1.5 * w, 0]]
+        : [0, 0.5, 1, 1.5].flatMap((k): Array<[number, number]> => {
+            // ด้านซ้าย/ขวา: ขยับออกจากเป้าหมายได้ถึง 1.5 ความกว้างป้าย และขึ้น/ลงได้ 2 แถว
+            // (จอเตี้ยมาก เช่น iPhone SE ที่แถบภารกิจกินพื้นที่ด้านข้างของ NPC ที่อยู่ชิดขอบ)
             const dx = (side === 'left' ? -w : w) * k;
-            return [[dx, 0], [dx, -h], [dx, h]];
+            return [[dx, 0], [dx, -h], [dx, h], [dx, -2 * h], [dx, 2 * h]];
           });
     for (const [dx, dy] of slides) {
       const box = { ...base, x: base.x + dx, y: base.y + dy };

@@ -45,7 +45,7 @@ describe('ป้าย "คุย": วางตามที่ว่าง ไ�
     expect(cueCandidates({ target: npc, size, gap: 1.5 }).some((c) => c.side === p.side && c.box.x === p.box.x && c.box.y === p.box.y)).toBe(true);
   });
 
-  it('NPC เกือบทั้งตัวอยู่ใต้แถบภารกิจ (iPhone SE 3 ที่ช่อง 11,41) → ป้ายออกมาทางซ้ายพ้นแถบ ห่างไม่เกิน ~2 ช่อง', () => {
+  it('NPC เกือบทั้งตัวอยู่ใต้แถบภารกิจ (iPhone SE 3 ที่ช่อง 11,41) → ป้ายออกมาข้าง ๆ พ้นแถบ ห่างไม่เกิน ~2 ช่อง', () => {
     // ค่าจริงจากการทดสอบในเบราว์เซอร์ (พิกัดโลกเกม)
     const target: Box = { x: 185.5, y: 635, w: 29, h: 32.5 };
     const obstacles: Box[] = [
@@ -56,9 +56,12 @@ describe('ป้าย "คุย": วางตามที่ว่าง ไ�
     ];
     const p = placeCue({ target, size: { w: 29, h: 16 }, gap: 1.5, view: { x: 26, y: 554, w: 318, h: 211 }, obstacles });
     expect(p.blocked).toBe(false);
-    expect(p.side).toBe('left');
+    expect(['left', 'right']).toContain(p.side);
     expect(obstacles.some((o) => overlaps(p.box, o))).toBe(false);
-    expect(target.x - (p.box.x + p.box.w)).toBeLessThanOrEqual(32);
+    // ระยะห่างระหว่างขอบป้ายกับขอบ NPC ไม่เกิน ~2 ช่อง (32 px โลกเกม)
+    const gapX = Math.max(0, target.x - (p.box.x + p.box.w), p.box.x - (target.x + target.w));
+    const gapY = Math.max(0, target.y - (p.box.y + p.box.h), p.box.y - (target.y + target.h));
+    expect(Math.hypot(gapX, gapY)).toBeLessThanOrEqual(32);
   });
 
   it('แถบใหญ่บังกึ่งกลางทุกด้าน → เลื่อนตามขอบไปที่ว่างที่ใกล้ที่สุด (ยังติด NPC)', () => {
