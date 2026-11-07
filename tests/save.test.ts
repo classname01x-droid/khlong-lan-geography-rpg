@@ -55,7 +55,9 @@ describe('บันทึกการเล่นกลางด่าน (snaps
     explore(b, 'nai-chiao');
     talk(b, 'embroiderer-nuan');
     expect(b.submitPin({ x: 70, y: 13 }, 1).ok).toBe(true);
-    b.startEnding();
+    // ไขปริศนาลายผ้าผืนแรก → ครูเนมมอบรหัส
+    explore(b, 'old-banyan');
+    b.inspect(b.level.inspectPoints!.find((p) => p.id === 'old-banyan-spot')!);
     while (b.inDialogue) b.advanceDialogue();
     expect(b.completed).toBe(true);
   });

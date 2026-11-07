@@ -37,7 +37,9 @@ describe('ฉาก 3: ปริศนาผู้ใหญ่บ้าน (เ�
     talk(s, 'teacher-nem');
     s.talkTo(s.level.npcs.find((n) => n.id === 'headman')!);
     expect(s.flags.has('met-headman')).toBe(true);
-    s.advanceDialogue(); // ทักทาย → เกริ่นปริศนา
+    s.advanceDialogue(); // ทักทาย → เรื่องหีบ
+    s.advanceDialogue(); // → รหัสชิ้นแรกเกี่ยวกับภูมิปัญญา
+    s.advanceDialogue(); // → ลักษณะงานฝีมือ
     s.advanceDialogue(); // → คำถาม
     const quiz = s.dialogueView!;
     expect(quiz.kind).toBe('quiz');
@@ -159,7 +161,9 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
     expect(ok).toEqual({ ok: true, problems: [] });
     expect(s.pinnedAt).toEqual({ x: 71, y: 14 });
     expect(s.isPinAvailable()).toBe(false);
-    expect(s.currentStepOrder).toBe(6); // ยังต้องรอครูสรุป
+    // ปักหมุดผ่าน → ฉาก 7 (ยังต้องไขปริศนาลายผ้าผืนแรกก่อนครูเนมมอบรหัส)
+    expect(s.currentStepOrder).toBe(7);
+    expect(s.startEnding()).toBe(false);
   });
 
   it('ครูเนมสรุปผ่านสมุดภาคสนาม แล้วจบด่านพร้อมหน้าสรุปผล', () => {
@@ -169,10 +173,15 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
     s.submitPin(target, 0); // ผิด 1 ครั้ง
     s.submitPin(target, PIN_EMBROIDERY);
     s.elapsedMs = 125_000;
+    // ยังไม่ได้ไขปริศนา → ยังไม่ได้รหัส
+    expect(s.startEnding()).toBe(false);
+    s.flags.add('mystery-found');
 
     expect(s.startEnding()).toBe(true);
     expect(s.mode).toBe('dialogue');
-    expect(s.messages.length).toBe(5);
+    expect(s.messages.length).toBe(6);
+    expect(s.messages[4].text).toContain('"ลาย"');
+    expect(s.messages[5].text).toContain('เหลืออีก 3 ชิ้น');
     expect(s.messages[1].text).toContain('4 ซม. บนแผนที่ 1:10,000 เท่ากับ 400 เมตรจริง');
     expect(s.messages[2].text).toContain(`${Math.round(s.routeMeters['route-north'] / 10) * 10} เมตร`);
 

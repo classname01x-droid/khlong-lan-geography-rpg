@@ -1,5 +1,6 @@
 import type { DialogueNode, LevelDefinition, ObjectiveCondition, StoryStep } from '../../content/types';
 import { CLUE_TYPE_LABEL, type GameSession } from '../session/GameSession';
+import { currentMicro, lastDoneMicro, microStates } from './MicroQuest';
 
 /**
  * แถบติดตามภารกิจ + คำแนะนำแบบเป็นระดับ — สร้างจากข้อมูลด่านและสถานะ GameSession จริงทุกบท (ไม่เขียนเฉพาะด่าน)
@@ -29,6 +30,16 @@ export interface QuestTrackerView {
   /** ภารกิจรอง/ปริศนาที่กำลังทำ */
   sideQuests: string[];
   complete: boolean;
+  /** ข้อความเมื่อขั้นก่อนหน้าสำเร็จ เช่น "✓ รับภารกิจสำเร็จ!" (บทที่มีขั้นย่อย) */
+  doneText: string | null;
+  /** บทนี้แสดงเป็นขั้นย่อย (ภารกิจ · ตอนนี้ · วิธีทำ · ขั้น x/y) */
+  micro: boolean;
+}
+
+/** กุญแจของ "ขั้นที่กำลังทำ" — ระดับคำแนะนำเริ่มใหม่ทุกครั้งที่ขั้นเปลี่ยน */
+export function hintKey(s: GameSession): number {
+  const m = currentMicro(s);
+  return s.currentStepOrder * 100 + (m ? m.index + 1 : 0);
 }
 
 type FlagSource = { kind: 'npc'; name: string } | { kind: 'inspect'; name: string };
@@ -280,6 +291,30 @@ export function buildQuestTracker(
       remaining: [],
       sideQuests,
       complete: true,
+      doneText: null,
+      micro: false,
+    };
+  }
+  const tierOf = Math.max(0, Math.min(2, opts.hintTier ?? 0));
+  // บทที่มีขั้นย่อย: ภารกิจหลัก · เป้าหมายเดียว · วิธีทำ · ความคืบหน้าเป็นขั้น · คำแนะนำ 3 ระดับจากข้อมูลบท
+  const ms = microStates(s);
+  const cur = ms.find((m) => m.current);
+  if (cur) {
+    const m = cur.step;
+    return {
+      chapterLabel,
+      questTitle: main?.title ?? step.title,
+      objective: m.goal,
+      progress: { done: ms.filter((x) => x.done).length, total: ms.length, label: 'ขั้น' },
+      step: { current: step.order, total: totalSteps },
+      kind: stepKind(L, step),
+      hint: tierOf === 0 ? m.how : tierOf === 1 ? m.tool : m.think,
+      hintTier: tierOf,
+      remaining: ms.filter((x) => !x.done && !x.current && x.storyOrder === cur.storyOrder).map((x) => x.step.goal),
+      sideQuests,
+      complete: false,
+      doneText: lastDoneMicro(ms)?.step.doneText ?? null,
+      micro: true,
     };
   }
   const kind = stepKind(L, step);
@@ -307,5 +342,7 @@ export function buildQuestTracker(
     remaining,
     sideQuests,
     complete: false,
+    doneText: null,
+    micro: false,
   };
 }

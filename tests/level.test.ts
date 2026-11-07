@@ -26,8 +26,12 @@ describe('เนื้อหาด่าน', () => {
     expect(grid.isBlocked(32, 48)).toBe(false);
   });
 
-  it('ด่านแรกมี 6 ฉากตามโครงเรื่อง', () => {
-    expect(sakNgamLevel.story.map((s) => s.order)).toEqual([1, 2, 3, 4, 5, 6]);
+  it('ด่านแรกมี 7 ฉาก: ปักหมุด (6) แล้วไขปริศนาลายผ้าผืนแรกรับรหัส (7)', () => {
+    expect(sakNgamLevel.story.map((s) => s.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(sakNgamLevel.story[5].completeWhen).toEqual({ type: 'flag', flag: 'pin-verified' });
+    expect(sakNgamLevel.story[6].completeWhen).toEqual({ type: 'flag', flag: 'mission-complete' });
+    // รหัสได้หลังปักหมุดถูก "และ" ไขปริศนาเอง เท่านั้น
+    expect(sakNgamLevel.ending!.startWhen).toEqual({ flags: ['pin-verified', 'mystery-found'] });
   });
 });
 

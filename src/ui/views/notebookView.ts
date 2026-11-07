@@ -6,6 +6,7 @@ import {
   type QuestStatus,
 } from '../../core/session/GameSession';
 import { dirName, fmtMeters10 } from '../format';
+import { hasMicroSteps, microStates } from '../../core/guide/MicroQuest';
 
 /**
  * เนื้อหาสมุดภาคสนาม (ข้อมูลล้วน ไม่ผูกกับ Phaser) — ใช้ร่วมกันระหว่าง
@@ -68,6 +69,28 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
         line(`ปลดล็อก: ${q.def.lockedHint}`, 13, '#8a7a64', 22, 8);
         continue;
       }
+      if (q.def.kind === 'main' && hasMicroSteps(s)) {
+        // บทที่มีขั้นย่อย: ขั้นที่ทำแล้ว ✓ · ขั้นที่กำลังทำ ▶ · เครื่องมือที่ใช้ · ข้อมูลที่ได้จากชาวบ้าน (อ่านย้อนได้ตลอด)
+        const ms = microStates(s);
+        const done = ms.filter((m) => m.done).length;
+        line(`ความคืบหน้า ${done}/${ms.length} ขั้น`, 14, '#2b2118', 22, 4);
+        for (const m of ms) {
+          if (m.done) line(`✓ ${m.step.goal}`, 14, '#1f6b2a', 22, 1);
+          else if (m.current) {
+            line(`▶ ตอนนี้: ${m.step.goal}`, 15, '#7a2e1e', 22, 1);
+            line(`วิธีทำ: ${m.step.how}`, 14, '#2b2118', 40, 1);
+            if (m.step.tools?.length) line(`เครื่องมือที่ใช้: ${m.step.tools.join(' · ')}`, 14, '#5a3a1e', 40, 1);
+          }
+        }
+        const heard = s.clues.map((id) => s.getClue(id)).filter((c): c is NonNullable<typeof c> => !!c);
+        if (heard.length) {
+          space(4);
+          line('ข้อมูลที่ได้รับจากชาวบ้าน', 15, '#5a3a1e', 22, 2);
+          for (const c of heard) line(`• ${c.source}: ${s.resolveText(c.text)}`, 14, '#2b2118', 30, 2);
+        }
+        space(8);
+        continue;
+      }
       if (q.def.kind === 'main') {
         // ภารกิจหลักแสดงเฉพาะเป้าหมายถัดไป เพื่อให้หน้ากระชับ
         const next = q.def.objectives.findIndex((_, i) => !q.objectivesDone[i]);
@@ -112,6 +135,16 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       ? 'ความคืบหน้าบันทึกอัตโนมัติ · เริ่มเกมใหม่ได้จากเมนูหลัก'
       : 'กด Delete 2 ครั้ง เพื่อเริ่มด่านนี้ใหม่ (ความคืบหน้าบันทึกอัตโนมัติ)';
     footer.color = '#8a7a64';
+    // สถิติการสำรวจ (ย้ายมาจากแถบบนจอ เพื่อให้หน้าจอระหว่างเดินไม่รก)
+    line('สถิติการสำรวจ', 17, '#5a3a1e', 0, 4);
+    line(
+      `ระยะทางรวม ${fmtMeters10(s.odometer.totalMeters)} · สำรวจแล้ว ${Math.round(s.fog.exploredRatio * 100)}% ของพื้นที่ · ` +
+        `เบาะแส ${s.clues.length}/${s.level.clues?.length ?? 0} · เวลา ${Math.floor(s.elapsedMs / 60_000)} นาที`,
+      14,
+      '#2b2118',
+      20,
+      8,
+    );
     line('หลักฐานการสำรวจ', 17, '#5a3a1e', 0, 4);
     if (s.evidence.length === 0) line('ยังไม่มี', 14, '#7a6448', 20, 8);
     for (const id of s.evidence) {

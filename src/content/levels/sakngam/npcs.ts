@@ -23,8 +23,9 @@ export const sakNgamNpcs: NpcDefinition[] = [
       {
         when: { maxStep: 1 },
         nodes: [
-          { speaker: NEM, text: 'สวัสดีจ้ะ นักสืบภูมิศาสตร์! วันนี้ครูมีภารกิจพิเศษให้' },
-          { speaker: NEM, text: 'ผู้ใหญ่บ้านมีปริศนาเกี่ยวกับภูมิปัญญาของชุมชน ท่านรออยู่ที่ศาลาชุมชน' },
+          { speaker: NEM, text: 'พร้อมช่วยครูตามหารหัสหีบแล้วใช่ไหม? เริ่มจากสักงามกันก่อนนะ' },
+          { speaker: NEM, text: 'ผู้ใหญ่บ้านที่ศาลาชุมชนน่าจะรู้เรื่องรหัสชิ้นแรก' },
+          { speaker: NEM, text: 'ครูให้เครื่องมือนักสำรวจ 3 อย่าง: แผนที่ เข็มทิศ และสมุดภาคสนาม' },
           {
             speaker: NEM,
             text: 'ศาลาชุมชนอยู่ทาง{{dir:school>sala}}ของเสาธง ห่างเป็นเส้นตรงประมาณ {{dist:school>sala}} เมตร',
@@ -43,11 +44,11 @@ export const sakNgamNpcs: NpcDefinition[] = [
       {
         when: { minStep: 2, notFlags: ['mission-complete'] },
         ambient: true,
-        nodes: [{ speaker: NEM, text: 'ภารกิจอยู่ที่ศาลาชุมชนจ้ะ ถ้าลืมเบาะแส กด N เปิดสมุดภาคสนามอ่านได้เลย' }],
+        nodes: [{ speaker: NEM, text: 'ผู้ใหญ่บ้านรออยู่ที่ศาลาชุมชนจ้ะ ถ้าลืมทิศหรือระยะ กด N เปิดสมุดภาคสนามอ่านได้เลย' }],
       },
       {
         ambient: true,
-        nodes: [{ speaker: NEM, text: 'เก่งมาก! ภารกิจที่สักงามสำเร็จแล้ว เตรียมตัวสำหรับภารกิจตำบลถัดไปนะ' }],
+        nodes: [{ speaker: NEM, text: 'เก่งมาก! รหัสหีบชิ้นแรกอยู่กับเราแล้ว เตรียมตัวไปตามหาชิ้นต่อไปนะ' }],
       },
     ],
   },
@@ -67,10 +68,12 @@ export const sakNgamNpcs: NpcDefinition[] = [
         nodes: [
           {
             speaker: HEADMAN,
-            text: 'มาถึงศาลาชุมชนแล้วหรือหลาน ครูเนมบอกไว้แล้วว่าจะมีนักสืบมาช่วย',
+            text: 'อ้าว! นักสำรวจของครูเนมนี่เอง',
             effects: [{ type: 'flag', flag: 'met-headman' }],
           },
-          { speaker: HEADMAN, text: 'ชุมชนเรามีภูมิปัญญาที่ส่งต่อกันมาหลายรุ่น ลุงขอทายเป็นปริศนาก่อน' },
+          { speaker: HEADMAN, text: 'ได้ยินว่ากำลังตามหารหัสเปิดหีบเก่าอยู่ใช่ไหม?' },
+          { speaker: HEADMAN, text: 'ลุงรู้ว่ารหัสชิ้นแรกเกี่ยวกับภูมิปัญญาของสักงาม' },
+          { speaker: HEADMAN, text: 'มีงานฝีมืออย่างหนึ่ง ใช้เข็มกับด้ายสร้างลวดลายลงบนผืนผ้า' },
           { quiz: 'wisdom' },
           {
             speaker: HEADMAN,
@@ -83,10 +86,9 @@ export const sakNgamNpcs: NpcDefinition[] = [
             effects: [{ type: 'clue', clueId: 'clue-distance' }],
           },
           { quiz: 'scale' },
-          {
-            speaker: HEADMAN,
-            text: 'แต่ทางเดินจริงมีทางแยกหลายทาง ลองถามลุงคำที่ริมลำห้วย กับป้าศรีที่ต้นสักใหญ่ แล้วนำเบาะแสมาวิเคราะห์ในสมุดภาคสนาม',
-          },
+          { speaker: HEADMAN, text: 'แต่ลุงรู้แค่ทิศกับระยะเส้นตรง ไม่รู้ว่าต้องเดินไปทางไหน' },
+          { speaker: HEADMAN, text: 'ลุงคำที่ริมลำห้วย กับป้าศรีที่ต้นสักใหญ่ อาจช่วยได้' },
+          { speaker: HEADMAN, text: 'ลองไปคุยกับทั้งสองคน แล้วเอาข้อมูลมาเปรียบเทียบในสมุดภาคสนามนะ' },
         ],
       },
       {
@@ -95,13 +97,13 @@ export const sakNgamNpcs: NpcDefinition[] = [
         nodes: [
           {
             speaker: HEADMAN,
-            text: 'เบาะแสต้องครบ 3 อย่าง คือ ทิศทาง ระยะทาง และจุดสังเกต แล้วเลือกเส้นทางที่สอดคล้องกับทุกข้อในสมุดภาคสนาม (N)',
+            text: 'ไปคุยกับลุงคำที่ริมลำห้วย และป้าศรีที่ต้นสักใหญ่ แล้วเปิดสมุดภาคสนาม (N) หน้าวิเคราะห์เส้นทาง เลือกทางที่ตรงกับข้อมูลทุกข้อ',
           },
         ],
       },
       {
         ambient: true,
-        nodes: [{ speaker: HEADMAN, text: 'ขอบใจมากหลาน เรื่องราวของผ้าปักจะได้ถูกบันทึกไว้' }],
+        nodes: [{ speaker: HEADMAN, text: 'ขอบใจมากหลาน ขอให้ตามหารหัสหีบได้ครบนะ' }],
       },
     ],
   },
@@ -182,9 +184,10 @@ export const sakNgamNpcs: NpcDefinition[] = [
             speaker: NUAN,
             text: 'ต่อไปเปิดแผนที่ (M) แล้วปักหมุดตำแหน่งแหล่งผ้าปักนี้ด้วยตัวเอง ครูเนมจะได้รับข้อมูลผ่านสมุดภาคสนาม',
           },
+          { speaker: NUAN, text: 'หลานกำลังตามหารหัสหีบอยู่ใช่ไหม? ผ้าปักผืนแรกของหมู่บ้านมีลายบอกทางซ่อนอยู่' },
           {
             speaker: NUAN,
-            text: 'อีกเรื่องหนึ่ง ผ้าปักผืนแรกของหมู่บ้านมีลายบอกทางซ่อนอยู่ ป้าจดความหมายลงสมุดให้แล้ว ถ้าอยากรู้ลองตามไปดูนะ',
+            text: 'ป้าจดความหมายของลายลงสมุดให้แล้ว ลองใช้ทิศกับมาตราส่วนตามไปดู รหัสอาจซ่อนอยู่ที่นั่น',
             effects: [{ type: 'clue', clueId: 'clue-old-cloth' }],
           },
         ],
@@ -200,9 +203,14 @@ export const sakNgamNpcs: NpcDefinition[] = [
         ],
       },
       {
-        when: { notFlags: ['mission-complete'] },
+        when: { notFlags: ['mission-complete', 'pin-verified'] },
         ambient: true,
         nodes: [{ speaker: NUAN, text: 'อย่าลืมเปิดแผนที่ (M) ปักหมุดตำแหน่งแหล่งผ้าปักนะจ๊ะ' }],
+      },
+      {
+        when: { notFlags: ['mission-complete', 'mystery-found'] },
+        ambient: true,
+        nodes: [{ speaker: NUAN, text: 'ลายบอกทางบนผ้าผืนแรกอยู่ในสมุด (N) หน้าเบาะแสจ้ะ ใช้ทิศกับมาตราส่วนตามไปให้เจอนะ' }],
       },
       {
         ambient: true,

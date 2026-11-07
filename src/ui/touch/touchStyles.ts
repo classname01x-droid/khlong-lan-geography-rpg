@@ -139,23 +139,28 @@ export const TOUCH_CSS = `
   padding: 6px 9px; font-size: 14px; line-height: 1.38; pointer-events: none; overflow: hidden; }
 .tl-tracker button { pointer-events: auto; }
 .tl-tr-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.tl-tr-chapter { color: #ffd84d; font-weight: 700; font-size: 13px; }
+.tl-tr-chapter { color: #ffd84d; font-weight: 700; font-size: 14px; }
 .tl-tr-quest { color: #ffcf70; margin-top: 2px; }
-.tl-tr-obj { margin-top: 2px; }
+.tl-tr-obj { margin-top: 2px; font-size: 15px; font-weight: 700; color: #fff; }
 .tl-tr-label { color: #b9b3a3; }
-.tl-tr-prog { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; background: #2f5a25; color: #fff; font-size: 13px; }
+.tl-tr-prog { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; background: #2f5a25; color: #fff; font-size: 14px; font-weight: 400; }
 .tl-tr-hint { margin-top: 4px; color: #9be08a; }
-.tl-tr-list { margin-top: 3px; color: #d8d2c2; font-size: 13px; }
-.tl-tr-btns { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
-.tl-tr-mini, .tl-tr-pill { font: inherit; font-size: 13px; color: #2b2118; background: #e8d9a8; border: 2px solid #4a2f16;
-  border-radius: 8px; padding: 2px 8px; min-height: 36px; }
-.tl-tr-pill { font-size: 14px; min-height: 40px; max-width: 100%; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tl-tr-hint.tl-tr-hint-more { color: #ffe9a8; }
+.tl-tr-list { margin-top: 3px; color: #d8d2c2; font-size: 14px; }
+.tl-tr-btns { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; position: sticky; bottom: -6px; padding: 2px 0 4px;
+  background: rgba(16, 20, 31, 0.97); }
+.tl-tracker { overscroll-behavior: contain; touch-action: pan-y; }
+.tl-tracker::-webkit-scrollbar { width: 4px; }
+.tl-tr-mini, .tl-tr-pill { font: inherit; font-size: 14px; color: #2b2118; background: #e8d9a8; border: 2px solid #4a2f16;
+  border-radius: 8px; padding: 2px 8px; min-height: 44px; min-width: 44px; }
+.tl-tr-mini.tl-tr-help { background: #ffd84d; font-weight: 700; }
+.tl-tr-pill { font-size: 14px; min-height: 44px; max-width: 100%; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .tl-tr-pill-k { flex: none; font-weight: 700; }
 .tl-tr-pill-o { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* จอเตี้ย: ภารกิจ 1 บรรทัด · เป้าหมาย 2 บรรทัด · คำแนะนำ 2 บรรทัด (เปิด "รายละเอียด" เพื่ออ่านเต็ม) */
 .tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-quest { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-obj,
-.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-hint { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-hint:not(.tl-tr-hint-more) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tl-tr-new { color: #10141f; background: #9be08a; border-radius: 6px; padding: 1px 8px; margin-bottom: 3px; font-weight: 700; font-size: 14px; }
 .tl-tracker.tl-tr-flash { border-color: #9be08a; box-shadow: 0 0 0 2px rgba(155, 224, 138, 0.5); }
 

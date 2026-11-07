@@ -29,6 +29,11 @@ export interface Landmark {
   revealFlag?: string;
   /** สัญลักษณ์บนแผนที่สำรวจ (ไม่ระบุ = จุดธรรมดา) */
   symbol?: MapSymbol;
+  /**
+   * (ไม่บังคับ) ผู้เล่น "รู้ตำแหน่ง" แล้วเมื่อเงื่อนไขนี้เป็นจริง (เช่น ครูเนมบอกไว้) — แสดงชื่อบนแผนที่สำรวจได้ก่อนเดินไปถึง
+   * ไม่แสดงเส้นทาง · ใช้ไม่ได้กับจุดลับ (revealFlag)
+   */
+  knownWhen?: Condition;
   /** ตำแหน่งป้ายชื่อบนแผนที่สำรวจ (ค่าเริ่มต้น above) */
   mapLabelAt?: 'above' | 'below' | 'left' | 'right';
   /** สิ่งที่พบได้จากการสำรวจจริง ณ จุดนี้ (เช่น ไอน้ำร้อน หินปูนสีขาว) ใช้ตรวจหลักฐานภาคสนาม */
@@ -378,6 +383,32 @@ export type StepCondition =
   /** ผ่านเมื่อเป้าหมายย่อยทุกข้อเป็นจริง (ใช้เงื่อนไขชุดเดียวกับภารกิจ) */
   | { type: 'all'; of: ObjectiveCondition[] };
 
+/**
+ * ขั้นย่อยของฉาก (Micro-Quest) — แถบภารกิจแสดงทีละขั้น
+ * สำเร็จตามสถานะจริงของเกม (คุยแล้ว / flag / เบาะแส / ทักษะ / ค้นพบสถานที่) จึงไม่มีข้อมูลบันทึกเพิ่ม
+ * และขั้นที่ทำไปก่อนลำดับจะถูกนับว่าสำเร็จเอง · ข้อความในวงเล็บ (N) (M) แปลงเป็นชื่อปุ่มบนจอสัมผัส
+ */
+export interface MicroStep {
+  id: string;
+  /** "ตอนนี้" — เป้าหมายเดียวที่ต้องทำ */
+  goal: string;
+  /** "วิธีทำ" — วิธีเริ่มลงมือ (แสดงตลอด) */
+  how: string;
+  /** คำแนะนำระดับ 2: วิธีใช้เครื่องมือ */
+  tool: string;
+  /** คำแนะนำระดับ 3: คำถามช่วยคิด (ไม่เฉลย) */
+  think: string;
+  /** ข้อความเมื่อทำสำเร็จ เช่น "✓ รับภารกิจสำเร็จ!" */
+  doneText?: string;
+  /** เครื่องมือที่ใช้ในขั้นนี้ (แสดงในสมุดหน้าภารกิจ) */
+  tools?: string[];
+  done: ObjectiveCondition;
+  /** นับว่าสำเร็จเมื่อขั้นถัดไปในฉากเดียวกันสำเร็จแล้ว (เช่น อ่านสมุด → เปิดหน้าวิเคราะห์แล้ว) */
+  impliedByLater?: boolean;
+  /** เปิดสมุดระหว่างขั้นนี้ → เปิดที่หน้านี้ให้เลย */
+  notebookTab?: 'clues' | 'routes';
+}
+
 export interface StoryStep {
   order: number;
   title: string;
@@ -386,6 +417,15 @@ export interface StoryStep {
   landmarkId: string;
   status: StoryStepStatus;
   completeWhen?: StepCondition;
+  /** ขั้นย่อยของฉาก (ไม่บังคับ — ด่านที่ไม่มีใช้เป้าหมายของฉากเดิม) */
+  micro?: MicroStep[];
+}
+
+/** ของตกแต่งในฉาก (ภาพ placeholder ไม่มีการชน ไม่มีผลต่อภารกิจ) เช่น หีบไม้เก่าข้างครูเนม */
+export interface DecorDefinition {
+  id: string;
+  kind: 'chest' | 'chest-open';
+  at: TilePoint;
 }
 
 export interface LevelDefinition {
@@ -398,6 +438,8 @@ export interface LevelDefinition {
   landmarks: Landmark[];
   npcs: NpcDefinition[];
   story: StoryStep[];
+  /** ของตกแต่งในฉาก (ไม่บังคับ) */
+  decor?: DecorDefinition[];
   triggers?: TriggerZone[];
   quizzes?: QuizDefinition[];
   clues?: ClueDefinition[];

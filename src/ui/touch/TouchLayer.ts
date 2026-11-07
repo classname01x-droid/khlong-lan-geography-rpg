@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { CHAPTERS } from '../../content/story/chapters';
 import { THAI_DIRECTION } from '../../core/direction/Compass';
-import { buildQuestTracker, HintTracker, totalMistakes, type QuestTrackerView } from '../../core/guide/QuestGuide';
+import { buildQuestTracker, HintTracker, hintKey, totalMistakes, type QuestTrackerView } from '../../core/guide/QuestGuide';
 import { pickInteraction, type InteractionTarget } from '../../core/input/Interaction';
 import { buildTouchContext, joystickVector, TapGuard, type TouchAction, type TouchContext, type TouchContextInput } from '../../core/input/InputMapping';
 import type { CodePiece } from '../../core/progress/ProgressStore';
@@ -118,8 +118,7 @@ export class TouchLayer {
   /** เป้าหมายล่าสุดที่แสดง (ใช้ตรวจว่าเปลี่ยนแล้ว) และเวลาที่ยังแสดง "เป้าหมายใหม่" */
   private trackerKey = '';
   private trackerFlashUntil = 0;
-  /** ผู้เล่นเลือกย่อ/ขยายเองแล้ว (ไม่ย่ออัตโนมัติอีก) */
-  private trackerUserSet = false;
+  private trackerFlashText = '✓ สำเร็จ! เป้าหมายใหม่';
   private trackerDetails = false;
   private paused = false;
   private lastMode = '';
@@ -320,7 +319,6 @@ export class TouchLayer {
     const [name, arg] = id.split(':');
     if (name === 'tracker-toggle') {
       this.trackerCollapsed = !this.trackerCollapsed;
-      this.trackerUserSet = true;
     }
     if (name === 'tracker-details') this.trackerDetails = !this.trackerDetails;
     if (name === 'tut-skip') {
@@ -334,9 +332,8 @@ export class TouchLayer {
     if (name === 'tut-finish') this.world()?.tutorialAction('finish');
     if (name === 'tracker-hint') {
       this.hints.requestMore();
-      this.trackerDetails = true;
+      // ไม่เปิด "รายละเอียด" (แถบจะยาวจนปุ่มเลื่อนพ้นจอ) — คำแนะนำที่ขอแสดงเต็มอยู่แล้ว
       this.trackerCollapsed = false;
-      this.trackerUserSet = true;
     }
     if (name === 'map-zoom-in') setTouchView({ mapZoomIndex: Math.min(MAP_ZOOMS.length - 1, touchView.mapZoomIndex + 1) });
     if (name === 'map-zoom-out') setTouchView({ mapZoomIndex: Math.max(0, touchView.mapZoomIndex - 1) });
@@ -464,14 +461,16 @@ export class TouchLayer {
 
     // ---- แถบติดตามภารกิจ (ทุกอุปกรณ์ ขณะสำรวจ) ----
     const chapter = CHAPTERS.find((c) => c.levelId === s.level.id);
-    const tier = this.hints.update(s.currentStepOrder, s.elapsedMs, totalMistakes(s));
+    // ระดับคำแนะนำเริ่มใหม่ทุกครั้งที่ "ขั้น" เปลี่ยน (บทที่มีขั้นย่อย) หรือฉากเปลี่ยน
+    const tier = this.hints.update(hintKey(s), s.elapsedMs, totalMistakes(s));
     const tr = buildQuestTracker(s, { chapterOrder: chapter?.order, hintTier: tier });
     this.lastTracker = tr;
     // จอแคบที่ปุ่มซ้อนบนภาพเกม: แถบด้านบนใช้เฉพาะส่วนที่ไม่ถูกคอลัมน์ปุ่มบัง
     const hudInset = this.touch ? this.overlayInset(cr) : 0;
     const widths = hudWidths(cr.width - hudInset, this.layout?.compact ?? false);
     // จอเตี้ยมาก: เริ่มแบบย่อ (ยังเห็นเป้าหมายบรรทัดเดียว) — ผู้เล่นแตะขยายได้
-    if (this.touch && !this.trackerUserSet && cr.height < 360) this.trackerCollapsed = true;
+    // v0.17: ไม่ย่อแถบภารกิจเองแล้ว (จอเตี้ยก็ต้องเห็น "ตอนนี้ · วิธีทำ · ขอคำแนะนำ") — ผู้เล่นแตะย่อเองได้
+    // ป้าย "คุย" และป้ายชื่อในโลกเกมหลบแถบนี้เอง (v0.16)
     this.renderTracker(s.mode === 'explore' ? tr : null, cr, w, this.touch ? widths.tracker : Math.min(340, cr.width * 0.42), hudInset);
 
     // ---- แถบสถานะ (จอสัมผัส) และข้อความโต้ตอบ ----
@@ -874,7 +873,8 @@ export class TouchLayer {
       '<div class="tl-st-lines">' +
       `<div>📍 ${esc(pos)}</div>` +
       `<div>🧭 หันไป${esc(THAI_DIRECTION[s.facing])}<span class="tl-st-extra"> · เหนืออยู่ด้านบน</span></div>` +
-      `<div>📏 วัดระยะ ${esc(fmtMeters(s.odometer.tripMeters))} · รวม ${esc(fmtMeters(s.odometer.totalMeters))}</div>` +
+      // ระยะรวม/สถิติอื่นอยู่ในสมุดภาคสนาม (หน้าหลักฐาน/ข้อความ) — แถบสถานะเหลือเฉพาะที่ใช้ระหว่างเดิน
+      `<div>📏 วัดระยะ ${esc(fmtMeters(s.odometer.tripMeters))}</div>` +
       `<div class="tl-scalebar"><span class="tl-sb" style="width:${sbLen}px"></span><span>50 ม. (${tiles} ช่อง)</span></div>` +
       '</div>';
     this.setHtml('status', this.status, html);
@@ -890,12 +890,15 @@ export class TouchLayer {
       return;
     }
     const compact = this.layout?.compact ?? false;
-    const prog = `${t.progress.done}/${t.progress.total}`;
+    const prog = t.micro ? `${t.progress.done}/${t.progress.total} ขั้น` : `${t.progress.done}/${t.progress.total}`;
     const objective = wd(t.objective);
     // เป้าหมายเปลี่ยน (ทำสำเร็จ) → แจ้ง "เป้าหมายใหม่" สั้น ๆ ให้เด็กรู้ว่าภารกิจขยับแล้ว
     const key = `${t.chapterLabel}|${t.questTitle}|${t.objective}`;
     const now = performance.now();
-    if (this.trackerKey && key !== this.trackerKey) this.trackerFlashUntil = now + 2600;
+    if (this.trackerKey && key !== this.trackerKey) {
+      this.trackerFlashUntil = now + 2600;
+      this.trackerFlashText = t.doneText ?? '✓ สำเร็จ! เป้าหมายใหม่';
+    }
     this.trackerKey = key;
     const flash = now < this.trackerFlashUntil;
     this.tracker.classList.toggle('tl-tr-flash', flash);
@@ -907,23 +910,28 @@ export class TouchLayer {
         `<span class="tl-tr-pill-k">${flash ? '✓ ใหม่' : '📜'} ${esc(prog)}</span> <span class="tl-tr-pill-o">${esc(objective)}</span> ▾</button>`;
     } else {
       const collapseBtn = '<button class="tl-tr-mini" data-ui="tracker-toggle" aria-label="ย่อแถบภารกิจ">▴ ย่อ</button>';
-      if (flash) html += '<div class="tl-tr-new">✓ สำเร็จ! เป้าหมายใหม่</div>';
+      if (flash) html += `<div class="tl-tr-new">${esc(this.trackerFlashText)}</div>`;
       // จอเตี้ย: ไม่มีแถวหัวบท (ประหยัดพื้นที่) แต่ยังเห็น ภารกิจ · เป้าหมาย · ความคืบหน้า · คำแนะนำ
       if (!compact || this.trackerDetails) {
         html += `<div class="tl-tr-head"><span class="tl-tr-chapter">${esc(t.chapterLabel)}</span>${compact ? '' : collapseBtn}</div>`;
       }
       html += `<div class="tl-tr-quest">📜 ภารกิจ: ${esc(t.questTitle)}</div>`;
-      html += `<div class="tl-tr-obj">🎯 <span class="tl-tr-label">เป้าหมาย:</span> ${esc(objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
-      if (t.hint) html += `<div class="tl-tr-hint">💡 ${t.hintTier > 0 ? 'คำแนะนำ: ' : ''}${esc(wd(t.hint))}</div>`;
+      html += `<div class="tl-tr-obj">🎯 <span class="tl-tr-label">${t.micro ? 'ตอนนี้' : 'เป้าหมาย'}:</span> ${esc(objective)} <span class="tl-tr-prog">${esc(prog)}</span></div>`;
+      if (t.hint) {
+        // ระดับ 0 = วิธีเริ่มลงมือทำ · ระดับ 1–2 = คำแนะนำที่ผู้เล่นขอ (เครื่องมือ → คำถามช่วยคิด)
+        const label = t.hintTier === 0 ? (t.micro ? '👉 วิธีทำ: ' : '💡 ') : `💡 คำแนะนำ ${t.hintTier + 1}/3: `;
+        html += `<div class="tl-tr-hint${t.hintTier > 0 ? ' tl-tr-hint-more' : ''}">${label}${esc(wd(t.hint))}</div>`;
+      }
       if (this.trackerDetails) {
         if (t.remaining.length > 1) html += `<div class="tl-tr-list">ยังเหลือ: ${t.remaining.map((r) => esc(wd(r))).join(' · ')}</div>`;
         if (t.sideQuests.length) html += `<div class="tl-tr-list">ภารกิจรอง/ปริศนา: ${t.sideQuests.map((q) => esc(wd(q))).join(' · ')}</div>`;
         html += `<div class="tl-tr-list">ฉาก ${t.step.current}/${t.step.total}</div>`;
       }
       html += '<div class="tl-tr-btns">';
-      if (compact) html += collapseBtn;
-      if (compact) html += `<button class="tl-tr-mini" data-ui="tracker-details">${this.trackerDetails ? 'ซ่อน' : 'รายละเอียด'}</button>`;
-      if (!t.complete && t.hintTier < 2) html += `<button class="tl-tr-mini" data-ui="tracker-hint">💡 ${t.hintTier === 0 ? 'ช่วยหน่อย' : 'ช่วยเพิ่ม'}</button>`;
+      // ปุ่มขอคำแนะนำมาก่อน (เด่น) · บทที่มีขั้นย่อย: รายละเอียดทั้งหมดอยู่ในสมุดหน้าภารกิจ (แถบนี้จึงสั้นลง)
+      if (!t.complete && t.hintTier < 2) html += `<button class="tl-tr-mini tl-tr-help" data-ui="tracker-hint">💡 ${t.hintTier === 0 ? 'ขอคำแนะนำ' : 'ขอคำแนะนำเพิ่ม'}</button>`;
+      if (compact && !t.micro) html += `<button class="tl-tr-mini" data-ui="tracker-details">${this.trackerDetails ? 'ซ่อน' : 'รายละเอียด'}</button>`;
+      if (compact) html += t.micro ? '<button class="tl-tr-mini" data-ui="tracker-toggle" aria-label="ย่อแถบภารกิจ">▴</button>' : collapseBtn;
       html += '</div>';
     }
     this.setHtml('tracker', this.tracker, html);
@@ -931,7 +939,8 @@ export class TouchLayer {
     this.tracker.style.width = this.trackerCollapsed ? 'auto' : `${width}px`;
     this.tracker.style.maxWidth = `${width}px`;
     this.tracker.style.maxHeight = `${cr.height * (this.trackerDetails ? 0.8 : 0.62)}px`;
-    this.tracker.style.overflowY = this.trackerDetails ? 'auto' : 'hidden';
+    // เนื้อหายาว (คำแนะนำระดับ 2–3 / รายละเอียด) → เลื่อนอ่านในแถบได้ · แถวปุ่มติดขอบล่างเสมอ (แตะได้ตลอด)
+    this.tracker.style.overflowY = 'auto';
     this.tracker.style.right = `${window.innerWidth - cr.right + inset + 8}px`;
     this.tracker.style.top = `${cr.top + 8}px`;
   }

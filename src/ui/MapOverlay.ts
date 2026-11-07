@@ -275,9 +275,20 @@ export class MapOverlay {
     }
 
     for (const lm of s.level.landmarks) {
-      if (!s.isLandmarkVisible(lm)) continue;
+      if (!s.isLandmarkOnMap(lm)) continue;
       const lx = mx + (lm.at.x + 0.5) * cell;
       const ly = my + (lm.at.y + 0.5) * cell;
+      // รู้ตำแหน่งจากคำบอกเล่า แต่ยังไม่ได้ไป: วงกลมโปร่ง + "(ยังไม่ได้ไป)" — ไม่วาดเส้นทาง
+      const heard = !s.isLandmarkVisible(lm);
+      if (heard) {
+        g.lineStyle(2, 0xffd84d, 1).strokeCircle(lx, ly, 6);
+        this.labels.add(
+          scene.add
+            .text(lx, ly - 9, `${lm.name} (ยังไม่ได้ไป)`, { ...textStyle(this.labelSize(12), '#ffe9a8'), stroke: '#10141f', strokeThickness: 3 })
+            .setOrigin(0.5, 1),
+        );
+        continue;
+      }
       if (lm.symbol) {
         g.fillStyle(0xf4efe1, 0.9).fillCircle(lx, ly, 8);
         drawMapSymbol(g, lm.symbol, lx, ly);

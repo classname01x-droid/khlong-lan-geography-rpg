@@ -1,6 +1,6 @@
 import { finaleRows } from '../../content/finale';
 import { LEVEL_SEQUENCE, LEVELS, ALL_LEVELS } from '../../content/registry';
-import { CHAPTERS, FINALE_CHAPTER_ID, getChapter, getChapterIntro } from '../../content/story/chapters';
+import { CHAPTERS, CHEST_FICTION_NOTE, FINALE_CHAPTER_ID, getChapter, getChapterIntro } from '../../content/story/chapters';
 import {
   chapterStates,
   continueTarget,
@@ -226,6 +226,8 @@ export interface ChapterIntroView {
   goal: string;
   lines: Array<{ speaker: string; text: string }>;
   playable: boolean;
+  /** หีบไม้เก่า: ช่องรหัส 4 ช่อง (ยังไม่ได้ = '?') — ไม่บอกว่าในหีบมีอะไร */
+  chest: { slots: string[]; note: string } | null;
 }
 
 export function chapterIntroView(chapterId: string, p: ProgressData): ChapterIntroView | null {
@@ -241,6 +243,7 @@ export function chapterIntroView(chapterId: string, p: ProgressData): ChapterInt
     goal: main?.description ?? chapter.title,
     lines: intro.lines.map((l) => ({ speaker: l.speaker, text: resolveChapterText(l.text, p) })),
     playable: chapter.playable && !!chapter.levelId,
+    chest: intro.chest ? { slots: LEVEL_SEQUENCE.map((s) => p.codePieces[s.id]?.value ?? '?'), note: CHEST_FICTION_NOTE } : null,
   };
 }
 
@@ -287,12 +290,12 @@ export function endingView(p: ProgressData, sum: JourneySummary = endingSummary(
     `จำนวนครั้งที่ตอบผิด: ${sum.mistakes.value}${known(sum.mistakes)}`,
   ];
   return {
-    title: 'จบการเดินทาง — สำรวจครบทั้ง 4 ตำบล',
-    subtitle: 'แผนที่ภูมิปัญญาอำเภอคลองลานฉบับสมบูรณ์',
+    title: 'เปิดหีบสมบัติสำเร็จ — สำรวจครบทั้ง 4 ตำบล',
+    subtitle: 'ในหีบไม้เก่าคือแผนที่ภูมิปัญญาอำเภอคลองลาน ที่เราเติมข้อมูลจนสมบูรณ์',
     wisdom,
     codes: sum.codes.map((c) => c?.value ?? '?'),
     stats,
     skills: sum.skills.map((k) => SKILL_LABEL[k as SkillId]).filter(Boolean),
-    note: 'สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้',
+    note: `สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้ · ${CHEST_FICTION_NOTE}`,
   };
 }

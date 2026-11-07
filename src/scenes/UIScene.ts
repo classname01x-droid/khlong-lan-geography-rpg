@@ -3,7 +3,7 @@ import { CAMERA_ZOOM, GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import { THAI_DIRECTION } from '../core/direction/Compass';
 import type { GameSession } from '../core/session/GameSession';
 import { DialogueBox } from '../ui/DialogueBox';
-import { fmtDuration, fmtMeters } from '../ui/format';
+import { fmtMeters } from '../ui/format';
 import { MapOverlay } from '../ui/MapOverlay';
 import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
@@ -87,15 +87,13 @@ export class UIScene extends Phaser.Scene {
     const s = this.session;
     if (!s) return;
     const t = s.playerTile;
-    const explored = Math.round(s.fog.exploredRatio * 100);
     this.hudText.setText(
       [
         s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : `ตำแหน่ง: ช่อง X ${t.x}, Y ${t.y}`,
         `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`,
         `ระยะทางรวม: ${fmtMeters(s.odometer.totalMeters)}`,
         `ระยะที่วัด (R): ${fmtMeters(s.odometer.tripMeters)}`,
-        `สำรวจแล้ว: ${explored}% ของพื้นที่`,
-        `เบาะแส: ${s.clues.length}/${s.level.clues?.length ?? 0} · เวลา ${fmtDuration(s.elapsedMs)}`,
+        // สถิติอื่น (สำรวจแล้ว % · เบาะแส · เวลา) อยู่ในสมุดภาคสนาม หน้าหลักฐาน/ข้อความ
       ].join('\n'),
     );
     const step = s.currentStep;
@@ -193,8 +191,8 @@ export class UIScene extends Phaser.Scene {
   private createHud(): void {
     const s = this.session;
     const panel = this.add.graphics();
-    panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, 236, 8);
-    panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, 236, 8);
+    panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, 180, 8);
+    panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, 180, 8);
     const title = this.add.text(24, 18, `${s.level.tambon}\n${s.level.title}`, { ...textStyle(16, COLORS.accent), lineSpacing: 0 });
     this.hudText = this.add.text(24, 70, '', { ...textStyle(15), lineSpacing: 2 });
     this.hudParts = [panel, title, this.hudText];

@@ -236,9 +236,11 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
     const s = newSession(L1);
     const t = buildQuestTracker(s, { chapterOrder: 1 });
     expect(t.chapterLabel).toBe(`บทที่ 1: ${L1.quests!.find((q) => q.kind === 'main')!.title}`);
-    expect(t.questTitle).toBe(L1.story[0].title);
-    expect(t.objective).toBe(L1.story[0].objective);
-    expect(t.progress).toEqual({ done: 0, total: L1.story.length, label: 'ฉาก' });
+    // บทที่ 1 มีขั้นย่อย: ภารกิจหลัก · เป้าหมายเดียว · วิธีทำ · ความคืบหน้าเป็นขั้น
+    expect(t.questTitle).toBe('ตามหารหัสหีบสมบัติชิ้นแรก');
+    expect(t.objective).toBe('ไปคุยกับครูเนม');
+    expect(t.progress).toEqual({ done: 0, total: L1.story.flatMap((st) => st.micro ?? []).length, label: 'ขั้น' });
+    expect(t.micro).toBe(true);
     // คำแนะนำสั้นแสดงตั้งแต่เริ่ม: บอกว่าต้องทำอะไร (ไม่บอกคำตอบ)
     expect(t.hint).toContain('ครูเนม');
     expect(t.hintTier).toBe(0);
@@ -267,7 +269,8 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
       for (const st of L.story) {
         const s = sessionAtStep(L, st.order);
         const t = buildQuestTracker(s, { hintTier: 2 });
-        expect(t.questTitle, `${L.id}#${st.order}`).toBe(st.title);
+        const micro = L.story.some((x) => x.micro?.length);
+        expect(t.questTitle, `${L.id}#${st.order}`).toBe(micro ? L.quests!.find((q) => q.kind === 'main')!.title : st.title);
         expect(t.objective.length, `${L.id}#${st.order}`).toBeGreaterThan(3);
         expect(t.hint?.length ?? 0, `${L.id}#${st.order}`).toBeGreaterThan(5);
         expect(stepKind(L, st)).not.toBe('other');

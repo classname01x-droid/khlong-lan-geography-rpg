@@ -298,6 +298,20 @@ export function generatePlaceholderTextures(scene: Phaser.Scene): void {
   px(mark.context, 1, 1, '#ffd84d', 3, 4);
   px(mark.context, 1, 6, '#ffd84d', 3, 1);
   mark.refresh();
+
+  // หีบไม้เก่า (placeholder) — ปิด / เปิด · 12×10 px
+  for (const [key, open] of [['chest', false], ['chest-open', true]] as const) {
+    const tex = createCanvas(scene, key, 12, 10);
+    const c = tex.context;
+    px(c, 0, open ? 1 : 2, '#3b2412', 12, open ? 2 : 4); // ฝา (เส้นขอบ)
+    px(c, 1, open ? 1 : 3, '#8a5a2b', 10, open ? 1 : 2);
+    px(c, 0, 5, '#3b2412', 12, 5); // ตัวหีบ
+    px(c, 1, 6, '#a06a35', 10, 3);
+    px(c, 0, 5, '#d9a441', 12, 1); // แถบโลหะ
+    px(c, 5, 6, '#ffd84d', 2, 2); // แม่กุญแจ/ช่องรหัส
+    if (open) px(c, 2, 3, '#f4efe1', 8, 2); // กระดาษแผนที่ในหีบ
+    tex.refresh();
+  }
 }
 
 /** สร้าง animation เดินของตัวละครทุกแบบ */

@@ -54,11 +54,12 @@ describe('ระบบภารกิจ: หลัก / รอง / ปริ�
     expect(status(s, 'side-bridges')).toBe('completed');
   });
 
-  it('ภารกิจหลักสำเร็จเมื่อผ่านครบ 6 ฉาก และสถานะไม่ย้อนกลับ', () => {
+  it('ภารกิจหลักสำเร็จเมื่อผ่านครบ 7 ฉาก และสถานะไม่ย้อนกลับ', () => {
     const s = toStep5();
     explore(s, 'nai-chiao');
     talk(s, 'embroiderer-nuan');
     s.submitPin({ x: 70, y: 13 }, 1);
+    s.flags.add('mystery-found');
     s.startEnding();
     while (s.inDialogue) s.advanceDialogue();
     expect(status(s, 'main-sakngam')).toBe('completed');
@@ -71,7 +72,7 @@ describe('ระบบภารกิจ: หลัก / รอง / ปริ�
     const s = newSession();
     talk(s, 'teacher-nem');
     const main = s.quests().find((q) => q.def.kind === 'main')!;
-    expect(main.objectivesDone).toEqual([true, false, false, false, false, false]);
+    expect(main.objectivesDone).toEqual([true, false, false, false, false, false, false]);
   });
 });
 
@@ -113,15 +114,32 @@ describe('ภารกิจปริศนา: ลายผ้าผืนแ�
     expect(s.messages.length).toBe(0); // ไม่ใช่ข้อความจากครู
   });
 
-  it('ภารกิจปริศนาเป็นทางเลือก — จบด่านได้โดยไม่ต้องทำ', () => {
+  it('บทที่ 1: ต้องไขปริศนาลายผ้าผืนแรกก่อนได้รหัส — ปักหมุดอย่างเดียวไม่พอ (ทำอย่างไหนก่อนก็ได้)', () => {
+    // ปักหมุดก่อน แล้วไขปริศนา → จบด่านทันทีหลังตรวจค้นพบ
     const s = toStep5();
     explore(s, 'nai-chiao');
     talk(s, 'embroiderer-nuan');
     s.submitPin({ x: 70, y: 13 }, 1);
-    s.startEnding();
+    expect(s.startEnding()).toBe(false);
+    expect(s.completed).toBe(false);
+    const spot = s.level.inspectPoints!.find((p) => p.id === 'old-banyan-spot')!;
+    explore(s, 'old-banyan');
+    s.inspect(spot);
     while (s.inDialogue) s.advanceDialogue();
     expect(s.completed).toBe(true);
-    expect(s.summary().quests.mystery).toEqual({ done: 0, total: 1 });
+    expect(s.summary().quests.mystery).toEqual({ done: 1, total: 1 });
+
+    // ไขปริศนาก่อน แล้วปักหมุด → ตอนจบเริ่มได้หลังปักหมุด
+    const t = toStep5();
+    explore(t, 'nai-chiao');
+    talk(t, 'embroiderer-nuan');
+    explore(t, 'old-banyan');
+    t.inspect(spot);
+    while (t.inDialogue) t.advanceDialogue();
+    expect(t.flags.has('mystery-found')).toBe(true);
+    expect(t.completed).toBe(false);
+    expect(t.submitPin({ x: 70, y: 13 }, 1).ok).toBe(true);
+    expect(t.startEnding()).toBe(true);
   });
 });
 

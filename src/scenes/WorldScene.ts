@@ -19,6 +19,7 @@ import { newTutorialSave, shouldRunTutorial, TUTORIAL_NPC_ID, TutorialRun, tutor
 import { labelSizes } from '../core/ui/WorldLabels';
 import { layoutLabels, placeCue, union, type Box, type CueSide, type LabelRequest } from '../core/ui/LabelLayout';
 import { hudObstacles } from '../ui/hudObstacles';
+import { currentMicro } from '../core/guide/MicroQuest';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
@@ -176,6 +177,11 @@ export class WorldScene extends Phaser.Scene {
         .setVisible(false);
       this.labels.set(lm.id, label);
       this.labelBaseY.set(lm.id, label.y);
+    }
+
+    // ---- ของตกแต่ง (เช่น หีบไม้เก่า) — ภาพอย่างเดียว ไม่มีการชน ไม่มีผลต่อภารกิจ ----
+    for (const d of level.decor ?? []) {
+      this.add.image((d.at.x + 0.5) * S, (d.at.y + 0.5) * S, d.kind).setDepth(DEPTH.characters - 1);
     }
 
     // ---- ตัวละคร ----
@@ -831,9 +837,14 @@ export class WorldScene extends Phaser.Scene {
   /* ---------------- สมุดภาคสนาม ---------------- */
 
   private openNotebook(): void {
-    this.session.routeFeedback = null;
+    const s = this.session;
+    s.routeFeedback = null;
+    // ขั้นย่อยที่ต้อง "อ่าน" (เช่น อ่านข้อมูลจากชาวบ้าน) → เปิดที่หน้านั้นให้เลย
+    const micro = currentMicro(s);
+    if (micro?.step.notebookTab && s.notebookTabs().includes(micro.step.notebookTab)) s.notebookTab = micro.step.notebookTab;
     this.setMode('notebook');
-    if (this.session.notebookTab === 'routes') this.session.noteSkill('straight-vs-route');
+    if (s.notebookTab === 'routes') s.noteSkill('straight-vs-route');
+    s.markNotebookViewed();
   }
 
   private switchTab(delta: number): void {
@@ -842,6 +853,7 @@ export class WorldScene extends Phaser.Scene {
     const i = Math.max(0, tabs.indexOf(s.notebookTab));
     s.notebookTab = tabs[(i + delta + tabs.length) % tabs.length];
     if (s.notebookTab === 'routes') s.noteSkill('straight-vs-route');
+    s.markNotebookViewed();
     this.bumpUi();
   }
 
@@ -933,8 +945,14 @@ export class WorldScene extends Phaser.Scene {
     if (result.ok) {
       s.pinStage = 'none';
       s.pinFeedback = null;
-      s.toast('บันทึกตำแหน่งเข้าสมุดภาคสนามแล้ว — ครูเนมกำลังติดต่อมา');
-      this.withStepToasts(() => s.startEnding());
+      let ending = false;
+      this.withStepToasts(() => {
+        ending = s.startEnding();
+      });
+      // ตอนจบ (รับรหัส) ต้องไขปริศนาของบทให้ครบก่อน — ถ้ายังไม่ครบ บอกขั้นต่อไป
+      s.toast(ending ? 'บันทึกตำแหน่งเข้าสมุดภาคสนามแล้ว — ครูเนมกำลังติดต่อมา' : 'ปักหมุดสำเร็จ! ต่อไป: ไขปริศนาเพื่อรับรหัส (ดูแถบภารกิจ)');
+      // ยังไม่จบบท → ปิดแผนที่กลับไปเดิน (แถบภารกิจแสดงขั้นต่อไปทันที)
+      if (!ending) this.setMode('explore');
       return;
     }
     s.pinStage = 'cursor';

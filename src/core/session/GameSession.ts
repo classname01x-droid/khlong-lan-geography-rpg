@@ -328,6 +328,31 @@ export class GameSession {
     );
   }
 
+  /**
+   * แสดงบนแผนที่สำรวจได้หรือไม่: ค้นพบแล้ว หรือมีคนบอกตำแหน่งแล้ว (knownWhen)
+   * จุดลับ (revealFlag) ต้องค้นพบและเปิดเผยแล้วเท่านั้น
+   */
+  isLandmarkOnMap(lm: Landmark): boolean {
+    if (this.isLandmarkVisible(lm)) return true;
+    return !lm.revealFlag && lm.showLabel && !!lm.knownWhen && this.matches(lm.knownWhen);
+  }
+
+  /**
+   * ผู้เล่นเปิดดูสมุดภาคสนามหน้าปัจจุบัน — หน้าเบาะแส: จดว่าได้อ่านเบาะแสที่มีอยู่แล้ว (flag "read:<เบาะแส>")
+   * เก็บใน flags เดิม (อยู่ในบันทึกกลางด่านอยู่แล้ว) จึงไม่ต้องเพิ่มข้อมูลบันทึก
+   */
+  markNotebookViewed(): void {
+    if (this.notebookTab !== 'clues') return;
+    let changed = false;
+    for (const id of this.clues) {
+      if (!this.flags.has(`read:${id}`)) {
+        this.flags.add(`read:${id}`);
+        changed = true;
+      }
+    }
+    if (changed) this.updateQuests();
+  }
+
   noteSkill(skill: SkillId): void {
     if (this.skills.has(skill)) return;
     this.skills.add(skill);

@@ -4,7 +4,7 @@ import { khlongLanPattanaLevel as L4 } from '../src/content/levels/khlonglanpatt
 import { pongNamRonLevel as L3 } from '../src/content/levels/pongnamron';
 import { sakNgamLevel as L1 } from '../src/content/levels/sakngam';
 import { ALL_LEVELS, canEnterLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
-import { CHAPTER_INTROS, CHAPTERS, FINALE_CHAPTER_ID, getChapterIntro } from '../src/content/story/chapters';
+import { CHEST_FICTION_NOTE, CHAPTER_INTROS, CHAPTERS, FINALE_CHAPTER_ID, getChapterIntro } from '../src/content/story/chapters';
 import {
   canPlayLevel,
   chapterStates,
@@ -206,10 +206,24 @@ describe('ฉากเชื่อมเรื่อง (Chapter Transition) —
     expect(resolveChapterText('{{code:level-4}}', s.data)).toBe('?');
   });
 
-  it('บทนำบทที่ 1 แนะนำภารกิจสร้างแผนที่ภูมิปัญญาอำเภอคลองลาน', () => {
-    const text = getChapterIntro('sakngam')!.lines.map((l) => l.text).join(' ');
-    expect(text).toContain('แผนที่ภูมิปัญญาอำเภอคลองลาน');
-    expect(text).toContain('4 ตำบล');
+  it('บทนำบทที่ 1 เปิดเรื่องหีบสมบัติ: หีบไม้เก่า รหัส 4 ชิ้น และแผนที่เก่าชี้ไป 4 ชุมชน (บอกว่าเป็นเรื่องแต่ง)', () => {
+    const intro = getChapterIntro('sakngam')!;
+    const text = intro.lines.map((l) => l.text).join(' ');
+    expect(text).toContain('หีบไม้เก่า');
+    expect(text).toContain('รหัส');
+    for (const t of ['สักงาม', 'คลองน้ำไหล', 'โป่งน้ำร้อน', 'คลองลานพัฒนา']) expect(text).toContain(t);
+    expect(intro.chest).toBe(true);
+    expect(CHEST_FICTION_NOTE).toContain('เรื่องแต่ง');
+    // ไม่บอกว่าในหีบมีอะไรตั้งแต่ต้น
+    expect(text).not.toContain('แผนที่ภูมิปัญญา');
+    // บทสนทนาสั้น: ไม่เกิน 2 ประโยคยาวต่อกล่อง
+    for (const l of intro.lines) expect(l.text.length, l.text).toBeLessThanOrEqual(90);
+  });
+
+  it('ทุกบทต่อเรื่องหีบ: บอกรหัสที่ได้และจำนวนที่เหลือ · บทสุดท้ายกลับมาเปิดหีบ', () => {
+    expect(getChapterIntro('level-2')!.lines[0].text).toContain('เหลืออีก 3 ชิ้น');
+    for (const id of ['level-2', 'level-3', 'level-4', 'finale']) expect(getChapterIntro(id)!.lines.map((l) => l.text).join(' ')).toContain('หีบ');
+    expect(getChapterIntro('finale')!.lines.map((l) => l.text).join(' ')).toContain('หีบไม้เก่ารอเราอยู่');
   });
 });
 

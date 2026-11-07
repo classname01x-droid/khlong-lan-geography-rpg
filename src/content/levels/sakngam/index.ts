@@ -15,7 +15,7 @@ import {
 import { sakNgamNpcs } from './npcs';
 
 /**
- * ด่านที่ 1: ปริศนาลวดลายแห่งสักงาม
+ * ด่านที่ 1: ปริศนาลวดลายแห่งสักงาม — ตามหารหัสหีบสมบัติชิ้นแรก
  * โฟลเดอร์นี้มีแต่ "เนื้อหา" — ไม่มีโค้ดระบบเกม
  *   map.ts      ผังแผนที่
  *   npcs.ts     ตัวละครและบทพูด
@@ -32,7 +32,8 @@ export const sakNgamLevel: LevelDefinition = {
   landmarks: [
     { id: 'school', name: 'โรงเรียนสักงาม (เสาธง)', at: { x: 15, y: 40 }, showLabel: true },
     { id: 'bridge', name: 'สะพานข้ามลำห้วยใหญ่', at: { x: 32, y: 48 }, showLabel: true },
-    { id: 'sala', name: 'ศาลาชุมชน', at: { x: 46, y: 45 }, showLabel: true },
+    // ครูเนมบอกตำแหน่งแล้ว (หลังรับภารกิจ) → แสดงชื่อบนแผนที่ได้ก่อนเดินไปถึง (ไม่แสดงเส้นทาง)
+    { id: 'sala', name: 'ศาลาชุมชน', at: { x: 46, y: 45 }, showLabel: true, knownWhen: { minStep: 2 } },
     { id: 'headman-house', name: 'บ้านผู้ใหญ่บ้าน', at: { x: 54, y: 43 }, showLabel: true },
     { id: 'big-teak', name: 'ต้นสักใหญ่ (ทางแยก)', at: { x: 59, y: 30 }, showLabel: true },
     { id: 'wood-bridge', name: 'สะพานไม้ข้ามห้วยสาขา', at: { x: 60, y: 17 }, showLabel: true },
@@ -50,6 +51,8 @@ export const sakNgamLevel: LevelDefinition = {
   ],
 
   npcs: sakNgamNpcs,
+  // หีบไม้เก่าที่ครูเนมพบ (ภาพ placeholder) — เรื่องหีบเป็นเรื่องแต่งในเกม
+  decor: [{ id: 'old-chest', kind: 'chest', at: { x: 11, y: 40 } }],
   story: sakNgamStory,
   triggers: sakNgamTriggers,
   quizzes: sakNgamQuizzes,
