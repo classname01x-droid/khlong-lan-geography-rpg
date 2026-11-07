@@ -218,4 +218,13 @@ export const TOUCH_CSS = `
 .tl-joyzone.tl-coach .tl-joybase { border-color: #ffd84d; outline: 4px solid #ffd84d; animation: tlCoach 1s ease-in-out infinite; }
 .tl-joyzone.tl-coach .tl-joybase::after { content: 'ลากนิ้วที่นี่'; font-size: 14px; font-weight: 700; color: #ffd84d; bottom: -22px; }
 .tl-status.tl-coach, .tl-tracker.tl-coach { outline: 4px solid #ffd84d; animation: tlCoach 1s ease-in-out infinite; }
+
+/* แถบคำแนะนำสั้นขณะเปิดแผนที่/สมุด — ไม่บังเนื้อหา */
+.tl-coach-card.tl-co-strip { padding: 4px 8px 6px; font-size: 15px; line-height: 1.4; }
+.tl-coach-card.tl-co-col .tl-co-step { display: block; font-size: 14px; }
+.tl-coach-card.tl-co-col .tl-co-text { display: block; }
+.tl-coach-card.tl-co-bar { padding: 1px 10px; font-size: 14px; line-height: 1.35; border-width: 2px; border-radius: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 0 2px rgba(255, 216, 77, 0.7); }
+.tl-coach-card.tl-co-bar .tl-co-step { margin-right: 8px; }
+.tl-coach-card.tl-co-bar .tl-co-k { padding: 0 5px; border-width: 1px; line-height: 1.2; margin: 0; }
 `;

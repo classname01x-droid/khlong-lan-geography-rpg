@@ -24,6 +24,7 @@ import type { TutorialHighlight, TutorialView } from '../../core/tutorial/Tutori
 import { boardReader, compareReader, esc, notebookReader, summaryReader, type BoardTab, type ReaderContent } from './readerHtml';
 import { TOUCH_CSS } from './touchStyles';
 import { setTouchView, touchView } from './touchViewState';
+import { setHudObstacles } from '../hudObstacles';
 
 /** ส่วนของ WorldScene ที่ชั้นปุ่มสัมผัสเรียกใช้ */
 interface WorldControls {
@@ -486,6 +487,7 @@ export class TouchLayer {
       this.prompt.style.maxWidth = `${Math.max(160, cr.width - 2 * this.overlayInset(cr) - 24)}px`;
     } else this.setHtml('prompt', this.prompt, '');
     this.placeToast(cr, s.mode === 'explore');
+    this.publishObstacles(cr);
   }
 
   /** เปลี่ยนโหมด: เริ่มหน้าอ่านใหม่จากแท็บแรก */
@@ -744,7 +746,15 @@ export class TouchLayer {
     }
     const explore = s.mode === 'explore';
     const armed = performance.now() < this.skipArmedUntil;
-    const text = esc(tv.text).replace(/\[([^\]]+)\]/g, '<span class="tl-co-k">$1</span>');
+    const keys = (t: string) => esc(t).replace(/\[([^\]]+)\]/g, '<span class="tl-co-k">$1</span>');
+    // เปิดแผนที่/สมุดอยู่: ย่อเป็นแถบคำแนะนำสั้น วางในที่ว่างที่ไม่บังเนื้อหาและปุ่ม
+    if (tv.short && (s.mode === 'map' || s.mode === 'notebook')) {
+      this.renderCoachStrip(tv, keys(tv.short), cr);
+      return null;
+    }
+    this.coach.classList.remove('tl-co-strip', 'tl-co-col', 'tl-co-bar');
+    this.coach.style.maxWidth = '';
+    const text = keys(tv.text);
     let html = '<div class="tl-co-head">' + `<span class="tl-co-step">บทแนะนำ ${tv.index}/${tv.total}</span><b class="tl-co-title">${esc(tv.title)}</b>`;
     if (explore && !tv.finishButton)
       html += `<button class="tl-co-skip${armed ? ' tl-armed' : ''}" data-ui="tut-skip">${armed ? 'แตะอีกครั้งเพื่อข้าม' : 'ข้ามบทแนะนำ'}</button>`;
@@ -765,13 +775,91 @@ export class TouchLayer {
       // บทสนทนาอยู่ด้านล่าง → การ์ดขึ้นด้านบน
       this.coach.style.top = `${cr.top + 8}px`;
       this.coach.style.bottom = '';
+      if (!this.touch) {
+        // คอมพิวเตอร์: แผงข้อมูลซ้ายบนของภาพเกม (กว้าง 342 จาก 960) — การ์ดอยู่ทางขวาของแผง
+        const hudRight = cr.left + 350 * (cr.width / GAME_WIDTH);
+        const w = Math.min(width, cr.right - hudRight - 8);
+        this.coach.style.width = `${w}px`;
+        this.coach.style.left = `${Math.max(hudRight, cr.left + (cr.width - w) / 2)}px`;
+      }
       return null;
+    }
+    if (!this.touch) {
+      // คอมพิวเตอร์: อยู่ระหว่างแถบมาตราส่วน (ซ้ายล่าง ถึง x ≈ 290) และเข็มทิศ (ขวาล่าง คำอธิบายเริ่มที่ x ≈ 833) ของภาพเกม
+      const k = cr.width / GAME_WIDTH;
+      const x0 = cr.left + 296 * k;
+      const room = (826 - 296) * k;
+      const w = Math.min(width, room);
+      this.coach.style.width = `${w}px`;
+      this.coach.style.left = `${x0 + (room - w) / 2}px`;
     }
     // คอมพิวเตอร์: เว้นแถบคำแนะนำปุ่มด้านล่างของภาพเกม
     const below = this.touch ? 8 : Math.round(40 * (cr.height / 640));
     this.coach.style.top = '';
     this.coach.style.bottom = `${window.innerHeight - cr.bottom + below}px`;
     return explore ? this.coach.getBoundingClientRect().top : null;
+  }
+
+  /**
+   * แถบคำแนะนำสั้น (ขณะเปิดแผนที่/สมุด)
+   *   จอสัมผัส: ส่วนบนของคอลัมน์ปุ่มขวา (เหนือปุ่ม — แผนที่/สมุดไม่ใช้พื้นที่นี้)
+   *   คอมพิวเตอร์: บรรทัดเดียวที่ขอบล่างของภาพเกม (ใต้กรอบสมุด/แผนที่)
+   */
+  private renderCoachStrip(tv: TutorialView, text: string, cr: DOMRect): void {
+    const head = `<span class="tl-co-step">บทแนะนำ ${tv.index}/${tv.total}</span>`;
+    this.setHtml('coach', this.coach, `${head}<span class="tl-co-text">${text}</span>`);
+    this.coach.classList.remove('tl-co-compact');
+    this.coach.classList.add('tl-co-strip');
+    const l = this.layout;
+    if (this.touch && l) {
+      this.coach.classList.add('tl-co-col');
+      this.coach.classList.remove('tl-co-bar');
+      const btnTops = [...this.actions.querySelectorAll<HTMLElement>('.tl-btn')].map((b) => b.getBoundingClientRect().top).filter((t) => t > 0);
+      const top = l.right.y + 6;
+      const bottom = (btnTops.length ? Math.min(...btnTops) : l.right.y + l.right.h) - 16; // เว้นที่ให้ป้าย "แตะ" บนปุ่ม
+      Object.assign(this.coach.style, {
+        left: `${l.right.x + 6}px`,
+        width: `${l.right.w - 12}px`,
+        maxWidth: '',
+        top: `${top}px`,
+        bottom: '',
+        maxHeight: `${Math.max(48, bottom - top)}px`,
+      });
+      return;
+    }
+    this.coach.classList.add('tl-co-bar');
+    this.coach.classList.remove('tl-co-col');
+    // แถบกรอบสมุด/แผนที่บนคอมพิวเตอร์จบที่ y = 610 จาก 640 → ใช้แถบล่าง 30 หน่วย
+    const w = Math.min(cr.width - 16, 820);
+    Object.assign(this.coach.style, {
+      left: `${cr.left + (cr.width - w) / 2}px`,
+      width: `${w}px`,
+      maxWidth: `${w}px`,
+      top: '',
+      bottom: `${window.innerHeight - cr.bottom + 2}px`,
+      maxHeight: `${Math.floor(28 * (cr.height / 640))}px`,
+    });
+  }
+
+  /** พื้นที่ของแถบบนจอที่ซ้อนบนภาพเกม (ส่งให้ WorldScene วางป้าย "คุย" ไม่ให้ถูกบัง) */
+  private publishObstacles(cr: DOMRect): void {
+    const els: HTMLElement[] = [this.tracker, this.status, this.prompt, this.coach];
+    els.push(...this.actions.querySelectorAll<HTMLElement>('.tl-btn'));
+    if (this.root.classList.contains('tl-walk')) els.push(this.joyBase);
+    const rects = [];
+    for (const el of els) {
+      if (el.style.display === 'none' || !el.isConnected) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      // เฉพาะส่วนที่ทับภาพเกม (คอลัมน์ปุ่มข้างภาพเกมไม่บัง)
+      const x0 = Math.max(r.left, cr.left);
+      const y0 = Math.max(r.top, cr.top);
+      const x1 = Math.min(r.right, cr.right);
+      const y1 = Math.min(r.bottom, cr.bottom);
+      if (x1 <= x0 || y1 <= y0) continue;
+      rects.push({ x: x0 - cr.left, y: y0 - cr.top, w: x1 - x0, h: y1 - y0 });
+    }
+    setHudObstacles(rects);
   }
 
   /* ---------------- แถบสถานะ / แถบภารกิจ ---------------- */

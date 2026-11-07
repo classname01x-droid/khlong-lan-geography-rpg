@@ -195,6 +195,11 @@ export interface TutorialView {
   /** ความคืบหน้าในขั้นนี้ (เช่น ระยะที่วัด) */
   progress: string | null;
   highlight: TutorialHighlight | null;
+  /**
+   * ข้อความแบบสั้นสำหรับแถบคำแนะนำ เมื่อเปิดแผนที่/สมุดอยู่ (null = ใช้การ์ดปกติ)
+   * แถบนี้วางในที่ว่างที่ไม่บังเนื้อหาของแผนที่/สมุด และไม่บังปุ่ม
+   */
+  short: string | null;
   /** ขั้นสุดท้าย: แสดงปุ่ม "เริ่มภารกิจ" */
   finishButton: boolean;
 }
@@ -259,20 +264,26 @@ const EXPLORE_TEXT: Record<TutorialStepId, StepText> = {
 };
 
 /** ข้อความเมื่อเปิดหน้าต่างอื่นอยู่ (บทสนทนา/สมุด/แผนที่) — บอกวิธีอ่านต่อและวิธีปิด */
-function modeText(step: TutorialStepId, mode: string, touch: boolean): { text: string; highlight: TutorialHighlight } | null {
+function modeText(
+  step: TutorialStepId,
+  mode: string,
+  touch: boolean,
+): { text: string; short: string | null; highlight: TutorialHighlight } | null {
   if (mode === 'dialogue') {
     return touch
-      ? { text: 'แตะกล่องข้อความ หรือปุ่ม [ไปต่อ] เพื่ออ่านต่อ', highlight: 'next' }
-      : { text: 'กด [Space] หรือ [E] เพื่ออ่านต่อ', highlight: 'next' };
+      ? { text: 'แตะกล่องข้อความ หรือปุ่ม [ไปต่อ] เพื่ออ่านต่อ', short: null, highlight: 'next' }
+      : { text: 'กด [Space] หรือ [E] เพื่ออ่านต่อ', short: null, highlight: 'next' };
   }
   if (mode === 'notebook') {
     return touch
-      ? { text: 'เบาะแสทุกอย่างถูกจดไว้ที่นี่ อ่านแล้วแตะ [ปิดสมุด] เพื่อกลับไปเดิน', highlight: 'close' }
-      : { text: 'เบาะแสทุกอย่างถูกจดไว้ที่นี่ อ่านแล้วกด [N] เพื่อปิดสมุด', highlight: 'close' };
+      ? { text: 'เบาะแสทุกอย่างถูกจดไว้ที่นี่ อ่านแล้วแตะ [ปิดสมุด] เพื่อกลับไปเดิน', short: 'อ่านเบาะแสแล้วแตะ [ปิดสมุด]', highlight: 'close' }
+      : { text: 'เบาะแสทุกอย่างถูกจดไว้ที่นี่ อ่านแล้วกด [N] เพื่อปิดสมุด', short: 'อ่านเบาะแสแล้วกด [N] เพื่อปิดสมุด', highlight: 'close' };
   }
   if (mode === 'map') {
     const base = 'ทิศเหนืออยู่ด้านบนเสมอ ส่วนที่ยังไม่ได้สำรวจยังมืดอยู่';
-    return touch ? { text: `${base} แตะ [ปิดแผนที่] เพื่อกลับไปเดิน`, highlight: 'close' } : { text: `${base} กด [M] เพื่อปิด`, highlight: 'close' };
+    return touch
+      ? { text: `${base} แตะ [ปิดแผนที่] เพื่อกลับไปเดิน`, short: 'ดูเสร็จแล้วแตะ [ปิดแผนที่]', highlight: 'close' }
+      : { text: `${base} กด [M] เพื่อปิด`, short: 'ทิศเหนืออยู่ด้านบน · ส่วนที่มืดยังไม่ได้สำรวจ · กด [M] เพื่อปิดแผนที่', highlight: 'close' };
   }
   // หน้าต่างอื่นที่ไม่เกี่ยวกับขั้นนี้: ไม่แสดงบทแนะนำ (ไม่บังเนื้อหา)
   void step;
@@ -287,13 +298,13 @@ export function tutorialView(run: TutorialRun, input: Pick<TutorialInput, 'mode'
   const common = { step, index, total: TUTORIAL_STEPS.length, title: base.title };
   if (input.mode !== 'explore') {
     const m = modeText(step, input.mode, touch);
-    return m ? { ...common, text: m.text, highlight: m.highlight, progress: null, finishButton: false } : null;
+    return m ? { ...common, text: m.text, short: m.short, highlight: m.highlight, progress: null, finishButton: false } : null;
   }
   const progress =
     step === 'measure-walk' && input.measured
       ? `วัดได้ ${Math.min(TUTORIAL_MEASURE_METERS, Math.floor(input.tripMeters))}/${TUTORIAL_MEASURE_METERS} ม.`
       : null;
-  return { ...common, text: touch ? base.touch : base.keys, highlight: base.highlight, progress, finishButton: step === 'finish' };
+  return { ...common, text: touch ? base.touch : base.keys, short: null, highlight: base.highlight, progress, finishButton: step === 'finish' };
 }
 
 /** ข้อความทั้งหมดของบทแนะนำ (ใช้ตรวจว่าไม่เฉลยในการทดสอบ) */
@@ -305,7 +316,7 @@ export function allTutorialText(): string[] {
     for (const mode of ['dialogue', 'notebook', 'map'])
       for (const touch of [true, false]) {
         const m = modeText(s, mode, touch);
-        if (m) out.push(m.text);
+        if (m) out.push(m.text, ...(m.short ? [m.short] : []));
       }
   }
   return out;

@@ -17,6 +17,8 @@ import { pickInteraction } from '../core/input/Interaction';
 import { FONT_FAMILY } from '../ui/theme';
 import { newTutorialSave, shouldRunTutorial, TUTORIAL_NPC_ID, TutorialRun, tutorialView, type TutorialInput, type TutorialView } from '../core/tutorial/Tutorial';
 import { labelSizes } from '../core/ui/WorldLabels';
+import { layoutLabels, placeCue, union, type Box, type CueSide, type LabelRequest } from '../core/ui/LabelLayout';
+import { hudObstacles } from '../ui/hudObstacles';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
@@ -31,6 +33,13 @@ interface NpcInstance {
   sprite: Character;
   marker: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
+  /** ตำแหน่ง y ปกติของป้ายชื่อ (ระบบจัดป้ายเลื่อนจากค่านี้) */
+  labelY: number;
+}
+
+/** พื้นที่ของข้อความในโลกเกม (คิดจุดยึด origin) ที่ตำแหน่ง y ที่กำหนด */
+function textBox(t: Phaser.GameObjects.Text, y = t.y): Box {
+  return { x: t.x - t.displayWidth * t.originX, y: y - t.displayHeight * t.originY, w: t.displayWidth, h: t.displayHeight };
 }
 
 /** การเดินอัตโนมัติสำหรับการทดสอบ (โหมด dev เท่านั้น) */
@@ -75,6 +84,14 @@ export class WorldScene extends Phaser.Scene {
   private cueKey = '';
   /** NPC ที่ป้าย "คุย" แทนเครื่องหมาย "!" อยู่ (คืนเครื่องหมายเมื่อเดินออกจากระยะ) */
   private cueNpc: NpcInstance | null = null;
+  /** ตำแหน่งปัจจุบันของป้าย "คุย" (พิกัดโลกเกม) และด้านที่วาง */
+  private cueRect: Box | null = null;
+  private cueSide: CueSide = 'above';
+  /** ตำแหน่ง y ปกติของป้ายชื่อสถานที่ */
+  private readonly labelBaseY = new Map<string, number>();
+  /** จัดป้ายชื่อใหม่ทุก ~120 ms หรือทันทีเมื่อมีการเปลี่ยนแปลง */
+  private layoutInMs = 0;
+  private layoutDirty = true;
   /** ขนาดภาพเกมบนจอที่ใช้คำนวณขนาดป้ายล่าสุด (จอ CSS px ต่อพิกเซลโลกเกม) */
   private labelFit = 0;
   private touchUi = false;
@@ -107,6 +124,9 @@ export class WorldScene extends Phaser.Scene {
     this.labelFit = 0;
     this.cueKey = '';
     this.cueNpc = null;
+    this.cueRect = null;
+    this.labelBaseY.clear();
+    this.layoutDirty = true;
     this.tutorial = null;
     this.tutorialInput = null;
     this.touchUi = this.registry.get(REGISTRY_TOUCH_UI) === true;
@@ -153,6 +173,7 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(DEPTH.labels - 1)
         .setVisible(false);
       this.labels.set(lm.id, label);
+      this.labelBaseY.set(lm.id, label.y);
     }
 
     // ---- ตัวละคร ----
@@ -186,7 +207,7 @@ export class WorldScene extends Phaser.Scene {
         .setResolution(CAMERA_ZOOM * 2)
         .setOrigin(0.5, 0)
         .setDepth(DEPTH.labels);
-      this.npcs.push({ def, sprite, marker, label });
+      this.npcs.push({ def, sprite, marker, label, labelY: label.y });
     }
 
     // ---- การชน ----
@@ -290,6 +311,7 @@ export class WorldScene extends Phaser.Scene {
 
   private refreshLabels(): void {
     for (const lm of this.session.level.landmarks) this.labels.get(lm.id)?.setVisible(this.session.isLandmarkVisible(lm));
+    this.layoutDirty = true;
   }
 
   /** เริ่มด่านนี้ใหม่ (ลบความคืบหน้ากลางด่าน) — กด Delete 2 ครั้งในหน้า หลักฐาน/ข้อความ */
@@ -320,20 +342,23 @@ export class WorldScene extends Phaser.Scene {
     s.odometer.sample(this.player.x, this.player.y);
     this.player.setDepth(this.depthForY(this.player.y));
     this.updateFog(false);
+    // เป้าหมายโต้ตอบ (เกณฑ์เดียวกับปุ่ม "คุย" และข้อความบนจอ) — คำนวณครั้งเดียวต่อเฟรม
+    const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     this.fitLabels();
-    this.updateCue();
-    this.updateTutorial();
+    this.updateCue(target);
+    this.layoutInMs -= delta;
+    if (this.layoutDirty || this.layoutInMs <= 0) this.layoutWorldLabels();
+    this.updateTutorial(target);
   }
 
   /* =========================================================
    * บทแนะนำผู้เล่นใหม่ (ไม่กั้นเนื้อเรื่อง — ทำอะไรก่อนก็ได้)
    * ========================================================= */
 
-  private updateTutorial(): void {
+  private updateTutorial(target: ReturnType<typeof pickInteraction>): void {
     const t = this.tutorial;
     if (!t?.active) return;
     const s = this.session;
-    const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     const input: TutorialInput = {
       mode: s.mode,
       totalMeters: s.odometer.totalMeters,
@@ -397,31 +422,108 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cueText.setFontSize(z.cue);
     this.cueKey = '';
+    this.layoutDirty = true;
+  }
+
+  /** แถบบนจอ (DOM) ที่ซ้อนบนภาพเกม แปลงเป็นพิกัดโลกเกม */
+  private hudObstaclesWorld(): Box[] {
+    const cam = this.cameras.main;
+    const k = this.scale.displayScale.x / cam.zoom; // พิกเซลโลกเกมต่อ CSS px
+    const v = cam.worldView;
+    return hudObstacles.rects.map((r) => ({ x: v.x + r.x * k, y: v.y + r.y * k, w: r.w * k, h: r.h * k }));
+  }
+
+  /** พิกัดโลกเกม → CSS px บนหน้าเว็บ (ใช้กับ hook ทดสอบ) */
+  private worldToCss(b: Box): Box {
+    const cam = this.cameras.main;
+    const k = cam.zoom / this.scale.displayScale.x;
+    const c = this.game.canvas.getBoundingClientRect();
+    return { x: c.left + (b.x - cam.worldView.x) * k, y: c.top + (b.y - cam.worldView.y) * k, w: b.w * k, h: b.h * k };
+  }
+
+  /**
+   * จัดป้ายชื่อไม่ให้ทับกัน: เป้าหมายที่คุยได้ → NPC ใกล้ผู้เล่น → สถานที่ใกล้ผู้เล่น
+   * ป้ายที่ชนเลื่อนขึ้น/ลง หรือซ่อนชั่วคราว (alpha 0) — ไม่เคยแสดงป้ายที่ระบบค้นพบยังไม่อนุญาต (visible = false)
+   */
+  private layoutWorldLabels(): void {
+    this.layoutDirty = false;
+    this.layoutInMs = 120;
+    const s = this.session;
+    const p = s.playerTile;
+    const reqs: LabelRequest[] = [];
+    const blockers: Box[] = [];
+    const npcByKey = new Map<string, NpcInstance>();
+    for (const n of this.npcs) {
+      // NPC ที่ยังอยู่ใต้หมอก: ป้ายถูกหมอกบังอยู่แล้ว ไม่ต้องจัด
+      if (!s.fog.isExplored(n.def.at.x, n.def.at.y)) {
+        n.label.setY(n.labelY).setAlpha(1);
+        continue;
+      }
+      blockers.push({ x: n.sprite.x - 8, y: n.sprite.y - 8, w: 16, h: 16 });
+      if (n.marker.visible && n.marker.alpha > 0) {
+        const m = n.marker.getBounds();
+        blockers.push({ x: m.x, y: m.y, w: m.width, h: m.height });
+      }
+      const h = n.label.displayHeight;
+      const key = `npc:${n.def.id}`;
+      npcByKey.set(key, n);
+      reqs.push({
+        id: key,
+        box: textBox(n.label, n.labelY),
+        priority: (n === this.cueNpc ? -100 : 0) + Math.hypot(n.def.at.x - p.x, n.def.at.y - p.y),
+        // ชื่อ NPC อยู่ใต้ตัวละครเสมอ — เลื่อนลงได้ (เลื่อนขึ้นจะทับตัวละคร)
+        shifts: [h + 1, 2 * (h + 1)],
+      });
+    }
+    if (this.cue.visible && this.cueRect) blockers.push(this.cueRect);
+    // ป้ายที่ถูกแถบบนจอบังครึ่ง ๆ อ่านไม่ได้ → เลื่อนไปที่ว่าง หรือซ่อนไว้จนกว่ากล้องจะเลื่อนพ้น
+    blockers.push(...this.hudObstaclesWorld());
+    for (const lm of s.level.landmarks) {
+      const t = this.labels.get(lm.id);
+      // เฉพาะป้ายที่ค้นพบแล้วและไม่ใช่จุดลับที่ยังไม่เปิดเผย (refreshLabels ตั้ง visible ตาม isLandmarkVisible)
+      if (!t?.visible) continue;
+      const h = t.displayHeight;
+      reqs.push({
+        id: `lm:${lm.id}`,
+        box: textBox(t, this.labelBaseY.get(lm.id) ?? t.y),
+        priority: 1000 + Math.hypot(lm.at.x - p.x, lm.at.y - p.y),
+        shifts: [-(h + 1), h + 1, -2 * (h + 1), 2 * (h + 1)],
+      });
+    }
+    for (const r of layoutLabels(reqs, blockers)) {
+      const n = npcByKey.get(r.id);
+      const t = n ? n.label : this.labels.get(r.id.slice(3));
+      const base = n ? n.labelY : (this.labelBaseY.get(r.id.slice(3)) ?? 0);
+      t?.setY(base + r.dy).setAlpha(r.shown ? 1 : 0);
+    }
   }
 
   /** เข้าใกล้ NPC/จุดสำรวจ → ป้าย "คุย/สำรวจ" เหนือเป้าหมาย + วงแหวนกะพริบ (เป้าหมายเดียวกับปุ่มโต้ตอบ) */
-  private updateCue(): void {
+  private updateCue(target: ReturnType<typeof pickInteraction>): void {
     const s = this.session;
-    const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     const npc = target?.kind === 'npc' ? this.npcs.find((n) => n.def.id === target.id) : undefined;
-    // ป้าย "คุย" อยู่ตำแหน่งเดียวกับเครื่องหมาย "!" (ซ่อนเครื่องหมายชั่วคราว) — ป้ายไม่ลอยสูงจนไปอยู่ใต้แถบด้านบนของจอ
+    // ป้าย "คุย" ใช้แทนเครื่องหมาย "!" ของ NPC นั้น (ซ่อนเครื่องหมายชั่วคราว คืนเมื่อเดินออกจากระยะ)
     if (this.cueNpc && this.cueNpc !== npc) this.cueNpc.marker.setAlpha(1);
+    if (this.cueNpc !== (npc ?? null)) this.layoutDirty = true;
     this.cueNpc = npc ?? null;
     if (!target) {
       if (this.cue.visible) {
         this.cue.setVisible(false);
         this.cueRing.setVisible(false);
         this.cueKey = '';
+        this.cueRect = null;
+        this.layoutDirty = true;
       }
       return;
     }
+    let tbox: Box;
     let x: number;
-    let top: number;
     let feetY: number;
     if (npc) {
       x = npc.sprite.x;
       feetY = npc.sprite.y + 7;
-      top = npc.sprite.y - 9;
+      // ตัวละคร + ชื่อ (ตำแหน่งปกติ) — ป้ายวางชิดกลุ่มนี้
+      tbox = union({ x: npc.sprite.x - 8, y: npc.sprite.y - 9, w: 16, h: 17 }, textBox(npc.label, npc.labelY));
       npc.marker.setAlpha(0);
     } else {
       const at =
@@ -429,13 +531,26 @@ export class WorldScene extends Phaser.Scene {
       if (!at) return;
       x = (at.x + 0.5) * S;
       feetY = (at.y + 0.5) * S + 4;
-      top = at.y * S - 2;
+      tbox = { x: at.x * S, y: at.y * S - 2, w: S, h: S + 2 };
     }
-    const key = `${target.kind}:${target.id}:${this.labelFit}`;
+    // วางป้ายตามที่ว่าง: เหนือ → ขวา → ซ้าย → ใต้ ไม่ให้ถูกแถบภารกิจ/แถบสถานะ/การ์ดบทแนะนำบัง และเลี่ยงตัวผู้เล่น
+    const size = { w: this.cueText.width + 6, h: this.cueText.height + 2 };
+    const v = this.cameras.main.worldView;
+    const place = placeCue({
+      target: tbox,
+      size,
+      gap: 1.5,
+      view: { x: v.x + 1, y: v.y + 1, w: v.width - 2, h: v.height - 2 },
+      obstacles: this.hudObstaclesWorld(),
+      avoid: [{ x: this.player.x - 7, y: this.player.y - 8, w: 14, h: 16 }],
+    });
+    const key = `${target.kind}:${target.id}:${this.labelFit}:${place.side}`;
     if (key !== this.cueKey) {
       this.cueKey = key;
-      // ข้อความเป็นคำกริยาเท่านั้น (คุย/สำรวจ/ตรวจสอบ) — ไม่บอกชื่อสถานที่ลับ
-      this.cueText.setText(this.touchUi ? `▼ ${target.verb}` : `[E] ${target.verb}`);
+      // ข้อความเป็นคำกริยาเท่านั้น (คุย/สำรวจ/ตรวจสอบ) — ไม่บอกชื่อสถานที่ลับ · ลูกศรชี้ไปที่เป้าหมาย
+      const arrow: Record<CueSide, [string, string]> = { above: ['▼ ', ''], below: ['▲ ', ''], right: ['◀ ', ''], left: ['', ' ▶'] };
+      const [pre, post] = arrow[place.side];
+      this.cueText.setText(this.touchUi ? `${pre}${target.verb}${post}` : `[E] ${target.verb}`);
       const w = this.cueText.width + 6;
       const h = this.cueText.height + 2;
       this.cueBox.clear();
@@ -443,9 +558,15 @@ export class WorldScene extends Phaser.Scene {
       this.cueBox.lineStyle(1, 0x4a2f16, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, Math.min(4, h / 2));
       this.cueRing.clear();
       this.cueRing.lineStyle(1.5, 0xffd84d, 1).strokeEllipse(0, 0, 18, 8);
+      this.layoutDirty = true;
     }
+    const w = this.cueText.width + 6;
     const h = this.cueText.height + 2;
-    this.cue.setPosition(x, top - h / 2 - 1).setVisible(true);
+    const cx = place.box.x + place.box.w / 2;
+    const cy = place.box.y + place.box.h / 2;
+    this.cueSide = place.side;
+    this.cueRect = { x: cx - w / 2, y: cy - h / 2, w, h };
+    this.cue.setPosition(cx, cy).setVisible(true);
     this.cueRing.setPosition(x, feetY).setVisible(true);
   }
 
@@ -700,6 +821,7 @@ export class WorldScene extends Phaser.Scene {
 
   private refreshMarkers(): void {
     for (const n of this.npcs) n.marker.setVisible(this.session.hasNewDialogue(n.def));
+    this.layoutDirty = true;
   }
 
   /* ---------------- สมุดภาคสนาม ---------------- */
@@ -929,11 +1051,28 @@ export class WorldScene extends Phaser.Scene {
       session: this.session,
       walkTo: (x: number, y: number) => this.walkTo({ x, y }),
       tutorial: () => this.tutorial?.save ?? this.progress.tutorialSave(),
-      cue: () => (this.cue.visible ? { text: this.cueText.text, x: this.cue.x, y: this.cue.y } : null),
+      cue: () =>
+        this.cue.visible && this.cueRect
+          ? { text: this.cueText.text, x: this.cue.x, y: this.cue.y, side: this.cueSide, css: this.worldToCss(this.cueRect) }
+          : null,
       labels: () => ({
         fit: this.labelFit,
-        npc: this.npcs.map((n) => ({ name: n.def.name, size: n.label.style.fontSize, visible: n.label.visible })),
-        landmarks: [...this.labels.entries()].map(([id, t]) => ({ id, text: t.text, visible: t.visible, size: t.style.fontSize })),
+        npc: this.npcs.map((n) => ({
+          name: n.def.name,
+          size: n.label.style.fontSize,
+          visible: n.label.visible,
+          // แสดงจริง = มองเห็น ไม่ถูกซ่อนเพราะชน และไม่อยู่ใต้หมอก
+          shown: n.label.visible && n.label.alpha > 0 && this.session.fog.isExplored(n.def.at.x, n.def.at.y),
+          css: this.worldToCss(textBox(n.label)),
+        })),
+        landmarks: [...this.labels.entries()].map(([id, t]) => ({
+          id,
+          text: t.text,
+          visible: t.visible,
+          shown: t.visible && t.alpha > 0,
+          size: t.style.fontSize,
+          css: this.worldToCss(textBox(t)),
+        })),
       }),
     };
   }
