@@ -39,6 +39,8 @@ export const TOUCH_CSS = `
 .tl-root:not(.tl-columns) .tl-actions .tl-btn { opacity: 0.94; }
 .tl-narrowcol .tl-actions:not(.tl-explore) .tl-btn { flex-direction: column; gap: 0; }
 .tl-narrowcol .tl-actions:not(.tl-explore) .tl-btn .tl-icon { font-size: 18px; }
+/* คอลัมน์แคบ: คำยาวคำเดียว (เช่น "สัญลักษณ์") ในปุ่มครึ่งความกว้าง ตัดขึ้นบรรทัดใหม่ได้ ไม่ถูกบังครึ่งคำ */
+.tl-narrowcol .tl-actions .tl-btn.tl-half .tl-label { overflow-wrap: anywhere; word-break: break-word; }
 
 /* ---------- จอยสติก ---------- */
 .tl-joyzone { position: fixed; pointer-events: auto; touch-action: none; }
