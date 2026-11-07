@@ -434,11 +434,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** แถบบนจอ (DOM) ที่ซ้อนบนภาพเกม แปลงเป็นพิกัดโลกเกม */
-  private hudObstaclesWorld(): Box[] {
+  private hudObstaclesWorld(which: 'rects' | 'soft' = 'rects'): Box[] {
     const cam = this.cameras.main;
     const k = this.scale.displayScale.x / cam.zoom; // พิกเซลโลกเกมต่อ CSS px
     const v = cam.worldView;
-    return hudObstacles.rects.map((r) => ({ x: v.x + r.x * k, y: v.y + r.y * k, w: r.w * k, h: r.h * k }));
+    return hudObstacles[which].map((r) => ({ x: v.x + r.x * k, y: v.y + r.y * k, w: r.w * k, h: r.h * k }));
   }
 
   /** พิกัดโลกเกม → CSS px บนหน้าเว็บ (ใช้กับ hook ทดสอบ) */
@@ -550,7 +550,7 @@ export class WorldScene extends Phaser.Scene {
       gap: 1.5,
       view: { x: v.x + 1, y: v.y + 1, w: v.width - 2, h: v.height - 2 },
       obstacles: this.hudObstaclesWorld(),
-      avoid: [{ x: this.player.x - 7, y: this.player.y - 8, w: 14, h: 16 }],
+      avoid: [{ x: this.player.x - 7, y: this.player.y - 8, w: 14, h: 16 }, ...this.hudObstaclesWorld('soft')],
     };
     const place = placeCue(cueInput);
     if (import.meta.env.DEV) this.cueDebug = { input: cueInput, place };
@@ -591,6 +591,21 @@ export class WorldScene extends Phaser.Scene {
   dispatchCode(code: string): void {
     if (!this.ready || !this.session) return;
     this.handleCode(code);
+  }
+
+  /**
+   * ย้ายหมุดไปช่องที่แตะ/ลาก (จากชั้น DOM) — ใช้ได้เฉพาะขั้นเลือกตำแหน่งหมุด · ไม่ตรวจคำตอบที่นี่
+   * (การตรวจพิกัด/ประเภท/หลักฐานยังอยู่ที่ submitPin เหมือนเดิม และใช้ตำแหน่งล่าสุดของหมุด)
+   */
+  setPinCursor(tile: { x: number; y: number }): boolean {
+    const s = this.session;
+    if (!this.ready || !s || s.mode !== 'map' || s.pinStage !== 'cursor') return false;
+    const t = { x: Phaser.Math.Clamp(Math.round(tile.x), 0, s.grid.width - 1), y: Phaser.Math.Clamp(Math.round(tile.y), 0, s.grid.height - 1) };
+    if (s.pinCursor && s.pinCursor.x === t.x && s.pinCursor.y === t.y) return false;
+    s.pinCursor = t;
+    s.pinFeedback = null;
+    this.bumpUi();
+    return true;
   }
 
   /** ทิศเดินจากจอยสติกสัมผัส (0,0 = หยุด) — ใช้เมื่อไม่มีการเดินอัตโนมัติ */

@@ -83,12 +83,21 @@ describe('Input mapping: ปุ่มสัมผัส ↔ คีย์บอ�
 
   it('แผนที่: ปักหมุด/สลับแผ่น/ปิด · ขั้นเลือกประเภทสถานที่เป็นแผ่นตัวเลือก', () => {
     const map = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'cursor', canSwitchSheet: true, wisdomChoices: [] } }));
-    // ปุ่มหลัก (ปักหมุด) อยู่ล่างใกล้นิ้วโป้ง ถัดไปคือปิดแผนที่
+    // ปุ่มลูกศร 4 ทิศ (ครั้งละ 1 ช่อง ใช้รหัสลูกศรเดียวกับคีย์บอร์ด) → ปักหมุดตรงนี้ → ปุ่มรอง (ครึ่งความกว้าง)
     expect(map.actions.map((a) => [a.id, a.code])).toEqual([
-      ['sheet', 'Tab'],
+      ['pinUp', 'ArrowUp'],
+      ['pinDown', 'ArrowDown'],
+      ['pinLeft', 'ArrowLeft'],
+      ['pinRight', 'ArrowRight'],
       ['pinHere', 'Space'],
+      ['sheet', 'Tab'],
       ['close', 'KeyM'],
     ]);
+    expect(map.actions.filter((a) => a.id.startsWith('pin') && a.id !== 'pinHere').map((a) => a.label)).toEqual(['เหนือ', 'ใต้', 'ตก', 'ออก']);
+    expect(map.actions.find((a) => a.id === 'pinHere')!.primary).toBe(true);
+    // ดูแผนที่อย่างเดียว (ยังปักหมุดไม่ได้): ไม่มีปุ่มลูกศร/ปักหมุด
+    const view = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'none', canSwitchSheet: false, wisdomChoices: [] } }));
+    expect(view.actions.some((a) => a.id === 'pinUp' || a.id === 'pinHere')).toBe(false);
     const wisdom = buildTouchContext(baseInput({ mode: 'map', map: { pinStage: 'wisdom', canSwitchSheet: false, wisdomChoices: ['วัด', 'ศูนย์เรียนรู้'] } }));
     expect(wisdom.sheet!.options.map((o) => o.code)).toEqual(['Digit1', 'Digit2']);
     expect(wisdom.actions[0].code).toBe('Escape');

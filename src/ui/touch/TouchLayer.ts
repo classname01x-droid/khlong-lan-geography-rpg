@@ -25,10 +25,21 @@ import { boardReader, compareReader, esc, notebookReader, summaryReader, type Bo
 import { TOUCH_CSS } from './touchStyles';
 import { setTouchView, touchView } from './touchViewState';
 import { setHudObstacles } from '../hudObstacles';
+import { cssToGame, gameToCss, PinGesture, pinHitRadius } from '../../core/ui/PinGesture';
 
 /** ส่วนของ WorldScene ที่ชั้นปุ่มสัมผัสเรียกใช้ */
+/** ส่วนของ UIScene ที่ชั้นปักหมุดใช้ (พิกัดภาพเกม 960×640) */
+interface MapControls {
+  mapTileAt(gx: number, gy: number): { x: number; y: number } | null;
+  mapTileCenter(t: { x: number; y: number }): { x: number; y: number };
+  mapCellPx(): number;
+  mapPanPosition(): { x: number; y: number } | null;
+  mapPanFrom(from: { x: number; y: number }, dx: number, dy: number): void;
+}
+
 interface WorldControls {
   dispatchCode(code: string): void;
+  setPinCursor(tile: { x: number; y: number }): boolean;
   setTouchVector(x: number, y: number): void;
   tutorialViewFor(touch: boolean): TutorialView | null;
   tutorialAction(action: 'skip' | 'finish'): void;
@@ -69,6 +80,14 @@ type SigKey =
  */
 export class TouchLayer {
   private readonly root: HTMLDivElement;
+  /** ชั้นรับการแตะ/ลากบนแผนที่ (ปักหมุด/เลื่อนแผนที่) — อยู่เหนือ canvas ใต้แถบและปุ่มทั้งหมด */
+  private readonly pinpad: HTMLDivElement;
+  /** ป้ายพิกัดหมุด (X/Y หรือ E/N) เหนือหมุด อัปเดตทันทีขณะลาก */
+  private readonly pinBadge: HTMLDivElement;
+  private readonly pinGesture = new PinGesture();
+  private panStart: { x: number; y: number } | null = null;
+  /** เพื่อการทดสอบ: ผลการแตะ/ลากครั้งล่าสุดบนแผนที่ */
+  lastPinGesture: string = '';
   private readonly joyZone: HTMLDivElement;
   private readonly joyBase: HTMLDivElement;
   private readonly joyKnob: HTMLDivElement;
@@ -150,6 +169,9 @@ export class TouchLayer {
     };
     this.root = div('tl-root', document.body);
     this.root.classList.toggle('tl-touch', touch);
+    // ลูกแรกของชั้น → อยู่ใต้แถบแผนที่/ปุ่ม/แผ่นตัวเลือก (ที่สร้างทีหลัง) แต่อยู่เหนือ canvas
+    this.pinpad = div('tl-pinpad', this.root);
+    this.pinBadge = div('tl-pinbadge', this.root);
     this.joyZone = div('tl-joyzone', this.root);
     this.joyBase = div('tl-joybase', this.joyZone);
     this.joyKnob = div('tl-joyknob', this.joyBase);
@@ -181,6 +203,7 @@ export class TouchLayer {
 
     this.bindJoystick();
     this.bindTaps();
+    this.bindPinPad();
     this.rdBody.addEventListener('scroll', () => this.updateMore(), { passive: true });
     // สลับแอป / ซ่อนหน้า / เสียโฟกัส → หยุดเดินทันที
     const stop = () => this.resetJoystick();
@@ -291,6 +314,115 @@ export class TouchLayer {
     this.joyKnob.style.transform = 'translate(0px, 0px)';
     this.joyBase.classList.remove('tl-active');
     this.world()?.setTouchVector(0, 0);
+  }
+
+  /* ---------------- แผนที่: แตะเพื่อย้ายหมุด · ลากหมุด · ลากที่อื่นเพื่อเลื่อนแผนที่ ---------------- */
+
+  private mapControls(): MapControls | null {
+    return this.game.scene.isActive('UIScene') ? (this.game.scene.getScene('UIScene') as unknown as MapControls) : null;
+  }
+
+  /**
+   * ใช้ Pointer Events (มือถือทุกยี่ห้อ/แท็บเล็ต/เมาส์) + touch-action: none
+   * และกัน touchstart/touchmove ของเบราว์เซอร์ (เลื่อนหน้า/ซูมด้วยการแตะสองครั้ง) ด้วย preventDefault แบบ passive:false
+   * พิกัดคำนวณจากตำแหน่ง canvas ณ ตอนแตะทุกครั้ง
+   */
+  private bindPinPad(): void {
+    const pad = this.pinpad;
+    const block = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    pad.addEventListener('touchstart', block, { passive: false });
+    pad.addEventListener('touchmove', block, { passive: false });
+    pad.addEventListener('pointerdown', (e) => {
+      const s = this.session();
+      const m = this.mapControls();
+      if (!s || s.mode !== 'map' || !m) return;
+      e.preventDefault();
+      const cr = this.canvasRect();
+      let onPin = false;
+      if (s.pinStage === 'cursor' && s.pinCursor) {
+        const c = m.mapTileCenter(s.pinCursor);
+        const css = gameToCss(c.x, c.y, cr);
+        onPin = Math.hypot(e.clientX - css.x, e.clientY - css.y) <= pinHitRadius((m.mapCellPx() * cr.width) / GAME_WIDTH);
+      }
+      if (!this.pinGesture.down(e.pointerId, e.clientX, e.clientY, onPin)) return;
+      try {
+        pad.setPointerCapture(e.pointerId);
+      } catch {
+        /* บางเบราว์เซอร์จับนิ้วไม่ได้ — ยังทำงานได้จาก pointermove ปกติ */
+      }
+      this.panStart = m.mapPanPosition();
+      if (onPin) this.lastPinGesture = 'pin-start';
+    });
+    pad.addEventListener('pointermove', (e) => {
+      const m = this.mapControls();
+      if (!m || e.pointerId !== this.pinGesture.pointerId) return;
+      e.preventDefault();
+      const mode = this.pinGesture.move(e.pointerId, e.clientX, e.clientY, !!this.panStart);
+      if (mode === 'pin') this.movePinTo(e.clientX, e.clientY);
+      else if (mode === 'pan' && this.panStart) {
+        const k = GAME_WIDTH / this.canvasRect().width;
+        const st = this.pinGesture.start;
+        m.mapPanFrom(this.panStart, (e.clientX - st.x) * k, (e.clientY - st.y) * k);
+        this.placePinBadge();
+      }
+    });
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== this.pinGesture.pointerId) return;
+      const start = { ...this.pinGesture.start };
+      const r = this.pinGesture.up(e.pointerId);
+      this.lastPinGesture = r;
+      // แตะ = ย้ายหมุดไปช่องที่ "นิ้ววางลง" (นิ้วที่สั่นตอนยกไม่ทำให้ไปช่องข้าง ๆ) · ลากหมุด = วางที่ช่องที่ปล่อยนิ้ว
+      if (r === 'tap') this.movePinTo(start.x, start.y);
+      else if (r === 'pin') this.movePinTo(e.clientX, e.clientY);
+      this.panStart = null;
+    };
+    pad.addEventListener('pointerup', end);
+    const cancel = (e: PointerEvent) => {
+      if (e.pointerId !== this.pinGesture.pointerId) return;
+      this.pinGesture.reset();
+      this.panStart = null;
+      this.lastPinGesture = 'cancel';
+    };
+    pad.addEventListener('pointercancel', cancel);
+    pad.addEventListener('lostpointercapture', (e) => {
+      // ปล่อยนิ้วปกติจะได้ pointerup ก่อน — ถ้าไม่มี (เบราว์เซอร์ยกเลิกเอง) ล้างสถานะ ไม่ให้ค้าง
+      if (e.pointerId === this.pinGesture.pointerId) cancel(e);
+    });
+  }
+
+  /** ย้ายหมุดไปช่องใต้นิ้ว แล้วอัปเดตพิกัดบนจอทันที (ไม่รอรอบวาด 100 ms) */
+  private movePinTo(clientX: number, clientY: number): void {
+    const m = this.mapControls();
+    const w = this.world();
+    const s = this.session();
+    if (!m || !w || !s || s.mode !== 'map' || s.pinStage !== 'cursor') return;
+    const g = cssToGame(clientX, clientY, this.canvasRect());
+    const tile = m.mapTileAt(g.x, g.y);
+    if (!tile) return;
+    if (w.setPinCursor(tile)) this.tick();
+  }
+
+  /** ป้ายพิกัดเหนือหมุด (ขั้นเลือกตำแหน่ง) */
+  private placePinBadge(): void {
+    const s = this.session();
+    const m = this.mapControls();
+    const show = !!s && !!m && s.mode === 'map' && s.pinStage === 'cursor' && !!s.pinCursor;
+    if (!show) {
+      this.pinBadge.style.display = 'none';
+      return;
+    }
+    const t = s!.pinCursor!;
+    const text = s!.coords ? `📍 ${GridSystem.format(s!.coords.tileToGrid(t))}` : `📍 X ${t.x} · Y ${t.y}`;
+    if (this.pinBadge.textContent !== text) this.pinBadge.textContent = text;
+    const cr = this.canvasRect();
+    const c = m!.mapTileCenter(t);
+    const css = gameToCss(c.x, c.y, cr);
+    const cell = (m!.mapCellPx() * cr.width) / GAME_WIDTH;
+    this.pinBadge.style.display = 'block';
+    this.pinBadge.style.left = `${css.x}px`;
+    this.pinBadge.style.top = `${css.y - Math.max(cell * 1.5, 18)}px`;
   }
 
   /* ---------------- ปุ่ม ---------------- */
@@ -410,6 +542,8 @@ export class TouchLayer {
     const show = !!s && !this.paused;
     this.root.classList.toggle('tl-ingame', show);
     if (!s || !show) {
+      this.pinpad.style.display = 'none';
+      this.pinBadge.style.display = 'none';
       if (this.joyPointer !== null) this.resetJoystick();
       for (const [k, el] of [
         ['actions', this.actions],
@@ -430,6 +564,12 @@ export class TouchLayer {
     const w = this.wording(s);
     if (s.mode !== this.lastMode) this.onModeChange(s);
     const cr = this.canvasRect();
+    // ชั้นแตะแผนที่: เฉพาะตอนเปิดแผนที่ ครอบพื้นที่ภาพเกม
+    const padOn = s.mode === 'map';
+    this.pinpad.style.display = padOn ? 'block' : 'none';
+    if (padOn) Object.assign(this.pinpad.style, { left: `${cr.left}px`, top: `${cr.top}px`, width: `${cr.width}px`, height: `${cr.height}px` });
+    else if (this.pinGesture.pointerId !== null) this.pinGesture.reset();
+    this.placePinBadge();
     const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     this.lastTarget = target;
     const ctx = buildTouchContext(this.contextInput(s, target));
@@ -477,6 +617,11 @@ export class TouchLayer {
     if (this.touch && s.mode === 'explore') this.renderStatus(s, cr, widths);
     else this.setHtml('status', this.status, '');
     const coachTop = this.renderCoach(tv, s, cr);
+    // จอเตี้ย: แถบภารกิจ (ขวาบน) ไม่ยาวลงไปทับการ์ดบทแนะนำ (ล่าง) — เนื้อหาเลื่อนในแถบ ปุ่มติดขอบล่าง
+    if (coachTop !== null && this.tracker.style.display !== 'none') {
+      const room = Math.floor(coachTop - (cr.top + 8) - 6);
+      if (room > 0 && this.tracker.getBoundingClientRect().bottom > coachTop - 6) this.tracker.style.maxHeight = `${room}px`;
+    }
     if (target) {
       const key = this.touch ? '' : ' <span class="tl-key">E</span>';
       this.setHtml('prompt', this.prompt, `${ICON[target.kind]} ${esc(target.label)}${key}`);
@@ -663,7 +808,7 @@ export class TouchLayer {
     Object.assign(this.mapbar.style, { left: `${cr.left}px`, top: `${cr.top}px`, width: `${cr.width - inset}px` });
 
     // สถานะหมุด/ผลการปัก — ขั้นเลือกประเภทภูมิปัญญาใช้แผ่นตัวเลือกด้านล่างแทน
-    const pin = isMap && s.pinStage !== 'wisdom' ? mapPinLines(s) : { lines: [], problem: false };
+    const pin = isMap && s.pinStage !== 'wisdom' ? mapPinLines(s, { touch: true }) : { lines: [], problem: false };
     const info = pin.lines.length
       ? `<div class="${pin.problem ? 'tl-bad' : ''}">${pin.lines.map((l) => esc(w(l))).join('<br>')}</div>`
       : '';
@@ -845,7 +990,8 @@ export class TouchLayer {
     const els: HTMLElement[] = [this.tracker, this.status, this.prompt, this.coach];
     els.push(...this.actions.querySelectorAll<HTMLElement>('.tl-btn'));
     if (this.root.classList.contains('tl-walk')) els.push(this.joyBase);
-    const rects = [];
+    const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const soft: Array<{ x: number; y: number; w: number; h: number }> = [];
     for (const el of els) {
       if (el.style.display === 'none' || !el.isConnected) continue;
       const r = el.getBoundingClientRect();
@@ -856,9 +1002,9 @@ export class TouchLayer {
       const x1 = Math.min(r.right, cr.right);
       const y1 = Math.min(r.bottom, cr.bottom);
       if (x1 <= x0 || y1 <= y0) continue;
-      rects.push({ x: x0 - cr.left, y: y0 - cr.top, w: x1 - x0, h: y1 - y0 });
+      (el === this.prompt ? soft : rects).push({ x: x0 - cr.left, y: y0 - cr.top, w: x1 - x0, h: y1 - y0 });
     }
-    setHudObstacles(rects);
+    setHudObstacles(rects, soft);
   }
 
   /* ---------------- แถบสถานะ / แถบภารกิจ ---------------- */

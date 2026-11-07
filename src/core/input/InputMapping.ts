@@ -26,10 +26,14 @@ export type ActionId =
   | 'choice'
   | 'zoomIn'
   | 'zoomOut'
-  | 'legend';
+  | 'legend'
+  | 'pinUp'
+  | 'pinDown'
+  | 'pinLeft'
+  | 'pinRight';
 
 /** รหัสปุ่มคีย์บอร์ดของแต่ละคำสั่ง (ตรงกับที่ WorldScene รับอยู่เดิม) */
-export const ACTION_KEY: Record<Exclude<ActionId, 'choice' | 'close' | 'zoomIn' | 'zoomOut' | 'legend'>, string> = {
+export const ACTION_KEY: Record<Exclude<ActionId, 'choice' | 'close' | 'zoomIn' | 'zoomOut' | 'legend' | 'pinUp' | 'pinDown' | 'pinLeft' | 'pinRight'>, string> = {
   interact: 'KeyE',
   map: 'KeyM',
   notebook: 'KeyN',
@@ -189,11 +193,26 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
         };
       }
       const actions: TouchAction[] = [...zoomActions(i.view)];
-      if (i.view) actions.push({ ...uiAct('legend', 'สัญลักษณ์', '📖', 'map-legend', true, i.view.legend), half: false });
-      if (i.map.canSwitchSheet) actions.push(act('sheet', 'สลับแผ่น', '🔁', ACTION_KEY.sheet));
-      if (i.analysis) actions.push(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available));
-      if (i.map.pinStage === 'cursor') actions.push(act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true));
-      actions.push(act('close', 'ปิดแผนที่', '✕', 'KeyM'));
+      if (i.map.pinStage === 'cursor') {
+        // ปุ่มลูกศร 4 ทิศ: กด 1 ครั้ง = เลื่อนหมุด 1 ช่อง (ส่งรหัสลูกศรเดียวกับคีย์บอร์ด) · ชื่อปุ่มตามทิศบนแผนที่ (เหนืออยู่ด้านบน)
+        const arrow = (id: 'pinUp' | 'pinDown' | 'pinLeft' | 'pinRight', label: string, icon: string, code: string): TouchAction => ({
+          ...act(id, label, icon, code),
+          half: true,
+        });
+        actions.push(
+          arrow('pinUp', 'เหนือ', '▲', 'ArrowUp'),
+          arrow('pinDown', 'ใต้', '▼', 'ArrowDown'),
+          arrow('pinLeft', 'ตก', '◀', 'ArrowLeft'),
+          arrow('pinRight', 'ออก', '▶', 'ArrowRight'),
+          act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true),
+        );
+      }
+      // ปุ่มรองเป็นครึ่งความกว้าง (วางคู่กัน) ให้คอลัมน์ปุ่มพอดีจอเตี้ย
+      const half = (a: TouchAction): TouchAction => ({ ...a, half: true });
+      if (i.view) actions.push(half(uiAct('legend', 'สัญลักษณ์', '📖', 'map-legend', true, i.view.legend)));
+      if (i.map.canSwitchSheet) actions.push(half(act('sheet', 'สลับแผ่น', '🔁', ACTION_KEY.sheet)));
+      if (i.analysis) actions.push(half(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available)));
+      actions.push(half(act('close', 'ปิดแผนที่', '✕', 'KeyM')));
       return { ...none, actions };
     }
     case 'notebook':

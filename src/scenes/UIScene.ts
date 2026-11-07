@@ -148,15 +148,39 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  /* ---------- สำหรับชั้น DOM (TouchLayer): ปักหมุด/เลื่อนแผนที่ ด้วยพิกัดภาพเกม ---------- */
+
+  mapTileAt(gx: number, gy: number): { x: number; y: number } | null {
+    return this.session?.mode === 'map' ? this.mapOverlay.tileAt(gx, gy) : null;
+  }
+
+  mapTileCenter(t: { x: number; y: number }): { x: number; y: number } {
+    return this.mapOverlay.tileCenter(t);
+  }
+
+  mapCellPx(): number {
+    return this.mapOverlay.cellOnScreen;
+  }
+
+  mapPanPosition(): { x: number; y: number } | null {
+    return this.mapOverlay.panPosition;
+  }
+
+  mapPanFrom(from: { x: number; y: number }, dx: number, dy: number): void {
+    this.mapOverlay.panFrom(from, dx, dy);
+  }
+
   /**
-   * แตะ/คลิกบนแผนที่ = ย้ายหมุดไปช่องนั้น · ลากนิ้ว = เลื่อนแผนที่ที่ขยายอยู่ (จอสัมผัส)
+   * หน้าเปรียบเทียบแผนที่ (จอสัมผัส): ลากนิ้ว = เลื่อนแผนที่ฐานที่ขยายอยู่
+   * หน้าแผนที่ (ปักหมุด/เลื่อน) ใช้ชั้น DOM ของ TouchLayer แทน (core/ui/PinGesture — วัดระยะเป็น CSS px)
    * แยกการแตะกับการลากด้วยระยะ DRAG_THRESHOLD และใช้เฉพาะนิ้วแรก — คีย์ลูกศรเดิมยังใช้ได้
    */
   private bindMapPointer(): void {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       const s = this.session;
-      if (!s || (s.mode !== 'map' && s.mode !== 'compare') || this.drag) return;
-      const from = s.mode === 'map' ? this.mapOverlay.panPosition : this.compare.panPosition;
+      // หน้าแผนที่: ชั้น DOM (PinGesture) รับการแตะ/ลากแทน · เหลือเฉพาะหน้าเปรียบเทียบแผนที่ที่ใช้ทางนี้
+      if (!s || s.mode !== 'compare' || (this.drag && p.id === this.drag.id && p.isDown)) return;
+      const from = this.compare.panPosition;
       this.drag = { id: p.id, x: p.x, y: p.y, from, moved: false };
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -164,26 +188,21 @@ export class UIScene extends Phaser.Scene {
       if (!d || p.id !== d.id || !p.isDown) return;
       const dx = p.x - d.x;
       const dy = p.y - d.y;
-      if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      // ระยะลากวัดเป็น CSS px ของจอจริง (เดิมวัดเป็นหน่วยภาพเกม ทำให้บนโทรศัพท์นิ้วสั่นเล็กน้อยก็นับเป็นการลาก)
+      const cssPerGame = this.game.canvas.getBoundingClientRect().width / GAME_WIDTH;
+      if (!d.moved && Math.hypot(dx, dy) * cssPerGame < DRAG_THRESHOLD) return;
       d.moved = true;
       if (!d.from) return;
-      if (this.session.mode === 'map') this.mapOverlay.panFrom(d.from, dx, dy);
-      else if (this.session.mode === 'compare') this.compare.panFrom(d.from, dx, dy);
+      if (this.session.mode === 'compare') this.compare.panFrom(d.from, dx, dy);
     });
     const end = (p: Phaser.Input.Pointer) => {
       const d = this.drag;
       if (!d || p.id !== d.id) return;
       this.drag = null;
-      const s = this.session;
-      if (d.moved || !s || s.mode !== 'map' || s.pinStage !== 'cursor') return;
-      const tile = this.mapOverlay.tileAt(p.x, p.y);
-      if (!tile) return;
-      s.pinCursor = tile;
-      s.pinFeedback = null;
-      s.uiVersion++;
     };
     this.input.on('pointerup', end);
     this.input.on('pointerupoutside', end);
+    this.input.on('gameout', () => (this.drag = null));
   }
 
   /* ---------------- HUD ---------------- */

@@ -34,7 +34,7 @@ export function mapHint(s: GameSession): string {
 }
 
 /** สถานะการปักหมุด + ผลการปัก (บรรทัดว่าง = ไม่มีอะไรแสดง) */
-export function mapPinLines(s: GameSession): { lines: string[]; problem: boolean } {
+export function mapPinLines(s: GameSession, opts: { touch?: boolean } = {}): { lines: string[]; problem: boolean } {
   const lines: string[] = [];
   const pinning = s.pinStage !== 'none' && s.pinCursor;
   if (pinning && s.pinCursor) {
@@ -43,7 +43,11 @@ export function mapPinLines(s: GameSession): { lines: string[]; problem: boolean
       ? `พิกัดหมุด: ${GridSystem.format(s.coords.tileToGrid(s.pinCursor))}`
       : `ตำแหน่งหมุด: ช่อง X ${s.pinCursor.x}, Y ${s.pinCursor.y}`;
     if (s.pinStage === 'cursor') {
-      lines.push(`โหมดปักหมุด · ${where} · WASD/ลูกศร: เลื่อน · Space: ปักหมุด`);
+      lines.push(
+        opts.touch
+          ? `โหมดปักหมุด · ${where} · แตะแผนที่หรือลากหมุด · ปุ่มลูกศรเลื่อนทีละช่อง`
+          : `โหมดปักหมุด · ${where} · คลิก/ลากหมุด หรือ WASD/ลูกศร: เลื่อน · Space: ปักหมุด`,
+      );
     } else {
       lines.push(`โหมดปักหมุด · ${where}`);
       lines.push(`${pin.wisdomPrompt}:  ${pin.wisdomChoices.map((c, i) => `${i + 1}) ${c.label}`).join('    ')}`);

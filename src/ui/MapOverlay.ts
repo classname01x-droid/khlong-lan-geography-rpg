@@ -154,6 +154,18 @@ export class MapOverlay {
     return this.zp ? this.zp.position : null;
   }
 
+  /** จุดกึ่งกลางของช่อง (พิกัดภาพเกม 960×640 ตามระดับขยาย/การเลื่อนปัจจุบัน) — ใช้ตรวจว่าแตะโดนหมุดหรือไม่ */
+  tileCenter(t: { x: number; y: number }): { x: number; y: number } {
+    if (this.zp) return { x: this.zp.position.x + (t.x + 0.5) * this.zp.cellPx, y: this.zp.position.y + (t.y + 0.5) * this.zp.cellPx };
+    const { x: mx, y: my, cell } = this.geom;
+    return { x: mx + (t.x + 0.5) * cell, y: my + (t.y + 0.5) * cell };
+  }
+
+  /** ขนาดช่องบนภาพเกม ณ ระดับขยายปัจจุบัน */
+  get cellOnScreen(): number {
+    return this.zp ? this.zp.cellPx : this.geom.cell;
+  }
+
   /** ช่องแผนที่ ณ ตำแหน่งบนจอ (ใช้กับการแตะ/คลิกเพื่อวางหมุด) — นอกแผนที่ = null */
   tileAt(px: number, py: number): { x: number; y: number } | null {
     if (this.zp) return this.zp.tileAt(px, py);

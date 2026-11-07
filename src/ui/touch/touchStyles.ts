@@ -232,4 +232,11 @@ export const TOUCH_CSS = `
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 0 2px rgba(255, 216, 77, 0.7); }
 .tl-coach-card.tl-co-bar .tl-co-step { margin-right: 8px; }
 .tl-coach-card.tl-co-bar .tl-co-k { padding: 0 5px; border-width: 1px; line-height: 1.2; margin: 0; }
+
+/* ---------- แผนที่: ชั้นรับการแตะ/ลาก (ปักหมุด/เลื่อนแผนที่) + ป้ายพิกัดหมุด ---------- */
+.tl-root > .tl-pinpad { position: fixed; pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; cursor: crosshair; background: transparent; }
+.tl-pinbadge { position: fixed; transform: translate(-50%, -100%); background: #ff4dd2; color: #fff; border: 2px solid #fff;
+  border-radius: 8px; padding: 2px 8px; font-size: 14px; font-weight: 700; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); z-index: 1; }
 `;
