@@ -7,7 +7,7 @@
  *     ป้ายที่ชนกับป้ายที่วางแล้ว → ลองเลื่อนขึ้น/ลง · ไม่มีที่ว่าง → ซ่อนชั่วคราว (ป้ายที่อยู่ไกลกว่าจะถูกซ่อนก่อน)
  *   - ระบบนี้ "ซ่อน/เลื่อน" ได้อย่างเดียว ไม่เคยแสดงป้ายที่ผู้เรียกไม่ได้ส่งมา
  *     (ป้ายสถานที่ลับที่ยังไม่ค้นพบไม่ถูกส่งมา จึงไม่มีทางปรากฏ)
- *   - ป้าย "คุย": ลองวาง เหนือ → ขวา → ซ้าย → ใต้ เป้าหมาย เลือกตำแหน่งแรกที่อยู่ในจอและไม่ถูกแถบบนจอบัง
+ *   - ป้าย "คุย": ลองวางรอบเป้าหมาย (เหนือ/ขวา/ซ้าย/ใต้ และเลื่อนตามขอบได้เล็กน้อย) เลือกตำแหน่งที่ใกล้ที่สุดที่อยู่ในจอและไม่ถูกแถบบนจอบัง
  */
 export interface Box {
   x: number;
@@ -72,21 +72,47 @@ export function cueBox(side: CueSide, i: Pick<CueInput, 'target' | 'size' | 'gap
   }
 }
 
+/** ความชอบของแต่ละด้าน (หน่วยเดียวกับระยะ) — เหนือ NPC ดีที่สุด ใต้ NPC (ทับชื่อ/ใกล้ผู้เล่น) รองสุดท้าย */
+const SIDE_BIAS: Record<CueSide, number> = { above: 0, right: 4, left: 4, below: 12 };
+
 /**
- * เลือกตำแหน่งป้าย: (1) อยู่ในจอ ไม่ถูกบัง และไม่ทับผู้เล่น → (2) อยู่ในจอและไม่ถูกบัง → (3) ถูกบังน้อยที่สุด
- * ลำดับที่ลอง: เหนือ ขวา ซ้าย ใต้ (ทุกตำแหน่งติดเป้าหมาย)
+ * ตำแหน่งที่ลองได้ทั้งหมด: แต่ละด้านเลื่อนไปตามขอบเป้าหมายได้เล็กน้อย (ยังติดเป้าหมาย)
+ * เพื่อหาที่ว่างเมื่อแถบบนจอบังตำแหน่งกึ่งกลางของด้านนั้น
+ */
+export function cueCandidates(i: Pick<CueInput, 'target' | 'size' | 'gap'>): Array<{ side: CueSide; box: Box; score: number }> {
+  const out: Array<{ side: CueSide; box: Box; score: number }> = [];
+  const tc = { x: i.target.x + i.target.w / 2, y: i.target.y + i.target.h / 2 };
+  const { w, h } = i.size;
+  for (const side of CUE_SIDES) {
+    const base = cueBox(side, i);
+    const slides: Array<[number, number]> =
+      side === 'above' || side === 'below'
+        ? [[0, 0], [-w / 2, 0], [w / 2, 0], [-w, 0], [w, 0]]
+        : [[0, 0], [0, -h], [0, h], [side === 'left' ? -w / 2 : w / 2, 0], [side === 'left' ? -w / 2 : w / 2, -h], [side === 'left' ? -w / 2 : w / 2, h]];
+    for (const [dx, dy] of slides) {
+      const box = { ...base, x: base.x + dx, y: base.y + dy };
+      const dist = Math.hypot(box.x + w / 2 - tc.x, box.y + h / 2 - tc.y);
+      out.push({ side, box, score: dist + SIDE_BIAS[side] });
+    }
+  }
+  return out.sort((a, b) => a.score - b.score);
+}
+
+/**
+ * เลือกตำแหน่งป้าย (ใกล้เป้าหมายที่สุดก่อน · ชอบด้านบน):
+ *   (1) อยู่ในจอ ไม่ถูกบัง และไม่ทับผู้เล่น → (2) อยู่ในจอและไม่ถูกบัง → (3) ถูกบังน้อยที่สุด
  */
 export function placeCue(i: CueInput): { side: CueSide; box: Box; blocked: boolean } {
-  const cands = CUE_SIDES.map((side) => ({ side, box: cueBox(side, i) }));
+  const cands = cueCandidates(i);
   const covered = (b: Box) => i.obstacles.some((o) => overlaps(b, o));
   const clear = cands.filter((c) => inside(c.box, i.view) && !covered(c.box));
   const best = clear.find((c) => !(i.avoid ?? []).some((a) => overlaps(c.box, a))) ?? clear[0];
-  if (best) return { ...best, blocked: false };
+  if (best) return { side: best.side, box: best.box, blocked: false };
   // ไม่มีตำแหน่งว่างเลย (จอเล็กมาก): เลือกตำแหน่งที่ถูกบังน้อยที่สุด
   const hidden = (b: Box) =>
     i.obstacles.reduce((a, o) => a + overlapArea(b, o), 0) + (b.w * b.h - visibleArea(b, i.view));
   const fallback = cands.reduce((a, c) => (hidden(c.box) < hidden(a.box) ? c : a));
-  return { ...fallback, blocked: true };
+  return { side: fallback.side, box: fallback.box, blocked: true };
 }
 
 function visibleArea(b: Box, view: Box): number {

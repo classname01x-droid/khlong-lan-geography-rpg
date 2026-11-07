@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_FPS } from '../src/config/constants';
-import { cueBox, inside, layoutLabels, overlaps, placeCue, type Box } from '../src/core/ui/LabelLayout';
+import { cueCandidates, inside, layoutLabels, overlaps, placeCue, type Box } from '../src/core/ui/LabelLayout';
 import { TutorialRun, tutorialView, TUTORIAL_STEPS, type TutorialInput } from '../src/core/tutorial/Tutorial';
 
 const view: Box = { x: 0, y: 0, w: 320, h: 213 };
@@ -42,7 +42,20 @@ describe('ป้าย "คุย": วางตามที่ว่าง ไ�
     const all: Box = { x: 0, y: 0, w: 320, h: 213 };
     const p = placeCue({ target: npc, size, gap: 1.5, view, obstacles: [all] });
     expect(p.blocked).toBe(true);
-    expect(cueBox(p.side, { target: npc, size, gap: 1.5 })).toEqual(p.box);
+    expect(cueCandidates({ target: npc, size, gap: 1.5 }).some((c) => c.side === p.side && c.box.x === p.box.x && c.box.y === p.box.y)).toBe(true);
+  });
+
+  it('แถบใหญ่บังกึ่งกลางทุกด้าน → เลื่อนตามขอบไปที่ว่างที่ใกล้ที่สุด (ยังติด NPC)', () => {
+    // แถบภารกิจสูงเกินครึ่งจอ ขอบซ้ายอยู่เกือบชิดตัว NPC (กรณีที่พบบน iPhone SE 3)
+    const tracker: Box = { x: 146, y: 0, w: 174, h: 125 };
+    const prompt: Box = { x: 110, y: 128, w: 100, h: 16 };
+    const p = placeCue({ target: npc, size, gap: 1.5, view, obstacles: [tracker, prompt] });
+    expect(p.blocked).toBe(false);
+    expect(overlaps(p.box, tracker) || overlaps(p.box, prompt)).toBe(false);
+    // ระยะจากขอบป้ายถึงขอบ NPC ไม่เกิน 1 ช่อง (16 px)
+    const gx = Math.max(0, npc.x - (p.box.x + p.box.w), p.box.x - (npc.x + npc.w));
+    const gy = Math.max(0, npc.y - (p.box.y + p.box.h), p.box.y - (npc.y + npc.h));
+    expect(Math.hypot(gx, gy)).toBeLessThanOrEqual(16);
   });
 });
 
