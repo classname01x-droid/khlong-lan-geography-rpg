@@ -79,6 +79,9 @@ export const TOUCH_CSS = `
 .tl-paper .tl-rd-title { color: #5a3a1e; }
 .tl-dark .tl-rd-title { color: #ffd84d; }
 .tl-rd-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+/* จอเตี้ย: แท็บแถวเดียว (เลื่อนซ้าย–ขวาได้) — ไม่กินความสูงของเนื้อหาและตัวเลือก */
+.tl-compact .tl-reader .tl-rd-tabs { flex-wrap: nowrap; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+.tl-compact .tl-reader .tl-tab { flex: none; padding: 4px 10px; }
 .tl-tab { font: inherit; font-size: 15px; font-weight: 600; min-height: 40px; padding: 4px 12px; border-radius: 10px;
   border: 2px solid #8a6d3b; background: transparent; color: inherit; }
 .tl-tab.tl-tab-on { background: #8a6d3b; color: #fff6d5; }
@@ -91,6 +94,11 @@ export const TOUCH_CSS = `
 .tl-paper .tl-rd-more { color: #7a6448; background: #eadfc2; }
 .tl-dark .tl-rd-more { color: #ffd84d; background: #1b2233; }
 .tl-rd-foot { flex: none; padding: 6px 10px 8px; border-top: 2px solid rgba(138, 109, 59, 0.35); }
+/* ตัวเลือกท้ายหน้าอ่าน (เช่น เส้นทาง ก ข ค): แถวเดียว · ท้ายหน้าเลื่อนได้ — คำอธิบายเมื่อตอบผิดไม่ดันตัวเลือกพ้นจอเตี้ย */
+.tl-rd-foot { max-height: 62%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.tl-rd-choices .tl-option { flex: 1 1 28%; width: auto; min-width: 0; padding: 4px 8px !important; gap: 6px; }
+.tl-rd-choices .tl-option .tl-label { white-space: nowrap !important; }
+.tl-rd-choices + .tl-foot-text, .tl-rd-choices ~ p { margin-top: 4px; }
 .tl-ln { margin: 0 0 4px; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
 .tl-ln.tl-heading { font-size: 17px; font-weight: 700; margin-top: 4px; }
 .tl-ln.tl-note { font-size: 14.5px; }
@@ -109,7 +117,7 @@ export const TOUCH_CSS = `
 .tl-bad { color: #ff9b8a; }
 .tl-warn, .tl-accent { color: #ffd84d; }
 .tl-muted { color: #b9b3a3; }
-.tl-rd-choices { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.tl-rd-choices { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .tl-rd-choices .tl-btn { min-height: 44px; }
 .tl-pause .tl-btn { min-height: 52px; }
 

@@ -695,7 +695,8 @@ export class TouchLayer {
         const r = notebookReader(buildNotebookView(s, { touch: true }), s.notebookTabs(), NOTEBOOK_TAB_LABEL, s.level.tambon, w);
         // ตัวเลือกเส้นทาง (หน้า วิเคราะห์เส้นทาง) อยู่ท้ายหน้าอ่าน ไม่บังเนื้อหา
         if (ctx.sheet?.options.length) {
-          r.foot += `<div class="tl-rd-choices">${ctx.sheet.options.map((o) => this.button(o, 'tl-option')).join('')}</div>`;
+          // ตัวเลือกอยู่บนสุดของท้ายหน้า (เห็นเสมอแม้จอเตี้ย) · คำอธิบายเมื่อตอบผิดอยู่ใต้ตัวเลือก เลื่อนอ่านได้
+          r.foot = `<div class="tl-rd-choices">${ctx.sheet.options.map((o) => this.button(o, 'tl-option')).join('')}</div>` + r.foot;
         }
         return r;
       }
