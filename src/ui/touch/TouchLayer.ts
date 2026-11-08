@@ -501,7 +501,9 @@ export class TouchLayer {
     if (name === 'compare-tab') setTouchView({ compareTab: arg === 'text' ? 'text' : arg === '1' ? 1 : 0 });
     if (name === 'board-tab') this.boardTab = arg as BoardTab;
     if (name === 'nb-tab') this.gotoNotebookTab(arg as NotebookTab);
-    this.lastSig.tracker = '';
+    // บังคับวาดแถบภารกิจใหม่ในเฟรมถัดไป — ใช้ค่าเฉพาะที่ไม่เท่ากับ HTML ใด ๆ (ถ้าใช้ '' แล้วเฟรมถัดไปต้องการล้างแถบ จะถูกมองว่าไม่เปลี่ยน
+    // และแถบเก่าค้างทับแผนที่ เช่น กดปุ่มลัดแล้วเปิดแผนที่)
+    this.lastSig.tracker = '\u0000';
   }
 
   /** แท็บสมุด: ใช้คำสั่งเปลี่ยนหน้าเดิม (ลูกศรขวา) ทีละหน้าจนถึงแท็บที่แตะ — เส้นทางคำสั่งเดียวกับคีย์บอร์ด */

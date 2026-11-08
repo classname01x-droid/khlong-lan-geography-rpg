@@ -35,6 +35,7 @@ export class MapOverlay {
   private readonly circleG: Phaser.GameObjects.Graphics;
   private readonly dyn: Phaser.GameObjects.Container;
   private readonly pinPanel: Phaser.GameObjects.Text;
+  private readonly panelFont: number;
   private readonly hint: Phaser.GameObjects.Text;
   private geom: { x: number; y: number; cell: number };
   /** ชั้นที่มีตัวแผนที่ (คอมพิวเตอร์: อยู่ใน root ที่ตำแหน่งเดิม · จอสัมผัส: ชั้นขยาย/เลื่อนได้) */
@@ -55,7 +56,9 @@ export class MapOverlay {
     touch = false,
   ) {
     const { width, height } = s.grid;
-    const cell = Math.floor(Math.min((GAME_WIDTH - 160) / width, (GAME_HEIGHT - 210) / height));
+    // ด่านที่มีการวิเคราะห์พื้นที่ (บท 3) ต้องมีที่ใต้แผนที่ให้ผลรายเกณฑ์ 4 ข้อ + ข้อความล็อก/วิธีใช้ → ย่อแผนที่ลงเล็กน้อยบนคอมพิวเตอร์
+    const below = s.level.settlementAnalysis ? 275 : 210;
+    const cell = Math.floor(Math.min((GAME_WIDTH - 160) / width, (GAME_HEIGHT - below) / height));
     const mw = width * cell;
     const mh = height * cell;
     const mx = Math.floor((GAME_WIDTH - mw) / 2);
@@ -99,7 +102,8 @@ export class MapOverlay {
     ]);
     this.hint = scene.add.text(mx + mw, by + 4, '', textStyle(13, COLORS.textDim)).setOrigin(1, 0);
     const north = scene.add.text(mx + mw + 18, my, '▲\nN\nเหนือ', { ...textStyle(14, COLORS.accent), align: 'center' });
-    this.pinPanel = scene.add.text(40, by + 28, '', { ...textStyle(15), lineSpacing: 2 });
+    this.panelFont = s.level.settlementAnalysis ? 13 : 15;
+    this.pinPanel = scene.add.text(40, by + 28, '', { ...textStyle(this.panelFont), lineSpacing: 2 });
     this.legendG = scene.add.graphics();
     this.legendLabels = scene.add.container(0, 0);
     this.legendRoot = scene.add.container(0, 0, [this.legendG, this.legendLabels]);
@@ -228,7 +232,7 @@ export class MapOverlay {
     this.drawCircles();
     this.hint.setText(mapHint(s));
     const pin = mapPinLines(s);
-    this.pinPanel.setText(wrapThaiText(pin.lines.join('\n'), GAME_WIDTH - 80, `15px ${FONT_FAMILY}`));
+    this.pinPanel.setText(wrapThaiText(pin.lines.join('\n'), GAME_WIDTH - 80, `${this.panelFont}px ${FONT_FAMILY}`));
     this.pinPanel.setColor(pin.problem ? '#ffb4a3' : COLORS.text);
   }
 

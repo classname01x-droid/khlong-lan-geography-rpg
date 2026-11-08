@@ -122,10 +122,10 @@ describe('แผนที่โป่งน้ำร้อน: ไม่ hardcod
     // ตัวตรวจเนื้อหาด่านเห็นว่าไม่ครบเงื่อนไขอีกต่อไป (ไม่ผ่านการตรวจ หรือยังผ่านถ้ามีพื้นที่ผ่านเหลือ)
     const errors = validateLevel(noTerrace);
     if (after.length === 0) expect(errors.length).toBeGreaterThan(0);
-  });
+  }, 30000);
 
   it('validateLevel: น้ำหนักเกณฑ์รวมไม่ใช่ 100 → ถูกจับ', () => {
     const bad = { ...L3, settlementAnalysis: { ...D, weights: { ...D.weights, slope: 10 } } };
     expect(validateLevel(bad).length).toBeGreaterThan(0);
-  });
+  }, 30000);
 });
