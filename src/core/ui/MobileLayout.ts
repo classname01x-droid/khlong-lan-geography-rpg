@@ -89,7 +89,9 @@ export function computeMobileLayout(vw: number, vh: number, insets: Insets, touc
  */
 export function hudWidths(canvasW: number, compact: boolean): { tracker: number; status: number; tightStatus: boolean } {
   const gap = 8;
-  const tracker = Math.round(Math.min(compact ? 290 : 340, canvasW * (compact ? 0.48 : 0.42)));
+  // v0.19: แถบภารกิจแสดงวิธีทำทีละข้อ (ยาวขึ้น) — ต้องไม่บังตัวผู้เล่นที่อยู่กลางภาพเกม:
+  //   จอเตี้ย: กว้างไม่เกินครึ่งภาพลบ 16 px (สูงได้มากแทน) · จอใหญ่: กว้างได้ถึง 360 px (ยังอยู่ขวาของกลางภาพ)
+  const tracker = Math.round(compact ? Math.min(300, canvasW / 2 - 16) : Math.min(360, canvasW * 0.46));
   const status = Math.max(0, Math.floor(canvasW - tracker - gap * 3));
   return { tracker, status, tightStatus: status < 250 };
 }

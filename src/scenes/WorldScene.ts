@@ -19,7 +19,10 @@ import { newTutorialSave, shouldRunTutorial, TUTORIAL_NPC_ID, TutorialRun, tutor
 import { labelSizes } from '../core/ui/WorldLabels';
 import { layoutLabels, placeCue, union, type Box, type CueSide, type LabelRequest } from '../core/ui/LabelLayout';
 import { hudObstacles } from '../ui/hudObstacles';
-import { currentMicro } from '../core/guide/MicroQuest';
+import { currentMicro, hasMicroSteps } from '../core/guide/MicroQuest';
+import { edgeIndicator, guideTarget, type GuideTarget } from '../core/guide/Navigation';
+import type { GuideActionId } from '../content/types';
+import type { NotebookTab } from '../core/session/GameSession';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
@@ -27,7 +30,7 @@ import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goT
 export const PAUSE_ITEMS = ['เล่นต่อ', 'คำแนะนำการควบคุม', 'แผนที่การเดินทาง', 'กลับเมนูหลัก'] as const;
 
 const S = TILE_SIZE_PX;
-const DEPTH = { characters: 20, labels: 40, grid: 60, cue: 95, fog: 100 } as const;
+const DEPTH = { characters: 20, labels: 40, grid: 60, cue: 95, fog: 100, guide: 105 } as const;
 
 interface NpcInstance {
   def: NpcDefinition;
@@ -98,6 +101,17 @@ export class WorldScene extends Phaser.Scene {
   /** ขนาดภาพเกมบนจอที่ใช้คำนวณขนาดป้ายล่าสุด (จอ CSS px ต่อพิกเซลโลกเกม) */
   private labelFit = 0;
   private touchUi = false;
+  /** นำทาง: เส้นวัดระยะ + จุดเริ่มวัด (เหนือหมอก) · ลูกศรขอบจอ/ป้าย ! ของเป้าหมาย */
+  private measureGfx!: Phaser.GameObjects.Graphics;
+  private measureLabel!: Phaser.GameObjects.Text;
+  private guideArrow!: Phaser.GameObjects.Container;
+  private guideArrowGfx!: Phaser.GameObjects.Graphics;
+  private guideArrowText!: Phaser.GameObjects.Text;
+  private guide: GuideTarget | null = null;
+  private guideKey = '';
+  private guideInMs = 0;
+  /** (dev) ตำแหน่งลูกศร/ป้ายนำทางล่าสุด */
+  private guideDebug: { mode: 'off' | 'edge' | 'beacon' | 'marker'; x: number; y: number; angle: number } = { mode: 'off', x: 0, y: 0, angle: 0 };
 
   constructor() {
     super('WorldScene');
@@ -248,6 +262,24 @@ export class WorldScene extends Phaser.Scene {
     this.cue = this.add.container(0, 0, [this.cueBox, this.cueText]).setDepth(DEPTH.cue).setVisible(false);
     this.tweens.add({ targets: this.cueRing, alpha: 0.35, duration: 520, yoyo: true, repeat: -1 });
 
+    // ---- นำทาง: เส้นวัดระยะจากจุดอ้างอิง และลูกศรขอบจอชี้ไปเป้าหมาย (อยู่เหนือหมอก — ตำแหน่งที่รู้แล้วเท่านั้น) ----
+    this.measureGfx = this.add.graphics().setDepth(DEPTH.guide);
+    this.measureLabel = this.add
+      .text(0, 0, '', { fontFamily: FONT_FAMILY, fontSize: '6px', color: '#2b2118', backgroundColor: '#ffd84d', padding: { x: 2, y: 1, top: 2 } })
+      .setResolution(CAMERA_ZOOM * 2)
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH.guide + 1)
+      .setVisible(false);
+    this.guideArrowGfx = this.add.graphics();
+    this.guideArrowText = this.add
+      .text(0, 0, '', { fontFamily: FONT_FAMILY, fontSize: '6px', color: '#2b2118', padding: { top: 2 } })
+      .setResolution(CAMERA_ZOOM * 2)
+      .setOrigin(0.5, 0.5);
+    this.guideArrow = this.add.container(0, 0, [this.guideArrowGfx, this.guideArrowText]).setDepth(DEPTH.guide + 2).setVisible(false);
+    this.guide = null;
+    this.guideKey = '';
+    this.guideInMs = 0;
+
     kb.on('keydown', (ev: KeyboardEvent) => this.handleCode(ev.code));
 
     // ---- ความคืบหน้า: เล่นต่อจากที่บันทึกไว้ (เพิ่ม ?new=1 ใน URL เพื่อเริ่มใหม่) ----
@@ -348,8 +380,15 @@ export class WorldScene extends Phaser.Scene {
 
     // ระยะทางจากตำแหน่งจริงหลังชน (ไม่ใช่จากความเร็ว)
     s.odometer.sample(this.player.x, this.player.y);
+    const feet = this.player.feet;
+    s.playerPx = { x: feet.x, y: feet.y };
     this.player.setDepth(this.depthForY(this.player.y));
     this.updateFog(false);
+    // นำทาง: สถานะเป้าหมาย (ทุก ~200 ms) · ลูกศรขอบจอ และเส้นวัดระยะ (ทุกเฟรม — ตามตำแหน่งจริง)
+    this.guideInMs -= delta;
+    if (this.guideInMs <= 0) this.refreshGuide();
+    this.updateGuideArrow();
+    this.drawMeasure();
     // เป้าหมายโต้ตอบ (เกณฑ์เดียวกับปุ่ม "คุย" และข้อความบนจอ) — คำนวณครั้งเดียวต่อเฟรม
     const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     this.fitLabels();
@@ -622,11 +661,8 @@ export class WorldScene extends Phaser.Scene {
     switch (s.mode) {
       case 'explore':
         if (confirm) this.interact();
-        else if (code === 'KeyR') {
-          s.odometer.resetTrip();
-          s.noteSkill('odometer');
-          s.toast('เริ่มวัดระยะใหม่จากจุดนี้');
-        } else if (code === 'KeyG') {
+        else if (code === 'KeyR') this.startMeasure();
+        else if (code === 'KeyG') {
           s.showGrid = !s.showGrid;
           this.gridOverlay.setVisible(s.showGrid);
         } else if (code === 'KeyM') this.openMap();
@@ -712,6 +748,11 @@ export class WorldScene extends Phaser.Scene {
 
   private openCompare(): void {
     const s = this.session;
+    // บทที่ 1: ปุ่มวิเคราะห์ (C) = กระดานวิเคราะห์เส้นทาง (หน้าในสมุด) — ไม่ต้องจำว่าอยู่หน้าไหน
+    if (s.level.routeAnalysis && !s.level.mapComparison && !s.level.gridSiteAnalysis && !s.level.integratedSiteAnalysis) {
+      this.openNotebook('routes');
+      return;
+    }
     // ด่านที่ใช้พิกัดกริด: C = กระดานวิเคราะห์พิกัด (ด่านที่มีแผนที่ฐานยังใช้หน้าเปรียบเทียบเดิม)
     if (s.level.gridSiteAnalysis || s.level.integratedSiteAnalysis) {
       // บท 3 เปิดตั้งแต่ฉาก 4 · บท 4 เปิดตั้งแต่ฉาก 5 (ตาม availableWhen ของข้อมูลด่าน)
@@ -725,6 +766,7 @@ export class WorldScene extends Phaser.Scene {
       }
       s.pinStage = 'none';
       s.clearAnalysisChoice();
+      s.noteOpened('gridcheck');
       this.setMode('gridcheck');
       return;
     }
@@ -734,6 +776,7 @@ export class WorldScene extends Phaser.Scene {
     }
     s.pinStage = 'none';
     s.lastCompare = null;
+    s.noteOpened('compare');
     this.setMode('compare');
   }
 
@@ -805,6 +848,8 @@ export class WorldScene extends Phaser.Scene {
     }
     // ฉากถัดไปของบทยังไม่ถูกสร้าง → แจ้ง และเก็บสถานะไว้ (บันทึกอัตโนมัติด้านล่าง)
     if (after !== before && s.currentStep?.status === 'planned') s.toast(`${IN_DEVELOPMENT_MESSAGE} — ความคืบหน้าถูกบันทึกไว้แล้ว`);
+    s.syncQuestMeasure();
+    this.guideKey = '';
     this.refreshMarkers();
     this.refreshLabels();
     this.bumpUi();
@@ -844,19 +889,204 @@ export class WorldScene extends Phaser.Scene {
     this.withStepToasts(() => this.session.talkTo(npc.def));
   }
 
+  /**
+   * เครื่องหมาย "!" — บทที่มีขั้นย่อย: แสดงเฉพาะ NPC ที่เป็นเป้าหมายของขั้นปัจจุบัน (ไม่ให้หลายคนแย่งความสนใจ)
+   * ชื่อของ NPC เป้าหมายเป็นสีเหลือง · บทอื่น: NPC ที่มีเรื่องใหม่
+   */
   private refreshMarkers(): void {
-    for (const n of this.npcs) n.marker.setVisible(this.session.hasNewDialogue(n.def));
+    const s = this.session;
+    const micro = hasMicroSteps(s);
+    const target = guideTarget(s);
+    this.guide = target;
+    for (const n of this.npcs) {
+      const isTarget = target?.kind === 'npc' && target.id === n.def.id;
+      n.marker.setVisible(micro ? isTarget : s.hasNewDialogue(n.def));
+      n.label.setColor(isTarget ? '#ffd84d' : '#ffffff');
+    }
     this.layoutDirty = true;
+  }
+
+  /** ตรวจเป้าหมายนำทาง/การวัดของขั้นปัจจุบัน (เปลี่ยนเมื่อทำขั้นสำเร็จ — ตรวจเป็นระยะ ไม่ต้องผูกกับทุกเหตุการณ์) */
+  private refreshGuide(): void {
+    this.guideInMs = 200;
+    const s = this.session;
+    s.syncQuestMeasure();
+    const t = guideTarget(s);
+    const key = t ? `${t.kind}:${t.id}` : '';
+    if (key !== this.guideKey) {
+      this.guideKey = key;
+      this.refreshMarkers();
+    }
+  }
+
+  /** ลูกศรที่ขอบจอชี้ไปเป้าหมายนอกจอ · เป้าหมายในจอแต่ยังอยู่ใต้หมอก/เป็นสถานที่ → ป้าย ! เหนือหมอกที่ตำแหน่งนั้น */
+  private updateGuideArrow(): void {
+    const s = this.session;
+    const t = this.guide;
+    if (!t || s.mode !== 'explore' || this.cueNpc?.def.id === t.id) {
+      this.guideArrow.setVisible(false);
+      this.guideDebug = { mode: 'off', x: 0, y: 0, angle: 0 };
+      return;
+    }
+    const tx = (t.at.x + 0.5) * S;
+    const ty = (t.at.y + 0.5) * S - (t.kind === 'npc' ? 12 : 4);
+    const v = this.cameras.main.worldView;
+    const z = labelSizes(this.labelFit || 1);
+    const dist = Math.round(s.scale.metersToTiles(s.scale.pxToMeters(Math.hypot(tx - s.playerPx.x, ty - s.playerPx.y)))) * s.scale.config.metersPerTile;
+    const text = `${t.name} ${dist.toLocaleString('en-US')} ม.`;
+    if (this.guideArrowText.text !== text) this.guideArrowText.setText(text);
+    this.guideArrowText.setFontSize(z.cue);
+    const w = this.guideArrowText.width + 14;
+    const h = this.guideArrowText.height + 4;
+    const ind = edgeIndicator({ x: v.x, y: v.y, w: v.width, h: v.height }, { x: tx, y: ty }, { w, h }, 2, this.hudObstaclesWorld());
+    const explored = s.fog.isExplored(t.at.x, t.at.y);
+    if (ind.onScreen && t.kind === 'npc' && explored) {
+      // NPC เป้าหมายอยู่ในจอและมองเห็นได้ → ใช้เครื่องหมาย ! เหนือหัวตามปกติ
+      this.guideArrow.setVisible(false);
+      this.guideDebug = { mode: 'marker', x: tx, y: ty, angle: 0 };
+      return;
+    }
+    const g = this.guideArrowGfx;
+    g.clear();
+    g.fillStyle(0xffd84d, 1).fillRoundedRect(-w / 2, -h / 2, w, h, Math.min(4, h / 2));
+    g.lineStyle(1, 0x4a2f16, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, Math.min(4, h / 2));
+    if (ind.onScreen) {
+      // ในจอ (ใต้หมอก หรือเป็นสถานที่): ป้าย "! ชื่อ" เหนือตำแหน่ง + ลูกศรชี้ลง
+      this.guideArrowText.setText(`! ${t.name}`).setPosition(0, 0);
+      const ww = this.guideArrowText.width + 8;
+      g.clear();
+      g.fillStyle(0xffd84d, 1).fillRoundedRect(-ww / 2, -h / 2, ww, h, Math.min(4, h / 2));
+      g.lineStyle(1, 0x4a2f16, 1).strokeRoundedRect(-ww / 2, -h / 2, ww, h, Math.min(4, h / 2));
+      g.fillStyle(0xffd84d, 1).fillTriangle(-3, h / 2, 3, h / 2, 0, h / 2 + 4);
+      this.guideArrow.setPosition(tx, ty - h / 2 - 4).setVisible(true);
+      this.guideDebug = { mode: 'beacon', x: tx, y: ty - h / 2 - 4, angle: Math.PI / 2 };
+      return;
+    }
+    // นอกจอ: ป้ายที่ขอบจอ + สามเหลี่ยมชี้ไปทางเป้าหมาย
+    const a = ind.angle;
+    const r = Math.max(w, h) / 2 + 1;
+    const ax = Math.cos(a) * (w / 2 + 1);
+    const ay = Math.sin(a) * (h / 2 + 1);
+    const px = Math.cos(a + Math.PI / 2) * 3;
+    const py = Math.sin(a + Math.PI / 2) * 3;
+    const tipX = Math.cos(a) * Math.min(r, Math.hypot(ax, ay) + 5);
+    const tipY = Math.sin(a) * Math.min(r, Math.hypot(ax, ay) + 5);
+    g.fillStyle(0xffd84d, 1).fillTriangle(ax + px, ay + py, ax - px, ay - py, tipX, tipY);
+    g.lineStyle(1, 0x4a2f16, 1).strokeTriangle(ax + px, ay + py, ax - px, ay - py, tipX, tipY);
+    this.guideArrowText.setText(`${text}`).setPosition(0, 0);
+    this.guideArrow.setPosition(ind.x, ind.y).setVisible(true);
+    this.guideDebug = { mode: 'edge', x: ind.x, y: ind.y, angle: a };
+  }
+
+  /** เส้นวัดระยะ: จากจุดเริ่มวัด (จุดอ้างอิงของภารกิจ) ถึงตำแหน่งจริงของผู้เล่น + ป้ายชื่อจุดเริ่มวัด */
+  private drawMeasure(): void {
+    const s = this.session;
+    const g = this.measureGfx;
+    g.clear();
+    const m = s.measure;
+    if (!m || s.mode !== 'explore') {
+      this.measureLabel.setVisible(false);
+      return;
+    }
+    const ox = (m.origin.x + 0.5) * S;
+    const oy = (m.origin.y + 0.5) * S;
+    const px = s.playerPx.x;
+    const py = s.playerPx.y;
+    // เส้นประสีเหลือง (ขอบเข้มให้อ่านได้ทุกพื้น)
+    const len = Math.hypot(px - ox, py - oy);
+    const steps = Math.max(1, Math.floor(len / 4));
+    for (const [width, color] of [[2.4, 0x3a2410], [1.2, 0xffd84d]] as const) {
+      g.lineStyle(width, color, 1);
+      for (let i = 0; i < steps; i += 2) {
+        const a = i / steps;
+        const b = Math.min(1, (i + 1) / steps);
+        g.lineBetween(ox + (px - ox) * a, oy + (py - oy) * a, ox + (px - ox) * b, oy + (py - oy) * b);
+      }
+    }
+    // จุดเริ่มวัด: วงกลม + เสาธงเล็ก
+    g.fillStyle(0x3a2410, 1).fillCircle(ox, oy, 3.2);
+    g.fillStyle(0xffd84d, 1).fillCircle(ox, oy, 2.2);
+    g.lineStyle(1, 0x3a2410, 1).lineBetween(ox, oy, ox, oy - 9);
+    g.fillStyle(0xff6b4a, 1).fillTriangle(ox, oy - 9, ox + 5, oy - 7.5, ox, oy - 6);
+    const z = labelSizes(this.labelFit || 1);
+    const label = `จุดเริ่มวัด: ${m.label}`;
+    if (this.measureLabel.text !== label) this.measureLabel.setText(label);
+    this.measureLabel.setFontSize(z.cue).setPosition(ox, oy - 10).setVisible(true);
+  }
+
+  /** ปุ่มวัดระยะ / R — เริ่มวัด (จุดอ้างอิงของภารกิจ หรือจุดที่ยืน) */
+  private startMeasure(): void {
+    const s = this.session;
+    const m = s.startMeasure();
+    s.toast(m.originId ? `เริ่มวัดจาก${m.label} — ดูเส้นสีเหลืองและแถบวัดระยะ` : 'เริ่มวัดระยะจากจุดที่ยืนอยู่');
+    this.withStepToasts(() => undefined);
+  }
+
+  /** คำสั่งจากแถบวัดระยะ (ปุ่มบนจอ): เริ่มวัดใหม่จากตรงนี้ · หยุดวัด */
+  measureAction(action: 'restart' | 'stop'): void {
+    const s = this.session;
+    if (!this.ready || !s || s.mode !== 'explore') return;
+    if (action === 'stop') s.stopMeasure();
+    else if (s.restartMeasureHere()) s.toast('เริ่มวัดใหม่จากจุดที่ยืนอยู่');
+    this.bumpUi();
+  }
+
+  /**
+   * ปุ่มลัดบนแถบภารกิจ: เปิดเครื่องมือที่ขั้นนี้ต้องใช้ทันที (ทุกอุปกรณ์) — เส้นทางเดียวกับปุ่ม/คีย์เดิม
+   */
+  guideAction(id: GuideActionId): void {
+    const s = this.session;
+    if (!this.ready || !s || s.mode !== 'explore') return;
+    this.cancelWalk();
+    this.player.setVelocity(0, 0);
+    switch (id) {
+      case 'map':
+        this.openMap();
+        return;
+      case 'pin':
+        this.openMap();
+        return;
+      case 'target': {
+        const t = guideTarget(s);
+        if (t) s.mapFocus = { ...t.at };
+        this.openMap();
+        return;
+      }
+      case 'sheets': {
+        this.openMap();
+        // เปิดที่แผนที่ฐานฉบับที่ยังไม่ได้ดู (หรือฉบับแรก)
+        const sheets = s.availableSheets();
+        const next = sheets.find((m) => !s.flags.has(`viewed-sheet-${m.id}`)) ?? sheets[0];
+        for (let i = 0; next && s.mapSheet !== next.id && i <= sheets.length; i++) s.cycleSheet();
+        this.withStepToasts(() => undefined);
+        return;
+      }
+      case 'clues':
+        this.openNotebook('clues');
+        return;
+      case 'routes':
+        this.openNotebook('routes');
+        return;
+      case 'measure':
+        this.startMeasure();
+        return;
+      case 'analysis':
+      case 'compare':
+        this.openCompare();
+        return;
+    }
   }
 
   /* ---------------- สมุดภาคสนาม ---------------- */
 
-  private openNotebook(): void {
+  private openNotebook(tab?: NotebookTab): void {
     const s = this.session;
     s.routeFeedback = null;
+    s.newClues.length = 0;
     // ขั้นย่อยที่ต้อง "อ่าน" (เช่น อ่านข้อมูลจากชาวบ้าน) → เปิดที่หน้านั้นให้เลย
     const micro = currentMicro(s);
-    if (micro?.step.notebookTab && s.notebookTabs().includes(micro.step.notebookTab)) s.notebookTab = micro.step.notebookTab;
+    const want = tab ?? micro?.step.notebookTab;
+    if (want && s.notebookTabs().includes(want)) s.notebookTab = want;
     this.setMode('notebook');
     if (s.notebookTab === 'routes') s.noteSkill('straight-vs-route');
     s.markNotebookViewed();
@@ -1021,6 +1251,8 @@ export class WorldScene extends Phaser.Scene {
     if (!force && key === this.lastTileKey) return;
     this.lastTileKey = key;
     s.playerTile = { x: tx, y: ty };
+    // เดินถึงใกล้ NPC ที่ภารกิจให้ "ไปพบ" → นับขั้นนั้นสำเร็จ (ทำก่อนลำดับก็นับ)
+    if (!force && s.notePlayerNear(s.playerTile)) this.withStepToasts(() => undefined);
 
     const revealed = s.fog.reveal(tx, ty, s.level.fog.revealRadiusTiles);
     for (const t of revealed) this.fogLayer.removeTileAt(t.x, t.y);
@@ -1089,6 +1321,9 @@ export class WorldScene extends Phaser.Scene {
       walkTo: (x: number, y: number) => this.walkTo({ x, y }),
       tutorial: () => this.tutorial?.save ?? this.progress.tutorialSave(),
       cueDebug: () => this.cueDebug,
+      guide: () => ({ ...this.guideDebug, target: this.guide, css: this.guideArrow.visible ? (() => { const r = this.guideArrow.getBounds(); return this.worldToCss({ x: r.x, y: r.y, w: r.width, h: r.height }); })() : null }),
+      measure: () => this.session.measureReading(),
+      guideAction: (id: GuideActionId) => this.guideAction(id),
       cue: () =>
         this.cue.visible && this.cueRect
           ? { text: this.cueText.text, x: this.cue.x, y: this.cue.y, side: this.cueSide, css: this.worldToCss(this.cueRect) }

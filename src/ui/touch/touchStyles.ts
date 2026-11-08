@@ -9,7 +9,7 @@ export const TOUCH_CSS = `
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .tl-root * { box-sizing: border-box; }
 .tl-root > div { display: none; }
-.tl-root.tl-ingame > .tl-tracker, .tl-root.tl-ingame > .tl-prompt, .tl-root.tl-ingame > .tl-coach-card { display: block; }
+.tl-root.tl-ingame > .tl-tracker, .tl-root.tl-ingame > .tl-prompt, .tl-root.tl-ingame > .tl-coach-card, .tl-root.tl-ingame > .tl-measure { display: block; }
 .tl-root.tl-touch.tl-ingame > .tl-actions, .tl-root.tl-touch.tl-ingame > .tl-sheet, .tl-root.tl-touch.tl-ingame > .tl-status,
 .tl-root.tl-touch.tl-ingame > .tl-mapbar { display: flex; }
 .tl-root.tl-touch.tl-ingame > .tl-mapinfo, .tl-root.tl-touch.tl-ingame > .tl-toast, .tl-root.tl-touch.tl-ingame > .tl-legend { display: block; }
@@ -165,6 +165,37 @@ export const TOUCH_CSS = `
 .tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-hint:not(.tl-tr-hint-more) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tl-tr-new { color: #10141f; background: #9be08a; border-radius: 6px; padding: 1px 8px; margin-bottom: 3px; font-weight: 700; font-size: 14px; }
 .tl-tracker.tl-tr-flash { border-color: #9be08a; box-shadow: 0 0 0 2px rgba(155, 224, 138, 0.5); }
+/* v0.19 นำทางด้วยการกระทำ: เครื่องมือ · วิธีทำทีละข้อ · เมื่อสำเร็จ · ปุ่มลัด */
+.tl-tr-phase { color: #b9e3ff; font-size: 14px; }
+.tl-tr-prog-row { margin-top: 1px; color: #d8d2c2; font-size: 14px; }
+.tl-tr-tools { margin-top: 3px; color: #f4efe1; font-size: 14px; }
+.tl-tr-how { margin-top: 3px; color: #9be08a; font-size: 14px; }
+.tl-tr-how ol { margin: 1px 0 0; padding-left: 20px; }
+.tl-tr-how li { margin: 1px 0; }
+.tl-tr-result { margin-top: 3px; color: #d8d2c2; font-size: 14px; }
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-tools { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-compact .tl-tracker:not(.tl-tr-open) .tl-tr-result { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tl-compact .tl-tr-how ol { list-style: none; padding-left: 0; counter-reset: tlhow; }
+.tl-compact .tl-tr-how li { counter-increment: tlhow; padding-left: 22px; text-indent: -22px; }
+.tl-compact .tl-tr-how li::before { content: "👉" counter(tlhow) " "; }
+.tl-tr-mini.tl-tr-go { background: #9be08a; font-weight: 700; flex: 1 1 auto; text-align: left; line-height: 1.2; }
+/* จอเตี้ย: ปุ่มทั้งหมดอยู่แถวเดียว (ปุ่มลัดตัดบรรทัดในปุ่มได้) */
+.tl-compact .tl-tr-btns { flex-wrap: nowrap; }
+.tl-compact .tl-tr-mini.tl-tr-go { min-width: 0; padding: 2px 6px; }
+.tl-compact .tl-tr-mini.tl-tr-help { flex: none; padding: 2px 6px; font-size: 18px; }
+.tl-btn.tl-guide { outline: 3px solid #9be08a; animation: tlGuide 1.1s ease-in-out infinite; }
+@keyframes tlGuide { 0%, 100% { box-shadow: 0 0 0 0 rgba(155, 224, 138, 0.0); } 50% { box-shadow: 0 0 0 6px rgba(155, 224, 138, 0.55); } }
+
+/* ---------- แถบวัดระยะ (แสดงเฉพาะตอนกำลังวัด) ---------- */
+.tl-measure { position: fixed; background: rgba(16, 20, 31, 0.92); border: 2px solid #ffd84d; border-radius: 8px;
+  padding: 4px 8px 5px; font-size: 14px; line-height: 1.35; pointer-events: none; }
+.tl-measure button { pointer-events: auto; }
+.tl-ms-row { display: flex; align-items: center; gap: 6px; }
+.tl-ms-text { flex: 1 1 auto; min-width: 0; }
+.tl-ms-head { font-size: 15px; font-weight: 700; color: #ffd84d; }
+.tl-ms-sub { color: #d8d2c2; font-size: 14px; line-height: 1.25; }
+.tl-ms-btns { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.tl-ms-btns .tl-tr-mini { min-height: 44px; padding: 1px 6px; white-space: nowrap; }
 
 /* ---------- แถบสถานะ (เข็มทิศ + ตำแหน่ง + ระยะ + แถบมาตราส่วน) ---------- */
 .tl-status { position: fixed; align-items: flex-start; gap: 6px; background: rgba(16, 20, 31, 0.82); border: 2px solid #e8d9a8;

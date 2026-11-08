@@ -16,6 +16,7 @@ import type {
   QuizDefinition,
   StoryStep,
 } from '../../types';
+import { answerQuiz, hearReport, talkTo } from '../../guide/steps';
 import { khlongNamLaiLevel as L2 } from '../khlongnamlai';
 import { khlongLanPattanaLevel as L4 } from '../khlonglanpattana';
 import { pongNamRonLevel as L3 } from '../pongnamron';
@@ -321,6 +322,70 @@ const story: StoryStep[] = [
     completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];
+
+/* ---------------- ขั้นย่อย (v0.19: นำทางด้วย "การกระทำ") ---------------- */
+const boardStep = (i: number): NonNullable<StoryStep['micro']>[number] => ({
+  id: `board-${i}`,
+  goal: `ตอบคำถามที่ป้าย${TAMBON_NAMES[i - 1]}`,
+  tools: ['ลูกศรนำทาง', 'ปุ่มสำรวจ', 'กล่องคำถาม'],
+  steps: [`ป้าย${TAMBON_NAMES[i - 1]}อยู่ในห้องจัดแสดง — ดูลูกศรสีเหลือง`, '{walk} ไปหน้าป้าย แล้ว{tap:inspect}', 'อ่านหลักฐาน แล้ว{choose}คำตอบ'],
+  result: `ติดรหัสของ${TAMBON_NAMES[i - 1]}ลงแผนที่ภูมิปัญญา`,
+  tool: '{tap:notebook} ทบทวนข้อความจากครูเนมในหน้า "หลักฐาน/ข้อความ"',
+  think: 'ตอนอยู่ตำบลนั้น เราใช้ทักษะภูมิศาสตร์อะไร?',
+  doneText: `✓ ติดรหัส${TAMBON_NAMES[i - 1]}แล้ว!`,
+  target: { landmarkId: `board-${i}` },
+  done: { type: 'flag', flag: `board-${i}` },
+});
+const FINALE_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
+  1: [
+    talkTo({
+      id: 'talk-nem',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      where: 'หน้าห้องจัดแสดงแผนที่',
+      result: 'ครูเนมตรวจสมุดภาคสนาม แล้วให้ไปตอบคำถามที่ป้ายจัดแสดง 4 ป้าย',
+      think: 'รหัสทั้ง 4 ชิ้นได้มาจากตำบลใดบ้าง?',
+      done: { type: 'flag', flag: 'finale-started' },
+    }),
+  ],
+  2: [boardStep(1), boardStep(2), boardStep(3), boardStep(4)],
+  3: [
+    {
+      id: 'open-chest',
+      goal: 'ใส่รหัสเปิดหีบไม้เก่า',
+      tools: ['ปุ่มสำรวจ', 'กล่องคำถาม'],
+      steps: ['หีบไม้เก่าอยู่กลางห้อง — ดูลูกศรสีเหลือง', '{walk} ไปที่หีบ แล้ว{tap:inspect}', 'แต่ละช่องบอกทักษะ — {choose}รหัสของตำบลที่ใช้ทักษะนั้น'],
+      result: 'หีบเปิดออก ได้แผนที่ภูมิปัญญาฉบับสมบูรณ์',
+      tool: 'ป้ายจัดแสดงแต่ละป้ายบอกว่าตำบลนั้นใช้ทักษะอะไร — เดินกลับไปอ่านได้',
+      think: 'ทักษะในช่องนี้ เราใช้ตอนอยู่ตำบลไหน?',
+      doneText: '✓ หีบเปิดแล้ว!',
+      target: { landmarkId: 'cabinet' },
+      done: { type: 'flag', flag: 'cabinet-open' },
+    },
+  ],
+  4: [
+    answerQuiz({
+      id: 'final-quiz',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      goal: 'นำแผนที่ไปให้ครูเนม แล้วตอบคำถามสรุป',
+      result: 'แผนที่ภูมิปัญญาสมบูรณ์ — ครูเนมสรุปการเดินทาง',
+      tool: 'ครูเนมอยู่หน้าห้องจัดแสดง — ดูลูกศรสีเหลืองที่ขอบจอ',
+      think: 'ถ้าจะบอกตำแหน่งสถานที่ให้คนอื่นหาเจอแน่นอน ต้องบอกข้อมูลอะไรบ้าง?',
+      done: { type: 'flag', flag: 'map-complete' },
+    }),
+  ],
+  5: [
+    hearReport({
+      id: 'report',
+      code: 'คำชมจากครูเนม',
+      goal: 'ฟังครูเนมสรุปการเดินทางทั้งหมด',
+      result: 'จบการเดินทาง — ดูสรุปผลทั้ง 4 ตำบล',
+      done: { type: 'flag', flag: 'mission-complete' },
+    }),
+  ],
+};
+for (const st of story) if (FINALE_MICRO[st.order]) st.micro = FINALE_MICRO[st.order];
 
 const quests: QuestDefinition[] = [
   {

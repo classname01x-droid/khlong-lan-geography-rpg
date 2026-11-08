@@ -1,6 +1,8 @@
-import type { DialogueNode, LevelDefinition, ObjectiveCondition, StoryStep } from '../../content/types';
+import type { DialogueNode, GuideActionId, LevelDefinition, MicroStep, ObjectiveCondition, StoryStep } from '../../content/types';
 import { CLUE_TYPE_LABEL, type GameSession } from '../session/GameSession';
-import { currentMicro, lastDoneMicro, microStates } from './MicroQuest';
+import { guideText } from './GuideText';
+import { currentMicro, lastDoneMicro, microStates, phaseProgress } from './MicroQuest';
+import { guideTarget, type GuideTarget } from './Navigation';
 
 /**
  * แถบติดตามภารกิจ + คำแนะนำแบบเป็นระดับ — สร้างจากข้อมูลด่านและสถานะ GameSession จริงทุกบท (ไม่เขียนเฉพาะด่าน)
@@ -34,6 +36,40 @@ export interface QuestTrackerView {
   doneText: string | null;
   /** บทนี้แสดงเป็นขั้นย่อย (ภารกิจ · ตอนนี้ · วิธีทำ · ขั้น x/y) */
   micro: boolean;
+  /** ช่วงของภารกิจ เช่น "ช่วงที่ 2 · ตามหาแหล่งผ้าปัก" (null = ไม่แบ่งช่วง) */
+  phaseTitle: string | null;
+  /** เลขขั้นปัจจุบัน (ขั้นย่อย = ส่วนที่ x จาก y) */
+  stepNo: { num: number; total: number; part: number; parts: number } | null;
+  /** วิธีทำทีละข้อ (แปลงคำบอกปุ่มตามอุปกรณ์แล้ว) */
+  steps: string[];
+  /** เครื่องมือที่ใช้ */
+  tools: string[];
+  /** ทำสำเร็จแล้วจะเกิดอะไร */
+  result: string | null;
+  /** ปุ่มลัดเปิดเครื่องมือ */
+  action: { id: GuideActionId; label: string } | null;
+  /** เป้าหมายนำทาง (NPC/สถานที่ที่รู้ตำแหน่งแล้ว) */
+  target: GuideTarget | null;
+}
+
+/** ชื่อมาตรฐานของปุ่มลัดบนแถบภารกิจ */
+export const GUIDE_ACTION_LABEL: Record<GuideActionId, string> = {
+  map: '🗺️ เปิดแผนที่',
+  clues: '📒 เปิดสมุด หน้าเบาะแส',
+  routes: '🔍 เปิดกระดานวิเคราะห์เส้นทาง',
+  measure: '📏 เริ่มวัดระยะ',
+  analysis: '🔍 เปิดกระดานวิเคราะห์',
+  compare: '🔍 เปิดหน้าเทียบแผนที่',
+  pin: '📍 ไปปักหมุด',
+  sheets: '🗺️ เปิดแผนที่ฐาน',
+  target: '🗺️ ดูตำแหน่งบนแผนที่',
+};
+
+/** ชื่อปุ่มลัดของขั้น (ขั้นที่มีเป้าหมายนำทางแต่ไม่ระบุปุ่ม → "ดูตำแหน่ง…บนแผนที่") */
+export function guideActionOf(m: MicroStep, target: GuideTarget | null): { id: GuideActionId; label: string } | null {
+  if (m.action) return { id: m.action, label: m.actionLabel ?? GUIDE_ACTION_LABEL[m.action] };
+  if (target) return { id: 'target', label: '🗺️ ดูบนแผนที่' };
+  return null;
 }
 
 /** กุญแจของ "ขั้นที่กำลังทำ" — ระดับคำแนะนำเริ่มใหม่ทุกครั้งที่ขั้นเปลี่ยน */
@@ -114,6 +150,12 @@ export function describeObjective(s: GameSession, o: ObjectiveCondition): string
       if (src?.kind === 'inspect') return `สำรวจ${src.name}`;
       return 'ทำภารกิจย่อยให้สำเร็จ';
     }
+    case 'near':
+      return `เดินไปพบ${L.npcs.find((n) => n.id === o.npcId)?.name ?? o.npcId}`;
+    case 'all':
+      return o.of.map((x) => describeObjective(s, x)).join(' และ ');
+    case 'any':
+      return o.of.map((x) => describeObjective(s, x)).join(' หรือ ');
   }
 }
 
@@ -267,7 +309,7 @@ function toolHint(s: GameSession, step: StoryStep, kind: StepKind, remaining: st
 
 export function buildQuestTracker(
   s: GameSession,
-  opts: { chapterOrder?: number; hintTier?: number } = {},
+  opts: { chapterOrder?: number; hintTier?: number; touch?: boolean } = {},
 ): QuestTrackerView {
   const L = s.level;
   const step = s.currentStep;
@@ -293,6 +335,13 @@ export function buildQuestTracker(
       complete: true,
       doneText: null,
       micro: false,
+      phaseTitle: null,
+      stepNo: null,
+      steps: [],
+      tools: [],
+      result: null,
+      action: null,
+      target: null,
     };
   }
   const tierOf = Math.max(0, Math.min(2, opts.hintTier ?? 0));
@@ -301,20 +350,33 @@ export function buildQuestTracker(
   const cur = ms.find((m) => m.current);
   if (cur) {
     const m = cur.step;
+    const target = guideTarget(s);
+    const action = guideActionOf(m, target);
+    const gt = (t: string) => guideText(s.resolveText(t), { touch: !!opts.touch, guideLabel: action?.label });
+    const prog = phaseProgress(ms);
+    const phase = L.guidePhases?.find((p) => p.id === cur.phase) ?? null;
     return {
       chapterLabel,
       questTitle: main?.title ?? step.title,
       objective: m.goal,
-      progress: { done: ms.filter((x) => x.done).length, total: ms.length, label: 'ขั้น' },
+      progress: { done: prog.done, total: prog.total, label: 'ขั้น' },
       step: { current: step.order, total: totalSteps },
       kind: stepKind(L, step),
-      hint: tierOf === 0 ? m.how : tierOf === 1 ? m.tool : m.think,
+      // ระดับ 1 = วิธีทำ (แสดงตลอด) · ขอคำแนะนำ → ระดับ 2 เครื่องมือ · ระดับ 3 คำถามช่วยคิด (ไม่เฉลย)
+      hint: tierOf === 0 ? null : gt(tierOf === 1 ? m.tool : m.think),
       hintTier: tierOf,
       remaining: ms.filter((x) => !x.done && !x.current && x.storyOrder === cur.storyOrder).map((x) => x.step.goal),
       sideQuests,
       complete: false,
       doneText: lastDoneMicro(ms)?.step.doneText ?? null,
       micro: true,
+      phaseTitle: phase?.title ?? null,
+      stepNo: { num: cur.num, total: prog.total, part: cur.part, parts: cur.parts },
+      steps: m.steps.map(gt),
+      tools: m.tools,
+      result: gt(m.result),
+      action,
+      target,
     };
   }
   const kind = stepKind(L, step);
@@ -344,5 +406,12 @@ export function buildQuestTracker(
     complete: false,
     doneText: null,
     micro: false,
+    phaseTitle: null,
+    stepNo: null,
+    steps: [],
+    tools: [],
+    result: null,
+    action: null,
+    target: null,
   };
 }

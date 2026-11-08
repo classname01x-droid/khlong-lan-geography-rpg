@@ -48,6 +48,8 @@ import {
   type SiteFacts,
 } from '../site/IntegratedSiteAnalysis';
 import { GridSystem, type GridRef } from '../world/GridSystem';
+import { readMeasure, type MeasureReading, type MeasureState } from '../measure/Measure';
+import { currentMicro } from '../guide/MicroQuest';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare' | 'gridcheck';
 export type NotebookTab = 'quests' | 'clues' | 'routes' | 'records';
@@ -254,6 +256,16 @@ export class GameSession {
   gridSelection: number | null = null;
   /** ประวัติการยืนยันคำตอบในกระดานวิเคราะห์พิกัด (เปิดอ่านย้อนหลังได้ และบันทึกลงข้อมูลเล่นต่อ) */
   readonly gridAttempts: Array<{ landmarkId: string; ok: boolean }> = [];
+  /** ตำแหน่งจริงของผู้เล่น (พิกเซลโลกเกม) — WorldScene ตั้งทุกเฟรม ใช้คำนวณระยะวัดแบบเรียลไทม์ */
+  playerPx: { x: number; y: number };
+  /** การวัดระยะที่กำลังทำ (null = ไม่ได้วัด) — ภารกิจที่มีจุดอ้างอิงกลับมาวัดต่อเองหลังโหลด (จาก flag "measured:<จุด>") */
+  measure: MeasureState | null = null;
+  /** เปิดแผนที่ครั้งถัดไปให้เลื่อนไปที่ช่องนี้ (ปุ่ม "ดูตำแหน่งบนแผนที่") */
+  mapFocus: TilePoint | null = null;
+  /** เบาะแสที่เพิ่งอ่านครั้งแรกในการเปิดสมุดครั้งนี้ (ป้าย "ใหม่") — สถานะของ UI ไม่บันทึก */
+  readonly newClues: string[] = [];
+  /** NPC ที่มีเป้าหมาย "เดินไปพบ" (จด flag near:<id> เมื่อเข้าใกล้) */
+  private readonly nearTargets: Set<string>;
 
   private dialogue: ActiveDialogue | null = null;
 
@@ -265,6 +277,10 @@ export class GameSession {
     this.fog = new FogOfWar(grid.width, grid.height);
     this.odometer = new DistanceTracker(scale);
     this.playerTile = { ...level.spawn };
+    this.playerPx = { x: scale.tileCenterPx(level.spawn.x), y: scale.tileCenterPx(level.spawn.y) };
+    this.nearTargets = new Set(
+      level.story.flatMap((st) => (st.micro ?? []).flatMap((m) => nearIds(m.done))),
+    );
     this.landmarkPoints = Object.fromEntries(level.landmarks.map((l) => [l.id, l.at]));
     this.elevation = level.map.elevation ? new ElevationModel(level.map.elevation) : null;
     this.coords = level.grid ? new GridSystem(level.grid, grid.width, grid.height, scale) : null;
@@ -347,6 +363,8 @@ export class GameSession {
     for (const id of this.clues) {
       if (!this.flags.has(`read:${id}`)) {
         this.flags.add(`read:${id}`);
+        // เบาะแสที่เพิ่งได้อ่านครั้งแรก → ติดป้าย "ใหม่" ในสมุดจนกว่าจะเปิดสมุดครั้งถัดไป
+        if (!this.newClues.includes(id)) this.newClues.push(id);
         changed = true;
       }
     }
@@ -709,6 +727,12 @@ export class GameSession {
         return this.skills.has(c.skill as SkillId);
       case 'routesExplored':
         return this.routeRows().filter((r) => r.explored).length >= c.count;
+      case 'near':
+        return this.flags.has(`near:${c.npcId}`);
+      case 'all':
+        return c.of.every((o) => this.objectiveDone(o));
+      case 'any':
+        return c.of.some((o) => this.objectiveDone(o));
     }
   }
 
@@ -1262,6 +1286,98 @@ export class GameSession {
 
   /* ---------------- บันทึก / โหลดการเล่นกลางด่าน ---------------- */
 
+  /* ---------------- นำทาง: เข้าใกล้ NPC เป้าหมาย ---------------- */
+
+  /** ระยะ (ช่อง) ที่นับว่า "ไปถึง NPC แล้ว" */
+  static readonly NEAR_TILES = 4;
+
+  /**
+   * จด flag "near:<npc>" เมื่อผู้เล่นเข้าใกล้ NPC ที่มีเป้าหมาย "ไปพบ" (ทำก่อนลำดับก็นับ)
+   * คืน true เมื่อมีการเปลี่ยนแปลง (UI วาดใหม่)
+   */
+  notePlayerNear(tile: TilePoint): boolean {
+    let changed = false;
+    for (const id of this.nearTargets) {
+      if (this.flags.has(`near:${id}`)) continue;
+      const npc = this.level.npcs.find((n) => n.id === id);
+      if (npc && Math.hypot(npc.at.x - tile.x, npc.at.y - tile.y) <= GameSession.NEAR_TILES) {
+        this.flags.add(`near:${id}`);
+        changed = true;
+      }
+    }
+    if (changed) this.updateQuests();
+    return changed;
+  }
+
+  /* ---------------- วัดระยะจากจุดอ้างอิง ---------------- */
+
+  /** จุดอ้างอิงการวัดของขั้นปัจจุบัน (ข้อมูลภารกิจ) — null = วัดจากจุดที่ผู้เล่นกดเอง */
+  questMeasureSpec(): { from: string; allowReset: boolean; label: string; at: TilePoint } | null {
+    const m = currentMicro(this)?.step.measure;
+    if (!m) return null;
+    const lm = this.level.landmarks.find((l) => l.id === m.from);
+    if (!lm) return null;
+    return { from: lm.id, allowReset: !!m.allowReset, label: shortPlaceName(lm.name), at: lm.at };
+  }
+
+  /**
+   * เริ่มวัด (ปุ่มวัดระยะ / R):
+   *   - ขั้นที่ภารกิจกำหนดจุดอ้างอิง → วัดจากจุดนั้น (เช่น ศาลาชุมชน) และจด flag "measured:<จุด>"
+   *   - นอกนั้น → วัดจากตำแหน่งที่ยืนอยู่
+   */
+  startMeasure(): MeasureState {
+    const spec = this.questMeasureSpec();
+    this.odometer.resetTrip();
+    this.skills.add('odometer');
+    if (spec) {
+      this.measure = { originId: spec.from, origin: { ...spec.at }, label: spec.label, walkedAtStart: this.odometer.totalMeters, allowReset: spec.allowReset };
+      this.flags.add(`measured:${spec.from}`);
+    } else {
+      this.measure = { originId: null, origin: { ...this.playerTile }, label: 'จุดที่เริ่มวัด', walkedAtStart: this.odometer.totalMeters, allowReset: true };
+    }
+    this.updateQuests();
+    this.uiVersion++;
+    return this.measure;
+  }
+
+  /** "เริ่มวัดใหม่จากตรงนี้" — เฉพาะเมื่อภารกิจอนุญาต (หรือการวัดอิสระ) */
+  restartMeasureHere(): boolean {
+    if (!this.measure?.allowReset) return false;
+    this.odometer.resetTrip();
+    this.measure = { originId: null, origin: { ...this.playerTile }, label: 'จุดที่เริ่มวัด', walkedAtStart: this.odometer.totalMeters, allowReset: true };
+    this.uiVersion++;
+    return true;
+  }
+
+  /** จดว่าผู้เล่นเปิดเครื่องมือนี้แล้ว (flag "opened:<เครื่องมือ>" — ใช้กับขั้น "เปิดกระดาน…") */
+  noteOpened(tool: string): void {
+    if (this.flags.has(`opened:${tool}`)) return;
+    this.flags.add(`opened:${tool}`);
+    this.updateQuests();
+  }
+
+  stopMeasure(): void {
+    this.measure = null;
+    this.uiVersion++;
+  }
+
+  /**
+   * ขั้นที่มีจุดอ้างอิงและผู้เล่นเคยเริ่มวัดจากจุดนั้นแล้ว → แสดงการวัดจากจุดนั้นต่อ (หลังโหลดเกม / เปลี่ยนขั้น)
+   * ไม่สลับทับการวัดที่ผู้เล่นตั้งใจเริ่มใหม่เอง
+   */
+  syncQuestMeasure(): void {
+    const spec = this.questMeasureSpec();
+    if (!spec || !this.flags.has(`measured:${spec.from}`)) return;
+    if (this.measure && (this.measure.originId === spec.from || this.measure.originId === null)) return;
+    this.measure = { originId: spec.from, origin: { ...spec.at }, label: spec.label, walkedAtStart: this.odometer.totalMeters, allowReset: spec.allowReset };
+    this.uiVersion++;
+  }
+
+  /** ค่าวัด ณ ตำแหน่งจริงของผู้เล่นตอนนี้ (null = ไม่ได้วัด) */
+  measureReading(): MeasureReading | null {
+    return this.measure ? readMeasure(this.measure, this.playerPx, this.odometer.totalMeters, this.scale) : null;
+  }
+
   toSnapshot(): SessionSnapshot {
     return {
       version: 1,
@@ -1317,6 +1433,7 @@ export class GameSession {
     this.odometer.restoreTotal(snap.totalMeters);
     this.elapsedMs = snap.elapsedMs;
     this.playerTile = { ...snap.player };
+    this.playerPx = { x: this.scale.tileCenterPx(snap.player.x), y: this.scale.tileCenterPx(snap.player.y) };
     this.pinnedAt = snap.pinnedAt ? { ...snap.pinnedAt } : null;
     this.completed = snap.completed;
     this.gridAttempts.splice(0, this.gridAttempts.length, ...(snap.gridAttempts ?? []).map((a) => ({ ...a })));
@@ -1325,9 +1442,23 @@ export class GameSession {
     this.discoveredLandmarks.clear();
     this.checkLandmarkDiscovery();
     this.updateQuests(true);
+    this.measure = null;
+    this.syncQuestMeasure();
     this.pendingToasts.length = 0; // ไม่แจ้งเตือนซ้ำสิ่งที่ค้นพบไปแล้ว
     this.mode = 'explore';
     this.uiVersion++;
     return true;
   }
+}
+
+/** id ของ NPC ในเงื่อนไข "เดินไปพบ" (รวมในเงื่อนไขซ้อน) */
+function nearIds(c: ObjectiveCondition): string[] {
+  if (c.type === 'near') return [c.npcId];
+  if (c.type === 'all' || c.type === 'any') return c.of.flatMap(nearIds);
+  return [];
+}
+
+/** ชื่อสถานที่แบบสั้น (ตัดคำอธิบายในวงเล็บ) เช่น "โรงเรียนสักงาม (เสาธง)" → "โรงเรียนสักงาม" */
+export function shortPlaceName(name: string): string {
+  return name.replace(/\s*\(.*\)\s*$/, '');
 }

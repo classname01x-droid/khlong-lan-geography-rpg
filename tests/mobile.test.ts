@@ -248,28 +248,35 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
     // บทที่ 1 มีขั้นย่อย: ภารกิจหลัก · เป้าหมายเดียว · วิธีทำ · ความคืบหน้าเป็นขั้น
     expect(t.questTitle).toBe('ตามหารหัสหีบสมบัติชิ้นแรก');
     expect(t.objective).toBe('ไปคุยกับครูเนม');
-    expect(t.progress).toEqual({ done: 0, total: L1.story.flatMap((st) => st.micro ?? []).length, label: 'ขั้น' });
+    // ช่วงที่ 1 (รับภารกิจ) มี 3 ขั้น — นับแยกจากช่วงที่ 2 (13 ขั้น)
+    expect(t.progress).toEqual({ done: 0, total: 3, label: 'ขั้น' });
+    expect(t.phaseTitle).toBe('ช่วงที่ 1 · รับภารกิจ');
     expect(t.micro).toBe(true);
-    // คำแนะนำสั้นแสดงตั้งแต่เริ่ม: บอกว่าต้องทำอะไร (ไม่บอกคำตอบ)
-    expect(t.hint).toContain('ครูเนม');
+    // วิธีทำแสดงตั้งแต่เริ่ม (กด/แตะอะไร) · เครื่องมือ · ผลเมื่อสำเร็จ · เป้าหมายนำทาง
+    expect(t.steps.join(' ')).toContain('ครูเนม');
+    expect(t.tools.length).toBeGreaterThan(0);
+    expect(t.result).toContain('ภารกิจ');
+    expect(t.target?.id).toBe('teacher-nem');
+    expect(t.hint).toBeNull();
     expect(t.hintTier).toBe(0);
   });
 
   it('เป้าหมายเปลี่ยนเองเมื่อสำเร็จ: ฉากแบบหลายเป้าหมายแสดงทีละข้อ + ความคืบหน้า 2/4', () => {
     const s = sessionAtStep(L4, 2);
     let t = buildQuestTracker(s, { chapterOrder: 4 });
-    expect(t.progress).toEqual({ done: 0, total: 4, label: 'เป้าหมายย่อย' });
-    expect(t.objective).toBe('สำรวจหมุดอ้างอิงพิกัด RP-1');
+    expect(t.progress).toEqual({ done: 2, total: L4.story.flatMap((st) => st.micro ?? []).length, label: 'ขั้น' });
+    expect(t.objective).toBe('อ่านพิกัดที่หมุดอ้างอิง RP-1');
+    expect(t.target?.id).toBe('rp-1');
     s.flags.add('read-rp-1');
     s.flags.add('read-rp-2');
     t = buildQuestTracker(s, { chapterOrder: 4 });
-    expect(t.progress.done).toBe(2);
-    expect(t.objective).toBe('สำรวจหมุดอ้างอิงพิกัด RP-3');
-    expect(t.remaining).toEqual(['สำรวจหมุดอ้างอิงพิกัด RP-3', 'คุยกับพี่ต้นกล้า']);
+    expect(t.progress.done).toBe(4);
+    expect(t.objective).toBe('อ่านพิกัดที่หมุดอ้างอิง RP-3');
+    expect(t.remaining).toEqual(['ไปคุยกับพี่ต้นกล้า', 'ตอบคำถามเรื่องระยะเส้นตรง']);
     s.flags.add('read-rp-3');
     s.flags.add('distance-ok');
     t = buildQuestTracker(s, { chapterOrder: 4 });
-    expect(t.questTitle).toBe(L4.story[2].title);
+    expect(t.objective).toBe('ไปคุยกับป้าบัวลอย');
     expect(t.step.current).toBe(3);
   });
 
@@ -318,18 +325,24 @@ describe('คำแนะนำแบบเป็นระดับ (ไม่�
     expect(h.update(3, 32_000, 1)).toBe(0); // ฉากใหม่: นับใหม่
   });
 
-  it('ระดับ 1 = วิธีคิด · ระดับ 2 = เครื่องมือ/ใคร/หลักฐานที่ขาด', () => {
+  it('ระดับ 1 = วิธีทำ (แสดงตลอด) · ระดับ 2 = เครื่องมือ · ระดับ 3 = คำถามช่วยคิด', () => {
     const s = sessionAtStep(L4, 5);
-    const t1 = buildQuestTracker(s, { hintTier: 1 });
-    expect(t1.kind).toBe('analysis');
-    expect(t1.hint).toContain('ต้องตรงทุกชนิดพร้อมกัน');
+    const t0 = buildQuestTracker(s, { hintTier: 0, touch: true });
+    expect(t0.kind).toBe('analysis');
+    expect(t0.objective).toBe('สำรวจจุด A, B และ C');
+    expect(t0.hint).toBeNull();
+    expect(t0.steps.join(' ')).toContain('แตะปุ่ม "✋ สำรวจ"');
+    const t1 = buildQuestTracker(s, { hintTier: 1, touch: true });
+    expect(t1.hint).toContain('วัดระยะ');
     const t2 = buildQuestTracker(s, { hintTier: 2 });
-    expect(t2.hint).toContain('กระดานวิเคราะห์');
-    expect(t2.hint).toContain('ยังไม่ได้สำรวจ: จุด A, จุด B, จุด C'); // บอกทุกจุดที่ยังไม่สำรวจ ไม่ชี้จุดเดียว
-    expect(t2.hint).toContain('ยังขาดหลักฐานประเภท');
-    const quiz = buildQuestTracker(sessionAtStep(L4, 3), { hintTier: 2 });
-    expect(quiz.kind).toBe('quiz');
-    expect(quiz.hint).toContain('ไปคุยกับป้าบัวลอย');
+    expect(t2.hint).toMatch(/\?$/);
+    for (const f of ['surveyed-a', 'surveyed-b', 'surveyed-c']) s.flags.add(f);
+    const board = buildQuestTracker(s, { touch: true });
+    expect(board.objective).toBe('เปิดกระดานวิเคราะห์หลักฐาน');
+    expect(board.action?.id).toBe('analysis');
+    const quiz = buildQuestTracker(sessionAtStep(L4, 3), { touch: true });
+    expect(quiz.objective).toBe('ไปคุยกับป้าบัวลอย');
+    expect(quiz.target?.id).toBe('water-keeper');
   });
 
   it('ไม่เฉลย: คำแนะนำทุกระดับของทุกบทไม่ระบุสถานที่คำตอบ', () => {
@@ -356,10 +369,11 @@ describe('คำแนะนำแบบเป็นระดับ (ไม่�
 
   it('คำแนะนำมาจากข้อมูลจริง: คุยแล้ว/ตอบแล้ว เป้าหมายเลื่อนตาม', () => {
     const s = newSession(L4);
-    expect(buildQuestTracker(s, { hintTier: 2 }).hint).toContain('ไปคุยกับครูเนม');
+    expect(buildQuestTracker(s).objective).toContain('ไปคุยกับครูเนม');
     talk(s, 'teacher-nem', [1]);
     runDialogue(s);
-    expect(buildQuestTracker(s).questTitle).toBe(L4.story[1].title);
+    expect(buildQuestTracker(s).step.current).toBe(2);
+    expect(buildQuestTracker(s).objective).toBe('อ่านพิกัดที่หมุดอ้างอิง RP-1');
   });
 });
 
@@ -511,8 +525,8 @@ describe('หน้าอ่านตัวอักษรใหญ่ (สม�
           const r = notebookReader(view, s.notebookTabs(), NOTEBOOK_TAB_LABEL, level.tambon, w);
           expect(r.tabs.filter((t) => t.active).map((t) => t.id)).toEqual([tab]);
           expect(textOf(r.body + r.foot), `${level.id} ฉาก ${st.order} ${tab}`).not.toMatch(KEYBOARD_HINT_RE);
-          // บรรทัดเดียวกับที่ canvas วาด (แหล่งข้อความเดียว)
-          expect(view.lines.map((l) => l.text)).toEqual(buildNotebookView(s).lines.map((l) => l.text));
+          // บรรทัดชุดเดียวกับที่ canvas วาด (แหล่งข้อความเดียว — ต่างกันเฉพาะคำบอกปุ่มตามอุปกรณ์)
+          expect(view.lines.length).toBe(buildNotebookView(s).lines.length);
         }
       }
     }

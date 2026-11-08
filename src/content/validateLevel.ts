@@ -141,6 +141,24 @@ export function validateLevel(
     if (!npcIds.has(t.npcId)) errors.push(`trigger ${t.id} อ้างถึง NPC ที่ไม่มี: ${t.npcId}`);
   }
 
+  // ขั้นย่อย (นำทางด้วยการกระทำ): ครบ 4 ส่วน · เป้าหมายนำทางมีจริงและไม่ใช่สถานที่ลับ · จุดอ้างอิงการวัดมีจริง
+  const phaseIds = new Set((level.guidePhases ?? []).map((p) => p.id));
+  for (const step of level.story) {
+    for (const m of step.micro ?? []) {
+      const where = `ขั้นย่อย ${m.id}`;
+      if (!m.goal || m.steps.length === 0 || !m.result || m.tools.length === 0) errors.push(`${where} ต้องมี เป้าหมาย · วิธีทำ · ผลเมื่อสำเร็จ · เครื่องมือ`);
+      if (m.target?.npcId && !npcIds.has(m.target.npcId)) errors.push(`${where} นำทางไป NPC ที่ไม่มี: ${m.target.npcId}`);
+      if (m.target?.landmarkId) {
+        const lm = level.landmarks.find((l) => l.id === m.target!.landmarkId);
+        if (!lm) errors.push(`${where} นำทางไปจุดสังเกตที่ไม่มี: ${m.target.landmarkId}`);
+        else if (lm.revealFlag) errors.push(`${where} ห้ามนำทางไปสถานที่ลับ: ${lm.id}`);
+        if (m.target.landmarkId === level.pinTask?.targetId) errors.push(`${where} ห้ามนำทางไปคำตอบของการปักหมุด: ${lm?.id}`);
+      }
+      if (m.measure && !landmarkIds.has(m.measure.from)) errors.push(`${where} วัดระยะจากจุดที่ไม่มี: ${m.measure.from}`);
+      if (m.phase && !phaseIds.has(m.phase)) errors.push(`${where} อ้างถึงช่วงภารกิจที่ไม่มี: ${m.phase}`);
+    }
+  }
+
   for (const step of level.story) {
     if (!landmarkIds.has(step.landmarkId)) {
       errors.push(`ฉาก ${step.order} อ้างถึงจุดสังเกตที่ไม่มี: ${step.landmarkId}`);

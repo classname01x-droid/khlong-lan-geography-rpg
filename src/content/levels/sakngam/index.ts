@@ -11,6 +11,7 @@ import {
   sakNgamRouteAnalysis,
   sakNgamStory,
   sakNgamTriggers,
+  SAKNGAM_PHASES,
 } from './mission';
 import { sakNgamNpcs } from './npcs';
 
@@ -63,5 +64,6 @@ export const sakNgamLevel: LevelDefinition = {
   ending: sakNgamEnding,
   quests: sakNgamQuests,
   inspectPoints: sakNgamInspectPoints,
+  guidePhases: SAKNGAM_PHASES,
   unlocks: 'level-2',
 };

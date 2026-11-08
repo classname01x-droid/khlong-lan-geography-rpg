@@ -12,6 +12,7 @@ import { COLORS, FONT_FAMILY, textStyle } from './theme';
 import { fitCell, MAP_ZOOMS, type ViewRect } from '../core/ui/MapViewport';
 import { setTouchView, touchView } from './touch/touchViewState';
 import { ZoomPanLayer } from './ZoomPanLayer';
+import { guideTarget } from '../core/guide/Navigation';
 
 /**
  * ระบบเปิดแผนที่ (M): แสดงเฉพาะพื้นที่ที่สำรวจแล้ว มาตราส่วน 1:10,000
@@ -202,11 +203,13 @@ export class MapOverlay {
     if (this.zp) {
       // ขยายครั้งแรกรอบหมุด/ตัวผู้เล่น · เปลี่ยนระดับขยายรอบจุดกลางจอเดิม
       const zi = touchView.mapZoomIndex;
-      if (opening || this.appliedZoom < 0) this.zp.setZoom(MAP_ZOOMS[zi], s.pinCursor ?? s.playerTile);
+      // ปุ่ม "ดูตำแหน่ง…บนแผนที่" → เปิดที่ตำแหน่งเป้าหมาย
+      if (opening || this.appliedZoom < 0) this.zp.setZoom(MAP_ZOOMS[zi], s.mapFocus ?? s.pinCursor ?? s.playerTile);
       else if (zi !== this.appliedZoom) this.zp.setZoom(MAP_ZOOMS[zi], this.zp.centerTile());
       this.appliedZoom = zi;
       setTouchView({ mapCellPx: this.zp.cellPx });
     }
+    s.mapFocus = null;
     this.updatePlayer();
     const { x: mx, y: my, cell } = this.geom;
 
@@ -320,7 +323,51 @@ export class MapOverlay {
     if (s.pinnedAt) {
       g.fillStyle(0xff4dd2, 1).fillCircle(mx + (s.pinnedAt.x + 0.5) * cell, my + (s.pinnedAt.y + 0.5) * cell, 5);
     }
+    this.drawGuide();
     this.drawLegend(legend);
+  }
+
+  /**
+   * นำทางบนแผนที่: เป้าหมายของขั้นปัจจุบัน (NPC/สถานที่ที่รู้ตำแหน่งแล้วเท่านั้น — ไม่ใช่สถานที่ลับ)
+   * และเส้นวัดระยะจากจุดเริ่มวัดถึงตัวเรา พร้อมระยะ (คำนวณจาก ScaleSystem)
+   */
+  private drawGuide(): void {
+    const s = this.s;
+    const g = this.graphics;
+    const scene = this.root.scene;
+    const { x: mx, y: my, cell } = this.geom;
+    const at = (t: { x: number; y: number }) => ({ x: mx + (t.x + 0.5) * cell, y: my + (t.y + 0.5) * cell });
+    const big = this.labelSize(12);
+    const r = s.measureReading();
+    if (r) {
+      const o = at(r.origin);
+      const p = at(s.playerTile);
+      g.lineStyle(4, 0x3a2410, 1).lineBetween(o.x, o.y, p.x, p.y);
+      g.lineStyle(2, 0xffd84d, 1).lineBetween(o.x, o.y, p.x, p.y);
+      g.fillStyle(0x3a2410, 1).fillCircle(o.x, o.y, 6);
+      g.fillStyle(0xffd84d, 1).fillCircle(o.x, o.y, 4);
+      this.labels.add(
+        scene.add
+          .text(o.x, o.y + 8, `จุดเริ่มวัด: ${r.label}`, { ...textStyle(big, '#ffe9a8'), stroke: '#10141f', strokeThickness: 3 })
+          .setOrigin(0.5, 0),
+      );
+      this.labels.add(
+        scene.add
+          .text((o.x + p.x) / 2, (o.y + p.y) / 2, `${r.roundedMeters.toLocaleString('en-US')} ม.`, { ...textStyle(big, '#2b2118'), backgroundColor: '#ffd84d', padding: { x: 4, y: 1 } })
+          .setOrigin(0.5),
+      );
+    }
+    const t = guideTarget(s);
+    if (t) {
+      const c = at(t.at);
+      g.lineStyle(3, 0x3a2410, 1).strokeCircle(c.x, c.y, 9);
+      g.lineStyle(2, 0xffd84d, 1).strokeCircle(c.x, c.y, 9);
+      this.labels.add(
+        scene.add
+          .text(c.x, c.y - 11, `! ${t.name} (เป้าหมาย)`, { ...textStyle(big, '#2b2118'), backgroundColor: '#ffd84d', padding: { x: 4, y: 1 } })
+          .setOrigin(0.5, 1),
+      );
+    }
   }
 
   /** คำอธิบายสัญลักษณ์ (เฉพาะสัญลักษณ์ที่ปรากฏบนแผ่นนี้) */

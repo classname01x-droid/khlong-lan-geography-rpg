@@ -4,7 +4,8 @@ import { ALL_LEVELS, LEVEL_SEQUENCE } from '../src/content/registry';
 import { CHAPTERS, getChapterIntro } from '../src/content/story/chapters';
 import { continueTarget, currentChapter } from '../src/core/campaign/Campaign';
 import { buildQuestTracker, hintKey } from '../src/core/guide/QuestGuide';
-import { currentMicro, microStates } from '../src/core/guide/MicroQuest';
+import { currentMicro, microStates, phaseProgress } from '../src/core/guide/MicroQuest';
+import { guideText } from '../src/core/guide/GuideText';
 import { ProgressStore, type StorageLike } from '../src/core/progress/ProgressStore';
 import type { SessionSnapshot } from '../src/core/session/GameSession';
 import { chapterIntroView } from '../src/ui/views/screens';
@@ -29,72 +30,106 @@ class Mem implements StorageLike {
   }
 }
 
-describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนวณจากสถานะจริงของเกม)', () => {
-  it('มี 13 ขั้นตามลำดับเรื่อง: ครูเนม → ศาลา → ผู้ใหญ่บ้าน → ลุงคำ → ป้าศรี → สมุด → วิเคราะห์ → เลือกเส้นทาง → บ้านผ้าปัก → ช่างผ้าปัก → ปักหมุด → ปริศนา → ตรวจค้น', () => {
+describe('บทที่ 1: ขั้นย่อยแบบนำทางด้วยการกระทำ (ช่วงรับภารกิจ 3 ขั้น + ช่วงตามหาแหล่งผ้าปัก 13 ขั้น)', () => {
+  it('ลำดับขั้น: ครูเนม → ศาลา → คำถาม | ป้าศรี → ลุงคำ → สมุด → วัดระยะ → เปิดกระดาน → เลือกเส้นทาง → ออกสำรวจ → ค้นพบ → ช่างผ้าปัก → ปักหมุด → ปริศนา', () => {
     const s = newSession();
-    expect(microStates(s).map((m) => m.step.id)).toEqual([
-      'talk-nem', 'go-sala', 'quiz-wisdom', 'talk-kham', 'talk-sri', 'read-clues', 'open-routes', 'choose-route',
-      'travel', 'talk-nuan', 'pin', 'read-riddle', 'find-cloth',
+    const ms = microStates(s);
+    expect(ms.map((m) => m.step.id)).toEqual([
+      'talk-nem', 'go-sala', 'quiz-wisdom',
+      'go-sri', 'talk-sri', 'go-kham', 'talk-kham', 'read-clues', 'start-measure', 'open-routes', 'choose-route',
+      'travel', 'find-place', 'talk-nuan', 'pin', 'read-riddle', 'measure-riddle', 'find-cloth',
     ]);
+    // เลขขั้นในแต่ละช่วง: ช่วงที่ 1 = 1–3 · ช่วงที่ 2 = 1–13 (ปริศนาสุดท้ายมี 3 ขั้นย่อยในขั้นที่ 13)
+    expect(ms.filter((m) => m.phase === 'prep').map((m) => m.num)).toEqual([1, 2, 3]);
+    expect(ms.filter((m) => m.phase === 'main').map((m) => m.num)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 13]);
+    expect(ms.find((m) => m.step.id === 'find-cloth')).toMatchObject({ num: 13, part: 3, parts: 3 });
     expect(goal(s)).toBe('ไปคุยกับครูเนม');
-    expect(progress(s)).toBe('0/13');
+    expect(phaseProgress(ms)).toEqual({ phase: 'prep', done: 0, total: 3 });
   });
 
-  it('เปลี่ยนขั้นอัตโนมัติตามการกระทำจริง และข้อความ "✓ ..." ของขั้นที่เพิ่งสำเร็จ', () => {
+  it('เปลี่ยนเป้าหมายตามการกระทำจริง: เดินถึง → คุย → สมุด → วัดระยะ → เปิดกระดาน → เลือก → ออกสำรวจ → ค้นพบ → ช่างผ้าปัก → ปักหมุด → ปริศนา', () => {
     const s = newSession();
     talk(s, 'teacher-nem');
     expect(goal(s)).toBe('ไปพบผู้ใหญ่บ้านที่ศาลาชุมชน');
     expect(buildQuestTracker(s).doneText).toBe('✓ รับภารกิจสำเร็จ!');
     talk(s, 'headman', HEADMAN_OK);
-    expect(goal(s)).toBe('ไปคุยกับลุงคำ');
-    expect(progress(s)).toBe('3/13');
-    talk(s, 'fisher-kham');
-    expect(goal(s)).toBe('ไปคุยกับป้าศรี');
+    expect(goal(s)).toBe('ไปพบป้าศรี');
+    let t = buildQuestTracker(s);
+    expect(t.phaseTitle).toBe('ช่วงที่ 2 · ตามหาแหล่งผ้าปัก');
+    expect(t.progress).toEqual({ done: 0, total: 13, label: 'ขั้น' });
+    expect(t.target).toMatchObject({ kind: 'npc', id: 'villager-sri', name: 'ป้าศรี' });
+    // เดินเข้าใกล้ป้าศรี (≤ 4 ช่อง) → ขั้น "ไปพบ" สำเร็จ (จด flag near:...)
+    expect(s.notePlayerNear({ x: 50, y: 40 })).toBe(false);
+    expect(s.notePlayerNear({ x: 60, y: 33 })).toBe(true);
+    expect(s.flags.has('near:villager-sri')).toBe(true);
+    expect(goal(s)).toBe('คุยกับป้าศรี');
     talk(s, 'villager-sri');
-    expect(goal(s)).toBe('เปิดสมุดอ่านข้อมูลที่ได้มา');
-    // เปิดสมุด: หน้าเบาะแสถูกอ่าน → flag read:<เบาะแส> (อยู่ใน flags เดิม)
+    expect(goal(s)).toBe('ไปพบลุงคำ');
+    expect(buildQuestTracker(s).target?.id).toBe('fisher-kham');
+    talk(s, 'fisher-kham'); // คุยเลย (นับ "ไปพบ" ให้ด้วย)
+    expect(goal(s)).toBe('เปิดสมุดภาคสนาม อ่านเบาะแส');
+    t = buildQuestTracker(s);
+    expect(t.progress.done).toBe(4);
+    expect(t.action).toEqual({ id: 'clues', label: '📒 เปิดสมุด หน้าเบาะแส' });
     s.notebookTab = 'clues';
     s.markNotebookViewed();
-    expect(s.flags.has('read:clue-bridge')).toBe(true);
-    expect(goal(s)).toBe('เปิดหน้าวิเคราะห์เส้นทาง');
-    s.noteSkill('straight-vs-route');
+    expect(goal(s)).toBe('เริ่มวัดระยะจากศาลาชุมชน');
+    expect(buildQuestTracker(s).action?.label).toBe('📏 วัดจากศาลา');
+    const m = s.startMeasure();
+    expect(m).toMatchObject({ originId: 'sala', label: 'ศาลาชุมชน', allowReset: false });
+    expect(goal(s)).toBe('เปิดกระดานวิเคราะห์เส้นทาง');
+    expect(buildQuestTracker(s).action?.id).toBe('routes');
+    s.noteSkill('straight-vs-route'); // เปิดหน้าวิเคราะห์เส้นทาง
+    expect(goal(s)).toBe('เลือกเส้นทางที่ตรงกับข้อมูล');
+    expect(s.chooseRoute(0).ok).toBe(false); // ตอบผิด → ยังอยู่ขั้นเดิม
     expect(goal(s)).toBe('เลือกเส้นทางที่ตรงกับข้อมูล');
     s.chooseRoute(1);
-    expect(goal(s)).toBe('ออกเดินทางตามเส้นทางที่วิเคราะห์');
+    expect(goal(s)).toBe('ออกสำรวจตามเส้นทางที่เลือก');
+    explore(s, 'wood-bridge');
+    expect(goal(s)).toBe('ค้นหาแหล่งผ้าปัก');
+    // ระหว่างเดินทางยังวัดจากศาลา (ไม่เปลี่ยนจุดเริ่มวัด)
+    expect(s.measure?.originId).toBe('sala');
+    expect(buildQuestTracker(s).target).toBeNull(); // ไม่นำทางไปบ้านผ้าปัก
     explore(s, 'nai-chiao');
-    expect(goal(s)).toBe('พูดคุยกับช่างผ้าปัก');
-    expect(buildQuestTracker(s).doneText).toBe('✓ พบแหล่งผ้าปักแล้ว!');
+    expect(goal(s)).toBe('คุยกับช่างผ้าปัก (ป้านวล)');
+    expect(buildQuestTracker(s).target?.id).toBe('embroiderer-nuan'); // ค้นพบเองแล้ว จึงนำทางไปหาป้านวลได้
     talk(s, 'embroiderer-nuan');
-    expect(goal(s)).toBe('เปิดแผนที่และปักหมุดบ้านผ้าปัก');
+    expect(goal(s)).toBe('ปักหมุดแหล่งผ้าปักบนแผนที่');
     expect(s.submitPin({ x: 70, y: 13 }, 1).ok).toBe(true);
-    expect(goal(s)).toBe('อ่านปริศนาลายผ้าผืนแรกในสมุด');
+    expect(goal(s)).toBe('อ่านปริศนาลายผ้าผืนแรก');
     s.notebookTab = 'clues';
     s.markNotebookViewed();
-    expect(goal(s)).toBe('ใช้มาตราส่วนหาจุดซ่อน แล้วตรวจค้น');
-    expect(progress(s)).toBe('12/13');
+    expect(goal(s)).toBe('เริ่มวัดระยะจากบ้านไหนเจียว');
+    const r = s.startMeasure();
+    expect(r).toMatchObject({ originId: 'nai-chiao', allowReset: true });
+    expect(goal(s)).toBe('เดินตามปริศนา แล้วสำรวจจุดซ่อน');
+    expect(phaseProgress(microStates(s))).toEqual({ phase: 'main', done: 12, total: 13 });
   });
 
-  it('ทำก่อนลำดับ: คุยป้าศรีก่อนลุงคำ / เปิดหน้าวิเคราะห์ก่อนอ่านเบาะแส — ขั้นที่ทำแล้วนับให้ ไม่ต้องย้อนทำ', () => {
+  it('ทำก่อนลำดับ: คุยลุงคำก่อนป้าศรี / เปิดกระดานก่อนอ่านสมุด — ขั้นที่ทำแล้วนับให้ ไม่ต้องย้อนทำ', () => {
     const s = newSession();
     talk(s, 'teacher-nem');
     talk(s, 'headman', HEADMAN_OK);
-    talk(s, 'villager-sri');
-    expect(goal(s)).toBe('ไปคุยกับลุงคำ'); // ลุงคำยังจำเป็น (ข้อมูลสะพานใช้เลือกเส้นทาง)
-    expect(progress(s)).toBe('4/13');
     talk(s, 'fisher-kham');
-    expect(goal(s)).toBe('เปิดสมุดอ่านข้อมูลที่ได้มา');
+    expect(goal(s)).toBe('ไปพบป้าศรี'); // ป้าศรียังต้องไปพบ (ข้อมูลทางแยก)
+    expect(phaseProgress(microStates(s)).done).toBe(2);
+    talk(s, 'villager-sri');
+    expect(goal(s)).toBe('เปิดสมุดภาคสนาม อ่านเบาะแส');
     s.noteSkill('straight-vs-route'); // ไปหน้าวิเคราะห์เลย
-    expect(goal(s)).toBe('เลือกเส้นทางที่ตรงกับข้อมูล');
+    // อ่านสมุดนับให้แล้ว (กระดานแสดงเบาะแสเดียวกัน) แต่การวัดระยะจากศาลายังต้องทำ
     expect(microStates(s).find((m) => m.step.id === 'read-clues')!.done).toBe(true);
+    expect(goal(s)).toBe('เริ่มวัดระยะจากศาลาชุมชน');
+    s.startMeasure();
+    expect(goal(s)).toBe('เลือกเส้นทางที่ตรงกับข้อมูล');
   });
 
-  it('ไม่ได้คุยป้าศรีเลยแต่เลือกเส้นทางถูก (ข้อมูลป้าศรีเป็นตัวช่วย) → ไม่ติดค้าง ขั้นของฉากที่ผ่านแล้วนับว่าสำเร็จ', () => {
+  it('เลือกเส้นทางถูกก่อนทำขั้นอื่น → ไม่ติดค้าง ขั้นของฉากที่ผ่านแล้วนับว่าสำเร็จ', () => {
     const s = newSession();
     talk(s, 'teacher-nem');
     talk(s, 'headman', HEADMAN_OK);
     talk(s, 'fisher-kham');
     s.chooseRoute(1);
-    expect(goal(s)).toBe('ออกเดินทางตามเส้นทางที่วิเคราะห์');
+    expect(goal(s)).toBe('ออกสำรวจตามเส้นทางที่เลือก');
     expect(microStates(s).filter((m) => m.storyOrder <= 4).every((m) => m.done)).toBe(true);
   });
 
@@ -109,7 +144,7 @@ describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนว�
     explore(s, 'old-banyan');
     s.inspect(spot());
     while (s.inDialogue) s.advanceDialogue();
-    expect(goal(s)).toBe('เปิดแผนที่และปักหมุดบ้านผ้าปัก');
+    expect(goal(s)).toBe('ปักหมุดแหล่งผ้าปักบนแผนที่');
     expect(microStates(s).filter((m) => m.storyOrder === 7).every((m) => m.done)).toBe(true);
     expect(s.completed).toBe(false);
     s.submitPin({ x: 70, y: 13 }, 1);
@@ -138,7 +173,9 @@ describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนว�
     const a = newSession();
     talk(a, 'teacher-nem');
     talk(a, 'headman', HEADMAN_OK);
+    a.notePlayerNear({ x: 58, y: 33 });
     talk(a, 'villager-sri');
+    a.notePlayerNear({ x: 34, y: 45 }); // ถึงลุงคำแล้ว แต่ยังไม่คุย
     const snap = JSON.parse(JSON.stringify(a.toSnapshot())) as SessionSnapshot;
     // รูปแบบบันทึกเดิม: ไม่มีช่องใหม่ (ขั้นย่อยคำนวณจาก flags/เบาะแส/ทักษะที่บันทึกอยู่แล้ว)
     const KNOWN = ['version', 'levelId', 'contentVersion', 'flags', 'clues', 'evidence', 'mistakes', 'skills', 'firedTriggers', 'seenVariants',
@@ -147,7 +184,27 @@ describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนว�
     const b = newSession();
     expect(b.restore(snap)).toBe(true);
     expect(goal(b)).toBe(goal(a));
+    expect(goal(b)).toBe('คุยกับลุงคำ');
     expect(progress(b)).toBe(progress(a));
+  });
+
+  it('โหลดกลางการวัดระยะ: เริ่มวัดจากศาลาแล้วออกจากเกม → กลับมายังวัดจากศาลาต่อ (จาก flag เดิม ไม่มีข้อมูลบันทึกเพิ่ม)', () => {
+    const a = newSession();
+    talk(a, 'teacher-nem');
+    talk(a, 'headman', HEADMAN_OK);
+    talk(a, 'villager-sri');
+    talk(a, 'fisher-kham');
+    a.notebookTab = 'clues';
+    a.markNotebookViewed();
+    a.startMeasure();
+    const snap = JSON.parse(JSON.stringify(a.toSnapshot())) as SessionSnapshot;
+    expect(snap.flags).toContain('measured:sala');
+    const b = newSession();
+    expect(b.restore(snap)).toBe(true);
+    expect(b.measure?.originId).toBe('sala');
+    expect(goal(b)).toBe('เปิดกระดานวิเคราะห์เส้นทาง');
+    // ไม่มีเบาะแสซ้ำหลังโหลด
+    expect(new Set(b.clues).size).toBe(b.clues.length);
   });
 
   it('บันทึกเก่า (v0.16: ฉาก 6 = ปักหมุดแล้วจบ) → โหลดได้ ไม่ติด — ปักหมุดแล้วต่อด้วยปริศนาที่ทำได้จริง', () => {
@@ -162,38 +219,44 @@ describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนว�
     const old = JSON.parse(JSON.stringify(a.toSnapshot())) as SessionSnapshot;
     const b = newSession();
     expect(b.restore(old)).toBe(true);
-    expect(goal(b)).toBe('เปิดแผนที่และปักหมุดบ้านผ้าปัก');
+    expect(goal(b)).toBe('ปักหมุดแหล่งผ้าปักบนแผนที่');
     b.submitPin({ x: 70, y: 13 }, 1);
     expect(b.inspectPointAt({ x: 40, y: 13 })).toBeDefined(); // ปริศนายังเปิดให้ทำ
     expect(b.currentStepOrder).toBe(7);
   });
 
-  it('ระดับคำแนะนำเริ่มใหม่ทุกครั้งที่ขั้นเปลี่ยน · ระดับ 1 วิธีทำ → 2 เครื่องมือ → 3 คำถามช่วยคิด', () => {
+  it('ระดับคำแนะนำเริ่มใหม่ทุกครั้งที่ขั้นเปลี่ยน · ระดับ 1 วิธีทำ (แสดงตลอด) → 2 เครื่องมือ → 3 คำถามช่วยคิด', () => {
     const s = newSession();
     const k0 = hintKey(s);
     talk(s, 'teacher-nem');
     expect(hintKey(s)).not.toBe(k0);
     const m = currentMicro(s)!.step;
-    expect(buildQuestTracker(s, { hintTier: 0 }).hint).toBe(m.how);
-    expect(buildQuestTracker(s, { hintTier: 1 }).hint).toBe(m.tool);
-    expect(buildQuestTracker(s, { hintTier: 2 }).hint).toBe(m.think);
+    const t0 = buildQuestTracker(s, { hintTier: 0 });
+    expect(t0.hint).toBeNull();
+    expect(t0.steps.length).toBe(m.steps.length);
+    expect(buildQuestTracker(s, { hintTier: 1 }).hint).toBe(guideText(s.resolveText(m.tool), { touch: false, guideLabel: t0.action?.label }));
+    expect(buildQuestTracker(s, { hintTier: 2 }).hint).toBe(guideText(s.resolveText(m.think), { touch: false }));
   });
 
   it('ไม่เฉลย: ทุกขั้นทุกระดับไม่มีชื่อสถานที่ลับ เส้นทางที่ถูก คำตอบปริศนา หรือทิศของจุดซ่อน', () => {
     const secret = L1.landmarks.filter((l) => l.revealFlag).map((l) => l.name);
     const route = L1.routeAnalysis!.routes.find((r) => r.id === L1.routeAnalysis!.correctRouteId)!;
     const pinName = L1.landmarks.find((l) => l.id === L1.pinTask!.targetId)!.name;
+    const pinOrder = L1.story.find((st) => st.completeWhen?.type === 'flag' && st.completeWhen.flag === L1.pinTask!.successFlag)!.order;
     for (const st of L1.story)
       for (const m of st.micro ?? []) {
-        const text = [m.goal, m.how, m.tool, m.think, m.doneText ?? ''].join(' ');
+        const text = [m.goal, ...m.steps, m.result, m.tool, m.think, m.doneText ?? ''].join(' ');
         for (const n of secret) expect(text, m.id).not.toContain(n);
         expect(text, m.id).not.toContain(`เส้นทาง ${route.label}`);
         expect(text, m.id).not.toContain(route.description);
-        expect(text, m.id).not.toContain(pinName);
+        // ชื่อแหล่งผ้าปักใช้ได้เฉพาะหลังปักหมุดแล้ว (เป็นจุดเริ่มของปริศนา)
+        if (st.order <= pinOrder) expect(text, m.id).not.toContain(pinName);
         expect(text, m.id).not.toMatch(/ทิศตะวันตก|ต้นไม้ใหญ่|300 เมตร|30 ช่อง/);
+        // ไม่นำทางไปบ้านผ้าปักหรือจุดลับ
+        expect(m.target?.landmarkId, m.id).not.toBe('nai-chiao');
       }
     const quizStep = L1.story[2].micro![0];
-    expect([quizStep.goal, quizStep.how, quizStep.tool, quizStep.think].join(' ')).not.toContain('ผ้าปัก');
+    expect([quizStep.goal, ...quizStep.steps, quizStep.result, quizStep.tool, quizStep.think].join(' ')).not.toContain('ผ้าปัก');
   });
 
   it('คำแนะนำอ้างอิงข้อมูลที่ผู้เล่นได้แล้วเท่านั้น: ลุงคำ/ป้าศรีถูกพูดถึงหลังผู้ใหญ่บ้านบอกเท่านั้น', () => {
@@ -205,6 +268,8 @@ describe('บทที่ 1: Micro-Quest ทีละขั้น (คำนว�
     const order = (id: string) => L1.story.find((st) => st.micro?.some((m) => m.id === id))!.order;
     expect(order('talk-kham')).toBeGreaterThan(order('quiz-wisdom'));
     expect(order('talk-sri')).toBeGreaterThan(order('quiz-wisdom'));
+    // ผู้ใหญ่บ้านบอกให้ไปหาป้าศรีก่อน แล้วจึงลุงคำ (ตรงกับลำดับขั้น)
+    expect(told.indexOf('ป้าศรี')).toBeLessThan(told.indexOf('ลุงคำ'));
   });
 
   it('แผนที่: ศาลาชุมชนแสดงได้หลังครูเนมบอก (ก่อนไปถึง) · สถานที่ลับไม่แสดงจนค้นพบและเปิดเผย', () => {

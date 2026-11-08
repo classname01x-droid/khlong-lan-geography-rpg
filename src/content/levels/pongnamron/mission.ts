@@ -9,6 +9,7 @@ import type {
   QuizDefinition,
   StoryStep,
 } from '../../types';
+import { answerQuiz, hearReport, inspectAt, openTool, pinOnMap, talkTo } from '../../guide/steps';
 
 /**
  * ภารกิจด่านโป่งน้ำร้อน — ทักษะ: พิกัดกริด (E/N) · ทิศทางของแกน · ตำแหน่งสัมพัทธ์ · ตรวจหลักฐานภาคสนาม
@@ -388,3 +389,145 @@ export const pongStory: StoryStep[] = [
     completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];
+
+/* ---------------- ขั้นย่อย (v0.19: นำทางด้วย "การกระทำ") ----------------
+ * นำทางไป NPC และหมุดอ้างอิง RP (ครูเนมบอกไว้แล้ว — ฝึกอ่านพิกัดจากแผ่นป้าย)
+ * ไม่นำทางไปจุด A/B/C (ต้องหาจากพิกัด E/N เอง) และไม่บอกว่าจุดไหนถูก
+ */
+const rpStep = (n: 1 | 2 | 3): NonNullable<StoryStep['micro']>[number] =>
+  inspectAt({
+    id: `read-rp-${n}`,
+    goal: `อ่านพิกัดที่หมุดอ้างอิง RP-${n}`,
+    find: `หมุด RP-${n} อยู่ทาง{{dir:school>rp-${n}}}ของโรงเรียน — ดูลูกศรสีเหลืองที่ขอบจอ`,
+    result: `พิกัด E/N ของ RP-${n} ถูกจดลงสมุด`,
+    tool: 'แผ่นป้ายบนหมุดบอกพิกัด E/N — เทียบกับพิกัดของเราที่แถบสถานะ (มุมซ้ายบน)',
+    think: `พิกัดของ RP-${n} คือ E เท่าไร N เท่าไร? ตอนยืนที่หมุด พิกัดของเราตรงกันไหม`,
+    target: { landmarkId: `rp-${n}` },
+    done: { type: 'flag', flag: `read-rp-${n}` },
+  });
+
+const PONG_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
+  1: [
+    talkTo({
+      id: 'talk-nem',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      goal: 'ไปคุยกับครูเนม รับแผนที่กริด',
+      where: 'ที่โรงเรียน',
+      result: 'ได้แผนที่กริด บันทึกสำรวจเก่า และคำถามฝึกอ่านพิกัด',
+      think: 'พิกัดกริดบอกตำแหน่งด้วยตัวเลขสองตัว — ตัวไหนบอกแนวตะวันออก ตัวไหนบอกแนวเหนือ?',
+      done: { type: 'clue', clueId: 'clue-grid-rule' },
+      impliedByLater: true,
+    }),
+    answerQuiz({
+      id: 'quiz-axes',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      goal: 'ตอบคำถามเรื่องการอ่านพิกัด E/N',
+      result: 'ได้เบาะแสตำแหน่งหมุดอ้างอิง RP-1, RP-2, RP-3 — ต่อไปออกไปอ่านพิกัดที่หมุด',
+      tool: 'อ่าน E (ตะวันออก) ก่อน แล้วค่อยอ่าน N (เหนือ) · เปิด{tap:map} ดูเลข E/N ที่ขอบแผนที่',
+      think: 'ถ้าเดินไปทางตะวันออก ตัวเลขไหนเพิ่มขึ้น?',
+      done: { type: 'flag', flag: 'axes-ok' },
+    }),
+  ],
+  2: [
+    rpStep(1),
+    rpStep(2),
+    rpStep(3),
+    talkTo({
+      id: 'talk-son',
+      npcId: 'villager-son',
+      name: 'ลุงสอน',
+      where: 'ในชุมชนโป่งน้ำร้อน',
+      result: 'ได้เรื่องเล่าของชุมชนเกี่ยวกับบ่อน้ำร้อน',
+      think: 'ชาวบ้านใช้อะไรเป็นจุดสังเกตของบ่อน้ำร้อน?',
+      done: { type: 'talk', npcId: 'villager-son' },
+    }),
+  ],
+  3: [
+    talkTo({
+      id: 'talk-ruean',
+      npcId: 'record-keeper',
+      name: 'ป้าเรือน',
+      goal: 'ไปพบป้าเรือนที่ศาลาประชาคม',
+      where: 'ที่ศาลาประชาคม',
+      result: 'ได้เบาะแสเรื่องพิกัดที่อาจบันทึกผิด แล้วป้าเรือนจะถามคำถาม',
+      think: 'ถ้าบันทึกพิกัดผิดไป ตำแหน่งบนแผนที่จะคลาดไปทางไหน?',
+      done: { type: 'clue', clueId: 'clue-convention' },
+      impliedByLater: true,
+    }),
+    answerQuiz({
+      id: 'quiz-north',
+      npcId: 'record-keeper',
+      name: 'ป้าเรือน',
+      goal: 'ตอบคำถามเรื่องพิกัดเมื่อเดินไปทางเหนือ',
+      result: 'รู้วิธีตรวจพิกัดในบันทึกเก่า — ต่อไปสำรวจจุด A B C',
+      tool: '{tap:map} ดูเลขพิกัดที่ขอบแผนที่ — เทียบเลขด้านบน (เหนือ) กับด้านล่าง (ใต้)',
+      think: 'เมื่อเดินไปทางเหนือ ค่า E หรือค่า N ที่เปลี่ยน และเปลี่ยนอย่างไร?',
+      done: { type: 'flag', flag: 'record-checked' },
+    }),
+  ],
+  4: [
+    {
+      id: 'survey-abc',
+      goal: 'สำรวจจุด A, B และ C',
+      tools: ['กระดานวิเคราะห์', 'แผนที่', 'ปุ่มสำรวจ'],
+      steps: ['{tap:guide} ดูพิกัด E/N ของจุด A B C', '{tap:map} หาช่องที่พิกัดตรงกัน แล้ว{walk}ไป', 'ที่แต่ละจุด {tap:inspect}'],
+      result: 'บันทึกสิ่งที่พบจริงของจุดที่สำรวจ — ครบสามจุดแล้วไปเปิดกระดานวิเคราะห์',
+      tool: 'แถบสถานะ (มุมซ้ายบน) บอกพิกัดที่เรายืน — เดินจนพิกัดตรงกับจุดที่ต้องการ',
+      think: 'เลข E เพิ่มเมื่อเดินไปทางไหน และเลข N เพิ่มเมื่อเดินไปทางไหน?',
+      doneText: '✓ สำรวจครบสามจุดแล้ว!',
+      action: 'analysis',
+      actionLabel: '🔍 ดูพิกัดบนกระดาน',
+      done: { type: 'all', of: [{ type: 'flag', flag: 'surveyed-a' }, { type: 'flag', flag: 'surveyed-b' }, { type: 'flag', flag: 'surveyed-c' }] },
+    },
+    openTool({
+      id: 'open-board',
+      goal: 'เปิดกระดานวิเคราะห์พิกัด',
+      button: 'analysis',
+      look: ['ดูหลักฐานของแต่ละจุด: พิกัด · ตำแหน่งสัมพัทธ์ · สิ่งที่พบจริง'],
+      result: 'เมื่อเปิดแล้ว ขั้นต่อไปคือเลือกจุดที่ตรงกับหลักฐาน',
+      tool: 'กระดานเปิดได้ตั้งแต่ขั้นนี้ ถ้าปุ่มยังกดไม่ได้ ให้ฟังเบาะแสจากป้าเรือนก่อน',
+      think: 'หลักฐานแต่ละชนิดชี้ไปที่จุดเดียวกันหรือไม่?',
+      done: { type: 'flag', flag: 'opened:gridcheck' },
+      doneText: '✓ เปิดกระดานวิเคราะห์แล้ว!',
+      impliedByLater: true,
+    }),
+    {
+      id: 'choose-site',
+      goal: 'เลือกจุดที่ตรงกับหลักฐานทุกข้อ',
+      tools: ['กระดานวิเคราะห์'],
+      steps: ['{tap:guide}', 'เทียบแต่ละจุดกับพิกัดที่แก้แล้ว ตำแหน่งสัมพัทธ์ และสิ่งที่พบจริง', '{choose}จุด แล้ว{tap:confirm}'],
+      result: 'ถ้าตรงทุกข้อ ไปขั้นตรวจยืนยันในพื้นที่ · ถ้ายังไม่ตรง กระดานบอกว่าหลักฐานใดขัดแย้ง',
+      tool: 'ยังไม่ต้องรีบยืนยัน — เลือกจุดแล้วอ่านผลเทียบหลักฐานก่อน',
+      think: 'จุดไหนตรงทั้งพิกัดที่แก้แล้ว และสิ่งที่ชาวบ้านเล่า?',
+      doneText: '✓ วิเคราะห์พิกัดสำเร็จ!',
+      action: 'analysis',
+      actionLabel: '🔍 เลือกจุด',
+      done: { type: 'flag', flag: 'grid-checked' },
+    },
+  ],
+  5: [
+    {
+      id: 'verify',
+      goal: 'ไปตรวจยืนยันจุดที่เลือก',
+      tools: ['แผนที่', 'ปุ่มตรวจสอบ'],
+      steps: ['{tap:map} หาจุดที่เลือกบนกระดาน (ดูพิกัดในสมุด)', '{walk} ไปที่จุดนั้น', 'เมื่อปุ่ม "ตรวจสอบ" ขึ้น {tap:check}'],
+      result: 'ได้รายงานภาคสนาม — ต่อไปปักหมุด',
+      tool: 'ต้องยืนใกล้จุดที่เลือกไม่เกิน 3 ช่อง ปุ่มตรวจสอบจึงจะขึ้น',
+      think: 'สิ่งที่เห็นจริงตรงกับหลักฐานบนกระดานหรือไม่?',
+      doneText: '✓ ตรวจยืนยันแล้ว!',
+      action: 'map',
+      done: { type: 'flag', flag: 'site-verified' },
+    },
+    pinOnMap({
+      id: 'pin',
+      place: 'จุดที่ตรวจยืนยัน',
+      kind: 'ประเภทสถานที่',
+      think: 'สถานที่ที่ตรวจยืนยันแล้วเป็นภูมิปัญญาหรือแหล่งธรรมชาติประเภทใด?',
+      done: { type: 'flag', flag: 'pin-verified' },
+    }),
+  ],
+  6: [hearReport({ id: 'report', code: 'รหัสลับชิ้นที่ 3', done: { type: 'flag', flag: 'mission-complete' } })],
+};
+for (const st of pongStory) if (PONG_MICRO[st.order]) st.micro = PONG_MICRO[st.order];

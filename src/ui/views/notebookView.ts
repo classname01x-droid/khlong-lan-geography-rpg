@@ -6,7 +6,22 @@ import {
   type QuestStatus,
 } from '../../core/session/GameSession';
 import { dirName, fmtMeters10 } from '../format';
-import { hasMicroSteps, microStates } from '../../core/guide/MicroQuest';
+import { hasMicroSteps, microStates, phaseProgress } from '../../core/guide/MicroQuest';
+import { guideText } from '../../core/guide/GuideText';
+import { guideActionOf } from '../../core/guide/QuestGuide';
+import { guideTarget } from '../../core/guide/Navigation';
+import type { ClueType } from '../../content/types';
+
+/** ไอคอนประเภทหลักฐาน (ใช้ทั้งสมุดและแถบภารกิจ) */
+export const CLUE_ICON: Record<ClueType, string> = {
+  direction: '🧭',
+  distance: '📏',
+  landmark: '📍',
+  elevation: '⛰️',
+  symbol: '🗺️',
+  comparison: '⚖️',
+  coordinate: '🔢',
+};
 
 /**
  * เนื้อหาสมุดภาคสนาม (ข้อมูลล้วน ไม่ผูกกับ Phaser) — ใช้ร่วมกันระหว่าง
@@ -70,24 +85,31 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
         continue;
       }
       if (q.def.kind === 'main' && hasMicroSteps(s)) {
-        // บทที่มีขั้นย่อย: ขั้นที่ทำแล้ว ✓ · ขั้นที่กำลังทำ ▶ · เครื่องมือที่ใช้ · ข้อมูลที่ได้จากชาวบ้าน (อ่านย้อนได้ตลอด)
+        // บทที่มีขั้นย่อย: แยกตามช่วงภารกิจ · ขั้นที่ทำแล้ว ✓ · ขั้นที่กำลังทำ ▶ พร้อมวิธีทำ เครื่องมือ และผลเมื่อสำเร็จ
         const ms = microStates(s);
-        const done = ms.filter((m) => m.done).length;
-        line(`ความคืบหน้า ${done}/${ms.length} ขั้น`, 14, '#2b2118', 22, 4);
-        for (const m of ms) {
-          if (m.done) line(`✓ ${m.step.goal}`, 14, '#1f6b2a', 22, 1);
-          else if (m.current) {
-            line(`▶ ตอนนี้: ${m.step.goal}`, 15, '#7a2e1e', 22, 1);
-            line(`วิธีทำ: ${m.step.how}`, 14, '#2b2118', 40, 1);
-            if (m.step.tools?.length) line(`เครื่องมือที่ใช้: ${m.step.tools.join(' · ')}`, 14, '#5a3a1e', 40, 1);
+        const prog = phaseProgress(ms);
+        const gt = (t: string, label?: string) => guideText(s.resolveText(t), { touch: !!opts.touch, guideLabel: label });
+        const phases = s.level.guidePhases ?? [{ id: '', title: '' }];
+        for (const ph of phases) {
+          const inPhase = ms.filter((m) => m.phase === ph.id);
+          if (inPhase.length === 0) continue;
+          const total = Math.max(...inPhase.map((m) => m.num));
+          const done = new Set(inPhase.filter((m) => inPhase.filter((x) => x.num === m.num).every((x) => x.done)).map((m) => m.num)).size;
+          line(`${ph.title ? `${ph.title} — ` : ''}ทำแล้ว ${done}/${total} ขั้น`, 14, '#5a3a1e', 22, 2);
+          for (const m of inPhase) {
+            const no = m.parts > 1 ? `${m.num}.${m.part}` : `${m.num}`;
+            if (m.done) line(`✓ ${no}. ${m.step.goal}`, 14, '#1f6b2a', 30, 1);
+            else if (m.current) {
+              const action = guideActionOf(m.step, guideTarget(s));
+              line(`▶ ${no}. ตอนนี้: ${m.step.goal}`, 15, '#7a2e1e', 30, 1);
+              line(`วิธีทำ: ${m.step.steps.map((x, i) => `(${i + 1}) ${gt(x, action?.label)}`).join(' ')}`, 14, '#2b2118', 48, 1);
+              line(`เครื่องมือ: ${m.step.tools.join(' · ')}`, 14, '#5a3a1e', 48, 1);
+              line(`เมื่อสำเร็จ: ${gt(m.step.result, action?.label)}`, 13, '#5a4a38', 48, 1);
+            } else line(`○ ${no}. ${m.step.goal}`, 14, '#8a7a64', 30, 1);
           }
-        }
-        const heard = s.clues.map((id) => s.getClue(id)).filter((c): c is NonNullable<typeof c> => !!c);
-        if (heard.length) {
           space(4);
-          line('ข้อมูลที่ได้รับจากชาวบ้าน', 15, '#5a3a1e', 22, 2);
-          for (const c of heard) line(`• ${c.source}: ${s.resolveText(c.text)}`, 14, '#2b2118', 30, 2);
         }
+        if (prog.total === 0) line('ยังไม่มีขั้นภารกิจ', 14, '#7a6448', 22, 2);
         space(8);
         continue;
       }
@@ -123,10 +145,14 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       line(`เบาะแสที่ต้องใช้วิเคราะห์เส้นทาง —  ${byType.join('   ·   ')}`, 15, '#5a3a1e', 0, 10);
     }
     if (s.clues.length === 0) line('ยังไม่มีเบาะแส — ลองคุยกับตัวละครที่มีเครื่องหมาย ! เหนือหัว', 15, '#7a6448');
-    for (const id of s.clues) {
+    else line('จดให้อัตโนมัติ เรียงตามลำดับที่ได้รับ (ล่าสุดอยู่ล่างสุด) · ★ = เพิ่งได้', 13, '#7a6448', 0, 6);
+    s.clues.forEach((id, i) => {
       const c = s.getClue(id);
-      if (c) line(`[${CLUE_TYPE_LABEL[c.type]}]  ${c.source}: ${s.resolveText(c.text)}`, 15, '#2b2118', 0, 8);
-    }
+      if (!c) return;
+      const fresh = s.newClues.includes(id);
+      line(`${i + 1}. ${CLUE_ICON[c.type]} ${CLUE_TYPE_LABEL[c.type]} — จาก${c.source}${fresh ? '   ★ ใหม่' : ''}`, 15, fresh ? '#a2541e' : '#5a3a1e', 0, 1);
+      line(s.resolveText(c.text), 15, '#2b2118', 26, 8);
+    });
     footer.text = `เบาะแสที่ค้นพบ ${s.clues.length}/${s.level.clues?.length ?? 0}`;
   } else if (s.notebookTab === 'routes') {
     buildRoutes(s, line, footer);
@@ -138,7 +164,7 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
     // สถิติการสำรวจ (ย้ายมาจากแถบบนจอ เพื่อให้หน้าจอระหว่างเดินไม่รก)
     line('สถิติการสำรวจ', 17, '#5a3a1e', 0, 4);
     line(
-      `ระยะทางรวม ${fmtMeters10(s.odometer.totalMeters)} · สำรวจแล้ว ${Math.round(s.fog.exploredRatio * 100)}% ของพื้นที่ · ` +
+      `ระยะเดินสะสมทั้งบท ${fmtMeters10(s.odometer.totalMeters)} · สำรวจแล้ว ${Math.round(s.fog.exploredRatio * 100)}% ของพื้นที่ · ` +
         `เบาะแส ${s.clues.length}/${s.level.clues?.length ?? 0} · เวลา ${Math.floor(s.elapsedMs / 60_000)} นาที`,
       14,
       '#2b2118',
@@ -184,7 +210,24 @@ function buildRoutes(
     return;
   }
   const origin = s.level.landmarks.find((l) => l.id === ra.originId)?.name ?? ra.originId;
-  line(`ต้นทาง: ${origin} — ข้อมูลด้านล่างคำนวณจากแผนที่ (ระยะปัดเป็นหลักสิบเมตร) จะบันทึกเมื่อสำรวจถึงปลายทางแล้ว`, 14, '#7a6448', 0, 10);
+  // ข้อมูลที่ใช้เทียบ: เบาะแสที่ผู้เล่นได้รับจริง (ทิศ · ระยะ · จุดสังเกต) — วางไว้บนสุดของกระดาน ไม่ต้องสลับหน้าไปมา
+  line('ข้อมูลที่ใช้เปรียบเทียบ (จากเบาะแสที่ได้รับ)', 16, '#5a3a1e', 0, 2);
+  for (const { clue, collected } of s.requiredClueStatus()) {
+    line(
+      collected
+        ? `${CLUE_ICON[clue.type]} ${CLUE_TYPE_LABEL[clue.type]} (${clue.source}): ${s.resolveText(clue.text)}`
+        : `${CLUE_ICON[clue.type]} ${CLUE_TYPE_LABEL[clue.type]}: ยังไม่มี — ฟังจาก${clue.source}ก่อน`,
+      14,
+      collected ? '#2b2118' : '#8a7a64',
+      14,
+      2,
+    );
+  }
+  for (const id of s.clues) {
+    const c = s.getClue(id);
+    if (c && !ra.requiredClueIds.includes(id) && c.type === 'landmark') line(`${CLUE_ICON[c.type]} ${CLUE_TYPE_LABEL[c.type]} (${c.source}): ${s.resolveText(c.text)}`, 14, '#2b2118', 14, 2);
+  }
+  line(`ต้นทาง: ${origin} — ตัวเลขของแต่ละเส้นทางคำนวณจากแผนที่ (ระยะปัดเป็นหลักสิบเมตร) จะบันทึกเมื่อสำรวจถึงปลายทางแล้ว`, 14, '#7a6448', 0, 10);
   s.routeRows().forEach((row, i) => {
     const chosen = s.routeSolved && row.def.id === ra.correctRouteId;
     line(

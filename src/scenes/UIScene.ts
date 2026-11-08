@@ -3,7 +3,6 @@ import { CAMERA_ZOOM, GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
 import { THAI_DIRECTION } from '../core/direction/Compass';
 import type { GameSession } from '../core/session/GameSession';
 import { DialogueBox } from '../ui/DialogueBox';
-import { fmtMeters } from '../ui/format';
 import { MapOverlay } from '../ui/MapOverlay';
 import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
@@ -87,14 +86,12 @@ export class UIScene extends Phaser.Scene {
     const s = this.session;
     if (!s) return;
     const t = s.playerTile;
+    // ระหว่างเล่นแสดงเฉพาะที่ต้องใช้: ทิศที่หัน (+ พิกัดในบทที่ใช้พิกัดกริด)
+    // ระยะเดินสะสม/พื้นที่สำรวจ/เวลา อยู่ในสมุด หน้าหลักฐาน (สถิติ) · ระยะวัดอยู่ในแถบวัดระยะ (เฉพาะตอนวัด)
     this.hudText.setText(
-      [
-        s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : `ตำแหน่ง: ช่อง X ${t.x}, Y ${t.y}`,
-        `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`,
-        `ระยะทางรวม: ${fmtMeters(s.odometer.totalMeters)}`,
-        `ระยะที่วัด (R): ${fmtMeters(s.odometer.tripMeters)}`,
-        // สถิติอื่น (สำรวจแล้ว % · เบาะแส · เวลา) อยู่ในสมุดภาคสนาม หน้าหลักฐาน/ข้อความ
-      ].join('\n'),
+      [s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : null, `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`]
+        .filter(Boolean)
+        .join('\n'),
     );
     const step = s.currentStep;
     this.objectiveText.setText(
@@ -210,8 +207,9 @@ export class UIScene extends Phaser.Scene {
   private createHud(): void {
     const s = this.session;
     const panel = this.add.graphics();
-    panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, 180, 8);
-    panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, 180, 8);
+    const hudH = s.coords ? 112 : 92;
+    panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, hudH, 8);
+    panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, hudH, 8);
     const title = this.add.text(24, 18, `${s.level.tambon}\n${s.level.title}`, { ...textStyle(16, COLORS.accent), lineSpacing: 0 });
     this.hudText = this.add.text(24, 70, '', { ...textStyle(15), lineSpacing: 2 });
     this.hudParts = [panel, title, this.hudText];
@@ -224,7 +222,7 @@ export class UIScene extends Phaser.Scene {
       .text(
         GAME_WIDTH / 2,
         GAME_HEIGHT - 10,
-        'WASD/ลูกศร: เดิน · E: คุย · R: วัดระยะ · G: ตาราง · M: แผนที่ · N: สมุด · Esc: หยุดเกม',
+        'WASD/ลูกศร: เดิน · E: คุย · R: วัดระยะ · C: วิเคราะห์ · M: แผนที่ · N: สมุด · G: ตาราง · Esc: หยุดเกม',
         { ...textStyle(14, COLORS.text), backgroundColor: '#10141fcc', padding: { x: 10, y: 4, top: 6 } },
       )
       .setOrigin(0.5, 1);

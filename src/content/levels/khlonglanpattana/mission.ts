@@ -9,6 +9,7 @@ import type {
   QuizDefinition,
   StoryStep,
 } from '../../types';
+import { answerQuiz, hearReport, inspectAt, openTool, pinOnMap, talkTo } from '../../guide/steps';
 
 /**
  * ภารกิจด่านคลองลานพัฒนา (ด่านสุดท้าย) — บูรณาการ:
@@ -394,3 +395,188 @@ export const lanStory: StoryStep[] = [
     completeWhen: { type: 'flag', flag: 'mission-complete' },
   },
 ];
+
+/* ---------------- ขั้นย่อย (v0.19: นำทางด้วย "การกระทำ") ----------------
+ * นำทางไป NPC และหมุดอ้างอิง RP · ไม่นำทางไปจุด A/B/C และไม่บอกว่าจุดไหนตรงหลักฐานครบ
+ */
+const lanRp = (n: 1 | 2 | 3): NonNullable<StoryStep['micro']>[number] =>
+  inspectAt({
+    id: `read-rp-${n}`,
+    goal: `อ่านพิกัดที่หมุดอ้างอิง RP-${n}`,
+    find: `หมุด RP-${n} อยู่ทาง{{dir:center>rp-${n}}}ของศูนย์ภาคสนาม — ดูลูกศรสีเหลืองที่ขอบจอ`,
+    result: `พิกัด E/N ของ RP-${n} ถูกจดลงสมุด`,
+    tool: 'แผ่นป้ายบนหมุดบอกพิกัด E/N — เทียบกับพิกัดของเราที่แถบสถานะ (มุมซ้ายบน)',
+    think: `RP-${n} อยู่ห่างจากหมุดอื่นกี่ช่อง และกี่เมตร?`,
+    target: { landmarkId: `rp-${n}` },
+    done: { type: 'flag', flag: `read-rp-${n}` },
+  });
+
+const LAN_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
+  1: [
+    talkTo({
+      id: 'talk-nem',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      goal: 'ไปคุยกับครูเนม รับแผนที่ที่เสียหาย',
+      where: 'ที่ศูนย์ภาคสนาม',
+      result: 'ได้ภารกิจแผนที่ลับ แล้วครูเนมจะถามทบทวนมาตราส่วน',
+      think: 'แผนที่ที่เสียหายยังเหลือข้อมูลชนิดใดให้ใช้ได้บ้าง?',
+      done: { type: 'clue', clueId: 'clue-mission' },
+      impliedByLater: true,
+    }),
+    answerQuiz({
+      id: 'quiz-scale',
+      npcId: 'teacher-nem',
+      name: 'ครูเนม',
+      goal: 'ตอบคำถามทบทวนมาตราส่วน',
+      result: 'รับภารกิจแล้ว และได้เบาะแสหมุดอ้างอิง RP — ต่อไปออกไปอ่านพิกัดที่หมุด',
+      tool: '1 ซม. บนแผนที่ 1:10,000 = 100 ม. จริง · 1 ช่อง = 10 ม.',
+      think: 'ระยะบนแผนที่ (ซม.) ต้องคูณเท่าไรจึงเป็นเมตรจริง?',
+      done: { type: 'flag', flag: 'mission-accepted' },
+    }),
+  ],
+  2: [
+    lanRp(1),
+    lanRp(2),
+    lanRp(3),
+    talkTo({
+      id: 'talk-tonkla',
+      npcId: 'surveyor-tonkla',
+      name: 'พี่ต้นกล้า',
+      where: 'ใกล้สะพานข้ามลำน้ำ',
+      result: 'ได้เบาะแสเรื่องถนนตรง แล้วพี่ต้นกล้าจะถามเรื่องระยะ',
+      think: 'ถ้าถนนตรง ระยะตามถนนกับระยะเส้นตรงต่างกันไหม?',
+      done: { type: 'clue', clueId: 'clue-straight-road' },
+      impliedByLater: true,
+    }),
+    answerQuiz({
+      id: 'quiz-distance',
+      npcId: 'surveyor-tonkla',
+      name: 'พี่ต้นกล้า',
+      goal: 'ตอบคำถามเรื่องระยะเส้นตรง',
+      result: 'ได้เบาะแสระยะทาง — ต่อไปพบป้าบัวลอยริมลำน้ำ',
+      tool: 'ระยะบนแผนที่ (ซม.) × 100 = เมตรจริงแบบเส้นตรง · ระยะเดินตามถนนยาวกว่าเส้นตรง',
+      think: 'คำถามถามระยะ "เส้นตรง" หรือระยะ "ตามถนน"?',
+      done: { type: 'flag', flag: 'distance-ok' },
+    }),
+  ],
+  3: [
+    talkTo({
+      id: 'talk-bualoy',
+      npcId: 'water-keeper',
+      name: 'ป้าบัวลอย',
+      where: 'ริมลำน้ำ',
+      result: 'ได้ค่าระดับความสูง แล้วป้าบัวลอยจะถามเรื่องทิศน้ำไหล',
+      think: 'ระดับความสูงสองจุดบอกทิศน้ำไหลได้อย่างไร?',
+      done: { type: 'clue', clueId: 'clue-elev' },
+      impliedByLater: true,
+    }),
+    answerQuiz({
+      id: 'quiz-flow',
+      npcId: 'water-keeper',
+      name: 'ป้าบัวลอย',
+      goal: 'ตอบคำถามเรื่องทิศทางน้ำไหล',
+      result: 'ได้เบาะแสภูมิประเทศ — ต่อไปพบลุงจำรัสในชุมชน',
+      tool: '{tap:notebook} ดูค่าความสูงที่ป้าบัวลอยบอก · {tap:map} ดูเส้นชั้นความสูง',
+      think: 'น้ำไหลจากที่สูงไปที่ต่ำ — ป้ายวัดระดับไหนสูงกว่า?',
+      done: { type: 'flag', flag: 'flow-ok' },
+    }),
+  ],
+  4: [
+    {
+      id: 'go-chamrat',
+      goal: 'ไปพบลุงจำรัส',
+      tools: ['ลูกศรนำทาง', 'แผนที่'],
+      steps: ['ลุงจำรัสอยู่ในชุมชน — ดูลูกศรสีเหลืองที่ขอบจอ', '{walk} ไปใกล้ ๆ แล้ว{tap:talk}'],
+      result: 'ลุงจำรัสเล่าเรื่องบันทึกพิกัด แล้วถามคำถาม 2 ข้อ',
+      tool: '{tap:guide} ดูตำแหน่งลุงจำรัสบนแผนที่',
+      think: 'บันทึกพิกัดเก่าอาจบอกตำแหน่งไม่ครบ — ต้องใช้อะไรช่วยคำนวณ?',
+      doneText: '✓ ถึงลุงจำรัสแล้ว!',
+      target: { npcId: 'record-keeper' },
+      done: { type: 'near', npcId: 'record-keeper' },
+      impliedByNext: true,
+    },
+    answerQuiz({
+      id: 'quiz-n',
+      npcId: 'record-keeper',
+      name: 'ลุงจำรัส',
+      goal: 'คำนวณเลข N จากหมุด RP-2',
+      result: 'ได้เลข N แล้ว ลุงจำรัสจะถามเลข E ต่อ',
+      tool: '{tap:notebook} ดูพิกัด RP-2 ที่จดไว้ และระยะที่บันทึกบอก',
+      think: 'ไปทางเหนือ ค่า N ควรเพิ่มหรือลด และเปลี่ยนไปกี่เมตร?',
+      done: { type: 'flag', flag: 'grid-n-ok' },
+    }),
+    answerQuiz({
+      id: 'quiz-e',
+      npcId: 'record-keeper',
+      name: 'ลุงจำรัส',
+      goal: 'ตอบคำถามเรื่องค่า E ที่อ่านได้ไม่ครบ',
+      result: 'ได้หลักฐานพิกัด — ต่อไปสำรวจจุด A B C',
+      tool: '{tap:notebook} อ่านบันทึกพิกัดของลุงจำรัสอีกครั้ง',
+      think: 'ตัวเลขที่ยังอ่านออก ช่วยอะไรได้บ้างแม้จะไม่ครบทุกหลัก?',
+      done: { type: 'flag', flag: 'grid-read' },
+    }),
+  ],
+  5: [
+    {
+      id: 'survey-abc',
+      goal: 'สำรวจจุด A, B และ C',
+      tools: ['แผนที่', 'ปุ่มสำรวจ'],
+      steps: ['{tap:guide} ดูว่าจุด A B C อยู่ตรงไหน', '{walk} ไปทีละจุด (จุดอยู่บนเนิน ต้องใช้ถนนขึ้นเนิน)', 'ที่แต่ละจุด {tap:inspect}'],
+      result: 'บันทึกระยะทาง ภูมิประเทศ และพิกัดของจุดที่สำรวจ — ครบสามจุดแล้วไปเปิดกระดานวิเคราะห์',
+      tool: '{tap:measure} วัดระยะจากจุดอ้างอิงที่พี่ต้นกล้าบอก เทียบกับระยะในเบาะแส',
+      think: 'แต่ละจุดอยู่สูงหรือต่ำ และห่างจากจุดอ้างอิงกี่เมตร?',
+      doneText: '✓ สำรวจครบสามจุดแล้ว!',
+      action: 'map',
+      done: { type: 'all', of: [{ type: 'flag', flag: 'surveyed-a' }, { type: 'flag', flag: 'surveyed-b' }, { type: 'flag', flag: 'surveyed-c' }] },
+    },
+    openTool({
+      id: 'open-board',
+      goal: 'เปิดกระดานวิเคราะห์หลักฐาน',
+      button: 'analysis',
+      look: ['ดูหลักฐาน 3 ชนิดของแต่ละจุด: ระยะทาง · ภูมิประเทศ · พิกัด'],
+      result: 'เมื่อเปิดแล้ว ขั้นต่อไปคือเลือกจุดที่ตรงครบทุกชนิด',
+      tool: 'กระดานเปิดได้หลังได้หลักฐานพิกัดจากลุงจำรัส',
+      think: 'จุดแต่ละจุดตรงกับหลักฐานกี่ชนิด?',
+      done: { type: 'flag', flag: 'opened:gridcheck' },
+      doneText: '✓ เปิดกระดานวิเคราะห์แล้ว!',
+      impliedByLater: true,
+    }),
+    {
+      id: 'choose-site',
+      goal: 'เลือกจุดที่ตรงกับหลักฐานครบทั้ง 3 ชนิด',
+      tools: ['กระดานวิเคราะห์'],
+      steps: ['{tap:guide}', 'เทียบแต่ละจุดกับระยะทาง ภูมิประเทศ และพิกัด', '{choose}จุด แล้ว{tap:confirm}'],
+      result: 'ถ้าตรงครบ ไปขั้นตรวจยืนยันในพื้นที่ · ถ้ายังไม่ครบ กระดานบอกว่าหลักฐานชนิดใดไม่ตรง',
+      tool: 'หลักฐานแต่ละชนิดอาจตรงได้หลายจุด — จุดที่ถูกต้องต้องตรงทุกชนิดพร้อมกัน',
+      think: 'จุดไหนตรงทั้งระยะทาง ภูมิประเทศ และพิกัด?',
+      doneText: '✓ วิเคราะห์หลักฐานสำเร็จ!',
+      action: 'analysis',
+      actionLabel: '🔍 เลือกจุด',
+      done: { type: 'flag', flag: 'analysis-done' },
+    },
+  ],
+  6: [
+    {
+      id: 'verify',
+      goal: 'ไปตรวจยืนยันจุดที่เลือก',
+      tools: ['แผนที่', 'ปุ่มตรวจสอบ'],
+      steps: ['{tap:map} หาจุดที่เลือกบนกระดาน', '{walk} ไปที่จุดนั้น', 'เมื่อปุ่ม "ตรวจสอบ" ขึ้น {tap:check}'],
+      result: 'ได้บันทึกภูมิปัญญา — ต่อไปปักหมุด',
+      tool: 'ต้องยืนใกล้จุดที่เลือก ปุ่มตรวจสอบจึงจะขึ้น',
+      think: 'สิ่งที่เห็นจริงตรงกับหลักฐานบนกระดานหรือไม่?',
+      doneText: '✓ ตรวจยืนยันแล้ว!',
+      action: 'map',
+      done: { type: 'flag', flag: 'site-verified' },
+    },
+    pinOnMap({
+      id: 'pin',
+      place: 'จุดที่ตรวจยืนยัน',
+      kind: 'ประเภทภูมิปัญญา',
+      think: 'ภูมิปัญญาที่บันทึกไว้ ณ จุดนี้เป็นประเภทใด?',
+      done: { type: 'flag', flag: 'pin-verified' },
+    }),
+  ],
+  7: [hearReport({ id: 'report', code: 'รหัสลับชิ้นที่ 4', done: { type: 'flag', flag: 'mission-complete' } })],
+};
+for (const st of lanStory) if (LAN_MICRO[st.order]) st.micro = LAN_MICRO[st.order];
