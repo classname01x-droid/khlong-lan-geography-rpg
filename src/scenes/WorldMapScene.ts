@@ -73,7 +73,7 @@ export class WorldMapScene extends Phaser.Scene {
     // แถบล่าง: รหัสลับ + บทสุดท้าย · ปุ่มเดินทางต่อ · ปุ่มกลับเมนู
     const bar = this.add.graphics();
     drawPixelFrame(bar, 20, 560, 470, 64, 'paper');
-    this.add.text(36, 566, `รหัสลับ: ${view.codes.join(' · ')}`, this.style(17, PIXEL.ink));
+    this.add.text(36, 566, `คำพิทักษ์: ${view.codes.join(' · ')}`, this.style(17, PIXEL.ink));
     this.add.text(36, 596, view.notice.text, this.style(13, NOTICE_COLOR[view.notice.tone]));
 
     const go = new PixelButton(this, 504, 566, view.primary.label, { width: 290, height: 52, fontSize: 17, onClick: () => this.go() });

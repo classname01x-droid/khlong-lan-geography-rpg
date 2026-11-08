@@ -197,7 +197,7 @@ export class WorldScene extends Phaser.Scene {
       this.labelBaseY.set(lm.id, label.y);
     }
 
-    // ---- ของตกแต่ง (เช่น หีบไม้เก่า) — ภาพอย่างเดียว ไม่มีการชน ไม่มีผลต่อภารกิจ ----
+    // ---- ของตกแต่ง (เช่น ศาลพญาจระเข้) — ภาพอย่างเดียว ไม่มีการชน ไม่มีผลต่อภารกิจ ----
     for (const d of level.decor ?? []) {
       this.add.image((d.at.x + 0.5) * S, (d.at.y + 0.5) * S, d.kind).setDepth(DEPTH.characters - 1);
     }

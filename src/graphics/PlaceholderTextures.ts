@@ -299,19 +299,20 @@ export function generatePlaceholderTextures(scene: Phaser.Scene): void {
   px(mark.context, 1, 6, '#ffd84d', 3, 1);
   mark.refresh();
 
-  // หีบไม้เก่า (placeholder) — ปิด / เปิด · 12×10 px
-  for (const [key, open] of [['chest', false], ['chest-open', true]] as const) {
-    const tex = createCanvas(scene, key, 12, 10);
-    const c = tex.context;
-    px(c, 0, open ? 1 : 2, '#3b2412', 12, open ? 2 : 4); // ฝา (เส้นขอบ)
-    px(c, 1, open ? 1 : 3, '#8a5a2b', 10, open ? 1 : 2);
-    px(c, 0, 5, '#3b2412', 12, 5); // ตัวหีบ
-    px(c, 1, 6, '#a06a35', 10, 3);
-    px(c, 0, 5, '#d9a441', 12, 1); // แถบโลหะ
-    px(c, 5, 6, '#ffd84d', 2, 2); // แม่กุญแจ/ช่องรหัส
-    if (open) px(c, 2, 3, '#f4efe1', 8, 2); // กระดาษแผนที่ในหีบ
-    tex.refresh();
-  }
+  // ศาลพญาจระเข้ผู้พิทักษ์ (placeholder) · 12×12 px — หลังคาแดง เสาไม้ รูปจระเข้สีเขียวกลางศาล
+  const shrine = createCanvas(scene, 'shrine', 12, 12);
+  const c = shrine.context;
+  px(c, 5, 0, '#d9a441', 2, 1); // ยอด
+  px(c, 2, 1, '#8b2a1e', 8, 1); // หลังคา
+  px(c, 0, 2, '#b8402a', 12, 2);
+  px(c, 1, 4, '#f4efe1', 10, 4); // ตัวศาล
+  px(c, 1, 4, '#5a3a1e', 1, 4); // เสา
+  px(c, 10, 4, '#5a3a1e', 1, 4);
+  px(c, 3, 5, '#3f8f3a', 6, 2); // จระเข้
+  px(c, 8, 5, '#ffd84d', 1, 1); // ตา
+  px(c, 3, 8, '#8a7a64', 6, 4); // ฐาน
+  px(c, 4, 9, '#b9ab90', 4, 2);
+  shrine.refresh();
 }
 
 /** สร้าง animation เดินของตัวละครทุกแบบ */

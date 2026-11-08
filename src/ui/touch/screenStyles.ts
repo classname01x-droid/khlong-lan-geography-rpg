@@ -130,14 +130,11 @@ export const SCREEN_CSS = `
 .ts-short .ts-dlg-text { font-size: 17px; line-height: 1.55; }
 .ts-short .ts-goal .ts-p { font-size: 15px; }
 
-/* ---------- หีบไม้เก่า (placeholder) + ช่องรหัส ---------- */
-.ts-chest { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.ts-chest-svg { flex: none; }
-.ts-chest-k { font-size: 14px; font-weight: 700; color: #5a3a1e; }
-.ts-chest-slots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+/* ---------- คำพิทักษ์ 4 ช่อง ---------- */
+.ts-words { margin-top: 6px; }
+.ts-words-k { font-size: 14px; font-weight: 700; color: #5a3a1e; }
+.ts-words-slots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
 .ts-slot { min-width: 36px; min-height: 26px; padding: 1px 6px; border: 2px dashed #8a7a64; border-radius: 6px; font-size: 15px;
   font-weight: 700; text-align: center; color: #8a7a64; background: #fff8e6; }
 .ts-slot.ts-slot-on { border-style: solid; border-color: #2f5a25; color: #1f4a17; background: #dff2d2; }
-.ts-short .ts-chest-svg { width: 40px; height: 33px; }
-.ts-chapter.ts-narrow .ts-chest-svg { display: none; }
 `;

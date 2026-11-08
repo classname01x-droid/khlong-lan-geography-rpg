@@ -25,6 +25,7 @@ export interface ChapterStartData {
 export const SCENE = {
   boot: 'BootScene',
   menu: 'MainMenuScene',
+  intro: 'IntroScene',
   worldMap: 'WorldMapScene',
   chapter: 'ChapterScene',
   ending: 'EndingScene',

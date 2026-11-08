@@ -467,10 +467,10 @@ export interface StoryStep {
   micro?: MicroStep[];
 }
 
-/** ของตกแต่งในฉาก (ภาพ placeholder ไม่มีการชน ไม่มีผลต่อภารกิจ) เช่น หีบไม้เก่าข้างครูเนม */
+/** ของตกแต่งในฉาก (ภาพ placeholder ไม่มีการชน ไม่มีผลต่อภารกิจ) เช่น ศาลพญาจระเข้ข้างครูเนม */
 export interface DecorDefinition {
   id: string;
-  kind: 'chest' | 'chest-open';
+  kind: 'shrine';
   at: TilePoint;
 }
 

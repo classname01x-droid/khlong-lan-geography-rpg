@@ -276,7 +276,7 @@ export const lanEnding: EndingDefinition = {
       speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
       text: 'หลักฐานแต่ละชนิดชี้ได้มากกว่าหนึ่งจุด ต้องใช้ทั้งสามร่วมกันจึงเหลือจุดเดียว — นี่คือหัวใจของการบูรณาการ',
     },
-    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 4 ให้ ครบ 4 ชิ้นแล้ว! กลับมาพบครูที่โรงเรียนบ้านสักงามเพื่อไขปริศนาสุดท้ายนะ' },
+    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบคำพิทักษ์คำที่ 4 ให้ ครบ 4 คำแล้ว! กลับมาพบครูที่โรงเรียนบ้านสักงามเพื่อปลดปล่อยพญาจระเข้นะ' },
   ],
   // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
   codePiece: { index: 4, total: 4, value: 'ลาน' },
@@ -298,7 +298,7 @@ export const lanQuests: QuestDefinition[] = [
       { text: 'ตรวจสอบพิกัด E/N จากบันทึก', done: { type: 'step', order: 4 } },
       { text: 'วิเคราะห์จุดเป้าหมายทั้งสามแห่ง (กด C)', done: { type: 'step', order: 5 } },
       { text: 'ยืนยันสถานที่ ปักหมุด และบันทึกข้อมูลภูมิปัญญา', done: { type: 'step', order: 6 } },
-      { text: 'ส่งรายงานและรับรหัสชิ้นที่ 4', done: { type: 'step', order: 7 } },
+      { text: 'ส่งรายงานและรับคำพิทักษ์คำที่ 4', done: { type: 'step', order: 7 } },
     ],
   },
   {
@@ -388,7 +388,7 @@ export const lanStory: StoryStep[] = [
   },
   {
     order: 7,
-    title: 'ส่งรายงานและรับรหัสชิ้นที่ 4',
+    title: 'ส่งรายงานและรับคำพิทักษ์คำที่ 4',
     objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
     landmarkId: 'center',
     status: 'playable',
@@ -577,6 +577,6 @@ const LAN_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
       done: { type: 'flag', flag: 'pin-verified' },
     }),
   ],
-  7: [hearReport({ id: 'report', code: 'รหัสลับชิ้นที่ 4', done: { type: 'flag', flag: 'mission-complete' } })],
+  7: [hearReport({ id: 'report', code: 'คำพิทักษ์คำที่ 4', done: { type: 'flag', flag: 'mission-complete' } })],
 };
 for (const st of lanStory) if (LAN_MICRO[st.order]) st.micro = LAN_MICRO[st.order];

@@ -181,7 +181,7 @@ describe('ฉาก 5–6: สำรวจผ้าปัก ปักหมุ�
     expect(s.mode).toBe('dialogue');
     expect(s.messages.length).toBe(6);
     expect(s.messages[4].text).toContain('"ลาย"');
-    expect(s.messages[5].text).toContain('เหลืออีก 3 ชิ้น');
+    expect(s.messages[5].text).toContain('เหลืออีก 3 คำ');
     expect(s.messages[1].text).toContain('4 ซม. บนแผนที่ 1:10,000 เท่ากับ 400 เมตรจริง');
     expect(s.messages[2].text).toContain(`${Math.round(s.routeMeters['route-north'] / 10) * 10} เมตร`);
 

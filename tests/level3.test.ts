@@ -168,7 +168,7 @@ describe('ฉาก 1–2: รับภารกิจและเรียน�
     expect(s.flags.has('got-topo-map')).toBe(true);
     expect(s.evidence).toContain('evidence-topo-map');
     expect(s.clues).toEqual(expect.arrayContaining(['clue-criteria', 'clue-topo']));
-    expect(said(mark)).toContain('หีบ');
+    expect(said(mark)).toContain('คำพิทักษ์');
     expect(said(mark)).toContain('จำลอง');
     expect(said(mark)).toContain('ระดับความสูง 50 + ระยะจากแหล่งน้ำ 50');
     expect(s.currentStepOrder).toBe(2);

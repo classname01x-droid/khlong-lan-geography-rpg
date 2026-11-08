@@ -23,7 +23,6 @@ import {
   TOUCH_CONTROLS,
   type MenuItemId,
 } from '../views/screens';
-import { chestSlotsHtml, chestSvg } from '../chestArt';
 import { esc } from './readerHtml';
 import { SCREEN_CSS } from './screenStyles';
 
@@ -337,7 +336,7 @@ export class TouchScreens {
     const title = w < 700 ? '🧭 แผนที่การเดินทาง' : `🧭 ${v.title}`;
     return (
       '<div class="ts-screen ts-journey">' +
-      `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(title)}${v.complete && w < 700 ? ' ✓' : ''}</h1><div class="ts-codes">🔑 รหัสลับ ${codes}</div></header>` +
+      `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(title)}${v.complete && w < 700 ? ' ✓' : ''}</h1><div class="ts-codes">🐊 คำพิทักษ์ ${codes}</div></header>` +
       '<div class="ts-jmain">' +
       `<nav class="ts-route ts-scroll" data-scroll="route">${nodes}</nav>` +
       '<div class="ts-jside">' +
@@ -389,7 +388,7 @@ export class TouchScreens {
         this.btn('chapter:depart', `ออกเดินทางไป${chapter.tambon}`, { icon: '▶', primary: true, disabled: !armed, cls: 'ts-go' });
     } else {
       speaker = IN_DEVELOPMENT_MESSAGE;
-      text = 'ความคืบหน้าและรหัสลับทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ';
+      text = 'ความคืบหน้าและคำพิทักษ์ทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ';
       foot = this.btn('chapter:journey', 'กลับแผนที่การเดินทาง', { icon: '🧭', primary: true, cls: 'ts-go' });
     }
     return (
@@ -397,7 +396,11 @@ export class TouchScreens {
       `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(v.heading)} · ${esc(v.tambon)}</h1><div class="ts-sub">${esc(v.title)}</div></header>` +
       '<div class="ts-chap-main">' +
       `<aside class="ts-goal ts-paper ts-scroll" data-scroll="goal"><div class="ts-goal-k">🎯 ภารกิจใหม่</div><p class="ts-p">${esc(v.goal)}</p>` +
-      (v.chest ? `<div class="ts-chest">${chestSvg()}<div><div class="ts-chest-k">🔒 ช่องรหัสบนหีบ</div>${chestSlotsHtml(v.chest.slots)}</div></div><p class="ts-small">${esc(v.chest.note)}</p>` : '') +
+      (v.words
+        ? `<div class="ts-words"><div class="ts-words-k">🐊 คำพิทักษ์ 4 คำ</div><div class="ts-words-slots">${v.words.slots
+            .map((c, i) => `<span class="ts-slot${c === '?' ? '' : ' ts-slot-on'}" title="คำที่ ${i + 1}">${esc(c)}</span>`)
+            .join('')}</div></div><p class="ts-small">${esc(v.words.note)}</p>`
+        : '') +
       '</aside>' +
       `<section class="ts-dlg ts-paper"><div class="ts-speaker"><span>${esc(speaker)}</span><small>${esc(counter)}</small></div>` +
       `<div class="ts-dlg-text ts-scroll" data-scroll="dlg-${st.lineIndex}-${st.stage}">${esc(text)}</div></section>` +
@@ -410,14 +413,14 @@ export class TouchScreens {
   private endingHtml(w: number, h: number): string {
     const v = endingView(this.progress().data);
     const wide = w >= 760 && h >= 380;
-    const codes = `<div class="ts-codes-row">🔑 รหัสลับครบ 4 ชิ้น: ${v.codes.map((c) => `<span class="ts-chip">${esc(c)}</span>`).join('')}</div>`;
+    const codes = `<div class="ts-codes-row">🐊 คำพิทักษ์ครบ 4 คำ: ${v.codes.map((c) => `<span class="ts-chip">${esc(c)}</span>`).join('')}</div>`;
     const wisdom =
       `<section>${wide ? '' : `<p class="ts-p ts-ok"><b>✓ ${esc(v.title)}</b> · ${esc(v.subtitle)}</p>${codes}`}<h3 class="ts-h3">🗺️ แผนที่ภูมิปัญญา 4 ตำบล</h3><div class="ts-wisdom">` +
       v.wisdom
         .map(
           (x) =>
             `<div class="ts-wcard"><b>📍 ${x.index}. ${esc(x.tambon)}</b><p class="ts-p">${esc(x.site)}</p>` +
-            `<p class="ts-small">ทักษะ: ${esc(x.learning)}</p><p class="ts-small ts-ok">รหัสลับชิ้นที่ ${x.index}: "${esc(x.code)}"${x.evidence ? ` · ${esc(x.evidence)}` : ''}</p></div>`,
+            `<p class="ts-small">ทักษะ: ${esc(x.learning)}</p><p class="ts-small ts-ok">คำพิทักษ์คำที่ ${x.index}: "${esc(x.code)}"${x.evidence ? ` · ${esc(x.evidence)}` : ''}</p></div>`,
         )
         .join('') +
       `</div><p class="ts-small">${esc(v.note)}</p></section>`;

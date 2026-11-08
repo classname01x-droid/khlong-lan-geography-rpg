@@ -212,7 +212,7 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       line('รางวัล', 17, '#5a3a1e', 0, 4);
       line(
         ending.codePiece
-          ? `• รหัสลับชิ้นที่ ${ending.codePiece.index}/${ending.codePiece.total}: "${ending.codePiece.value}"   • ${ending.rewardItem}`
+          ? `• คำพิทักษ์คำที่ ${ending.codePiece.index}/${ending.codePiece.total}: "${ending.codePiece.value}"   • ${ending.rewardItem}`
           : `• ${ending.rewardItem}`,
         15,
         '#1f6b2a',

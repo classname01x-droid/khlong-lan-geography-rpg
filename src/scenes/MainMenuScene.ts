@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { CHAPTERS } from '../content/story/chapters';
 import { drawMenuBackground } from '../graphics/MenuArt';
 import { MenuNavigator } from '../ui/pixel/MenuNavigator';
 import { Modal } from '../ui/pixel/Modal';
@@ -11,7 +10,7 @@ import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
 import { GAME_TITLE, HOW_TO_GOAL, HOW_TO_SCALE, HOW_TO_TIPS, KEYBOARD_CONTROLS, menuView, NEW_GAME_CONFIRM, SETTINGS_NOTE, type MenuItemId } from '../ui/views/screens';
 import { REGISTRY_TOUCH_UI } from './events';
-import { beginChapter, continueStory, getProgress, getSettings, goToWorldMap, SCENE } from './navigation';
+import { continueStory, getProgress, getSettings, goToWorldMap, SCENE } from './navigation';
 
 const text = (scene: Phaser.Scene, x: number, y: number, s: string, size: number, color: string = PIXEL.ink) =>
   scene.add.text(x, y, s, { fontFamily: FONT_FAMILY, fontSize: `${size}px`, color, lineSpacing: 5, padding: { top: 4 } });
@@ -87,7 +86,8 @@ export class MainMenuScene extends Phaser.Scene {
     const progress = getProgress(this);
     if (progress.hasAnySave() && !confirmed) return false;
     if (progress.hasAnySave()) progress.resetAll();
-    beginChapter(this, CHAPTERS[0].id);
+    // เกมใหม่: Intro ตำนานพญาจระเข้ 3 ฉาก → บทที่ 1 (IntroScene เรียก beginChapter เอง)
+    this.scene.start(SCENE.intro);
     return true;
   }
 

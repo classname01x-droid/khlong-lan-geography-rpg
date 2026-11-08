@@ -246,7 +246,7 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
     const t = buildQuestTracker(s, { chapterOrder: 1 });
     expect(t.chapterLabel).toBe(`บทที่ 1: ${L1.quests!.find((q) => q.kind === 'main')!.title}`);
     // บทที่ 1 มีขั้นย่อย: ภารกิจหลัก · เป้าหมายเดียว · วิธีทำ · ความคืบหน้าเป็นขั้น
-    expect(t.questTitle).toBe('ตามหารหัสหีบสมบัติชิ้นแรก');
+    expect(t.questTitle).toBe('ช่วยชาวบ้านสักงาม รับคำพิทักษ์คำแรก');
     expect(t.objective).toBe('ไปคุยกับครูเนม');
     // ช่วงที่ 1 (รับภารกิจ) มี 3 ขั้น — นับแยกจากช่วงที่ 2 (13 ขั้น)
     expect(t.progress).toEqual({ done: 0, total: 3, label: 'ขั้น' });

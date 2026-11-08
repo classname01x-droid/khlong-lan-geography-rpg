@@ -16,7 +16,7 @@ import {
 import { sakNgamNpcs } from './npcs';
 
 /**
- * ด่านที่ 1: ปริศนาลวดลายแห่งสักงาม — ตามหารหัสหีบสมบัติชิ้นแรก
+ * ด่านที่ 1: ปริศนาลวดลายแห่งสักงาม — ช่วยชาวบ้านสักงาม ได้คำพิทักษ์คำแรก
  * โฟลเดอร์นี้มีแต่ "เนื้อหา" — ไม่มีโค้ดระบบเกม
  *   map.ts      ผังแผนที่
  *   npcs.ts     ตัวละครและบทพูด
@@ -52,8 +52,8 @@ export const sakNgamLevel: LevelDefinition = {
   ],
 
   npcs: sakNgamNpcs,
-  // หีบไม้เก่าที่ครูเนมพบ (ภาพ placeholder) — เรื่องหีบเป็นเรื่องแต่งในเกม
-  decor: [{ id: 'old-chest', kind: 'chest', at: { x: 11, y: 40 } }],
+  // ศาลพญาจระเข้ผู้พิทักษ์ข้างโรงเรียน (ภาพ placeholder) — ตำนานเป็นเรื่องแต่งในเกม
+  decor: [{ id: 'guardian-shrine', kind: 'shrine', at: { x: 11, y: 40 } }],
   story: sakNgamStory,
   triggers: sakNgamTriggers,
   quizzes: sakNgamQuizzes,

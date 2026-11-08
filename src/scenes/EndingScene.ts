@@ -57,9 +57,9 @@ export class EndingScene extends Phaser.Scene {
     for (const w of view.wisdom) {
       left(`${w.index}. ${w.tambon} — ${w.site}`, 15, PIXEL.ink, 2);
       left(`   ทักษะ: ${w.learning}`, 13, PIXEL.inkSoft, 2);
-      left(`   รหัสลับชิ้นที่ ${w.index}: "${w.code}"${w.evidence ? ` · ${w.evidence}` : ''}`, 13, PIXEL.good, 10);
+      left(`   คำพิทักษ์คำที่ ${w.index}: "${w.code}"${w.evidence ? ` · ${w.evidence}` : ''}`, 13, PIXEL.good, 10);
     }
-    left(`รหัสลับครบ 4 ชิ้น: ${view.codes.join(' · ')}`, 16, PIXEL.warn, 4);
+    left(`คำพิทักษ์ครบ 4 คำ: ${view.codes.join(' · ')}`, 16, PIXEL.warn, 4);
     left(view.note, 12, PIXEL.inkMuted, 0);
 
     // ---- ขวา: ผลการเรียนรู้ ----

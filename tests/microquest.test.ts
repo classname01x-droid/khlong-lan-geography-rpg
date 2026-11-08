@@ -286,15 +286,15 @@ describe('บทที่ 1: ขั้นย่อยแบบนำทางด
   });
 });
 
-describe('เรื่องหีบสมบัติเชื่อมทุกบท', () => {
-  it('ฉากเปิดบทที่ 1 แสดงหีบ ช่องรหัส 4 ช่องที่ยังว่าง และหมายเหตุว่าเป็นเรื่องแต่ง', () => {
+describe('ตำนานพญาจระเข้เชื่อมทุกบท', () => {
+  it('ฉากเปิดบทที่ 1 แสดงช่องคำพิทักษ์ 4 ช่องที่ยังว่าง และหมายเหตุว่าเป็นเรื่องแต่ง', () => {
     const p = new ProgressStore(new Mem(), 'sakngam');
     const v = chapterIntroView('sakngam', p.data)!;
-    expect(v.chest).toEqual({ slots: ['?', '?', '?', '?'], note: expect.stringContaining('เรื่องแต่ง') });
-    expect(v.goal).toContain('หีบ');
+    expect(v.words).toEqual({ slots: ['?', '?', '?', '?'], note: expect.stringContaining('เรื่องแต่ง') });
+    expect(v.goal).toContain('คำพิทักษ์');
   });
 
-  it('จบบทที่ 1 → บทปัจจุบันเป็นบทที่ 2 · ช่องรหัสบนหีบมี "ลาย" · ครูเนมบอกเหลืออีก 3 ชิ้น', () => {
+  it('จบบทที่ 1 → บทปัจจุบันเป็นบทที่ 2 · ช่องคำพิทักษ์มี "ลาย" · ครูเนมบอกเหลืออีก 3 คำ', () => {
     const p = new ProgressStore(new Mem(), 'sakngam');
     p.completeLevel(
       {
@@ -314,10 +314,10 @@ describe('เรื่องหีบสมบัติเชื่อมทุ�
     const next = continueTarget(CHAPTERS, p.data);
     expect(next.kind === 'begin' && next.chapter.id).toBe('level-2');
     const v = chapterIntroView('level-2', p.data)!;
-    expect(v.chest!.slots).toEqual(['ลาย', '?', '?', '?']);
+    expect(v.words!.slots).toEqual(['ลาย', '?', '?', '?']);
     expect(v.lines[0].text).toContain('"ลาย"');
-    expect(v.lines[0].text).toContain('เหลืออีก 3 ชิ้น');
+    expect(v.lines[0].text).toContain('เหลืออีก 3 คำ');
     expect(LEVEL_SEQUENCE[0].id).toBe('sakngam');
-    expect(getChapterIntro('finale')!.lines.some((l) => l.text.includes('หีบ'))).toBe(true);
+    expect(getChapterIntro('finale')!.lines.some((l) => l.text.includes('ศาลพญาจระเข้'))).toBe(true);
   });
 });

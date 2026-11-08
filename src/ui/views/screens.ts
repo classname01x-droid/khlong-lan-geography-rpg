@@ -1,6 +1,6 @@
 import { finaleRows } from '../../content/finale';
 import { LEVEL_SEQUENCE, LEVELS, ALL_LEVELS } from '../../content/registry';
-import { CHAPTERS, CHEST_FICTION_NOTE, FINALE_CHAPTER_ID, getChapter, getChapterIntro } from '../../content/story/chapters';
+import { CHAPTERS, FINALE_CHAPTER_ID, getChapter, getChapterIntro, LEGEND_NOTE } from '../../content/story/chapters';
 import {
   chapterStates,
   continueTarget,
@@ -46,7 +46,7 @@ export const GAME_TITLE = { kicker: 'Geography Mystery RPG', title: 'ปริ�
 
 export const NEW_GAME_CONFIRM = {
   title: 'เริ่มเกมใหม่?',
-  message: 'ความคืบหน้าทั้งหมดจะถูกลบ ได้แก่ ด่านที่ผ่านแล้ว รหัสลับที่สะสม และการเล่นที่ค้างอยู่ (การตั้งค่าจะไม่ถูกลบ)',
+  message: 'ความคืบหน้าทั้งหมดจะถูกลบ ได้แก่ ด่านที่ผ่านแล้ว คำพิทักษ์ที่สะสม และการเล่นที่ค้างอยู่ (การตั้งค่าจะไม่ถูกลบ)',
   confirm: 'ยืนยัน: ลบและเริ่มใหม่',
   cancel: 'ยกเลิก',
 };
@@ -61,7 +61,7 @@ export function continueSummary(target: ContinueTarget): string {
     case 'begin':
       return `บทที่ ${target.chapter.order} · ${target.chapter.tambon} (เริ่มบทใหม่)`;
     case 'blocked':
-      return `บทที่ ${target.chapter.order}: รหัสลับยังไม่ครบ`;
+      return `บทที่ ${target.chapter.order}: คำพิทักษ์ยังไม่ครบ`;
     case 'in-development':
       return `บทที่ ${target.chapter.order}: ${IN_DEVELOPMENT_MESSAGE}`;
   }
@@ -80,7 +80,7 @@ export function menuView(p: ProgressData, hasSave: boolean): { items: MenuItem[]
 /* ---------------- วิธีเล่น ---------------- */
 
 export const HOW_TO_GOAL =
-  'คุณคือนักสำรวจของครูเนม ออกเดินทางตามภารกิจผ่าน 4 ตำบลของอำเภอคลองลานตามลำดับ พูดคุยกับชาวบ้าน เก็บเบาะแสลงสมุดภาคสนาม ใช้ทิศทาง ระยะทาง และจุดสังเกตไขปริศนา รับรหัสลับตำบลละ 1 ชิ้น แล้วไขปริศนาสุดท้าย';
+  'คุณคือผู้นำชุมชนคนใหม่ ช่วยชาวบ้าน 4 ตำบลของอำเภอคลองลานตามลำดับ พูดคุยกับชาวบ้าน เก็บเบาะแสลงสมุดภาคสนาม ใช้ทิศทาง ระยะทาง และจุดสังเกตแก้ปัญหา รับคำพิทักษ์ตำบลละ 1 คำ แล้วปลดปล่อยพญาจระเข้ผู้พิทักษ์จากมลพิษ';
 export const HOW_TO_SCALE =
   'มาตราส่วน: 1 ช่องในเกม = 10 เมตร · แผนที่ 1:10,000 → 1 ซม. บนแผนที่ = 100 เมตร (เช่น 3 ซม. = 300 ม., 4 ซม. = 400 ม.)';
 export const HOW_TO_TIPS =
@@ -159,13 +159,13 @@ export function journeyView(p: ProgressData): JourneyView {
     const details: string[] = [];
     if (m) {
       if (state === 'explored' || state === 'current') details.push(m.evidenceText);
-      details.push(`รหัสลับ: ${m.codePiece ? `ชิ้นที่ ${m.codePiece.index} "${m.codePiece.value}"` : 'ยังไม่พบ'}`);
+      details.push(`คำพิทักษ์: ${m.codePiece ? `คำที่ ${m.codePiece.index} "${m.codePiece.value}"` : 'ยังไม่พบ'}`);
       if (m.result) {
         const sec = Math.floor(m.result.elapsedMs / 1000);
         details.push(`ผลสำรวจ: ${fmtMeters(m.result.distanceMeters)} · ผิด ${m.result.mistakes} · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} นาที`);
       }
     } else {
-      details.push(c.id === FINALE_CHAPTER_ID ? 'ต้องจบบท 1–4 และมีรหัสลับครบ 4 ชิ้น' : '');
+      details.push(c.id === FINALE_CHAPTER_ID ? 'ต้องจบบท 1–4 และมีคำพิทักษ์ครบ 4 คำ' : '');
     }
     return {
       id: c.id,
@@ -183,10 +183,10 @@ export function journeyView(p: ProgressData): JourneyView {
   const finale = CHAPTERS.find((c) => c.id === FINALE_CHAPTER_ID)!;
   let notice: JourneyView['notice'] = {
     text: complete
-      ? 'บทที่ 5 ปริศนาสุดท้าย: สำเร็จแล้ว — แผนที่ภูมิปัญญาฉบับสมบูรณ์'
+      ? 'บทที่ 5 ปลดปล่อยพญาจระเข้: สำเร็จแล้ว — ลำน้ำคลองลานใสอีกครั้ง'
       : states[finale.id] === 'current'
-        ? `บทที่ 5 พร้อมแล้ว: ${finale.tambon} (รหัสครบ 4 ชิ้น)`
-        : 'บทที่ 5 ปริศนาสุดท้าย: ต้องจบบท 1–4 และมีรหัสครบ 4 ชิ้น',
+        ? `บทที่ 5 พร้อมแล้ว: ${finale.tambon} (คำพิทักษ์ครบ 4 คำ)`
+        : 'บทที่ 5 ปลดปล่อยพญาจระเข้: ต้องจบบท 1–4 และมีคำพิทักษ์ครบ 4 คำ',
     tone: 'normal',
   };
   const target = continueTarget(CHAPTERS, p);
@@ -198,13 +198,13 @@ export function journeyView(p: ProgressData): JourneyView {
         : target.kind === 'begin'
           ? `เดินทางต่อ: บทที่ ${target.chapter.order}`
           : target.kind === 'blocked'
-            ? 'รหัสลับยังไม่ครบ'
+            ? 'คำพิทักษ์ยังไม่ครบ'
             : IN_DEVELOPMENT_MESSAGE;
   if (target.kind === 'in-development') {
     notice = { text: `บทที่ ${target.chapter.order}: ${IN_DEVELOPMENT_MESSAGE} — ความคืบหน้าถูกบันทึกไว้แล้ว`, tone: 'warn' };
   }
   if (target.kind === 'blocked') {
-    notice = { text: `บทที่ ${target.chapter.order}: ต้องมีรหัสลับครบ 4 ชิ้นก่อน (ยังขาด ${target.missingCodes.length} ชิ้น)`, tone: 'bad' };
+    notice = { text: `บทที่ ${target.chapter.order}: ต้องมีคำพิทักษ์ครบ 4 คำก่อน (ยังขาด ${target.missingCodes.length} คำ)`, tone: 'bad' };
   }
   return {
     title: complete ? 'แผนที่การเดินทาง — สำรวจครบทั้ง 4 ตำบล ✓' : 'แผนที่การเดินทาง — อำเภอคลองลาน',
@@ -226,8 +226,8 @@ export interface ChapterIntroView {
   goal: string;
   lines: Array<{ speaker: string; text: string }>;
   playable: boolean;
-  /** หีบไม้เก่า: ช่องรหัส 4 ช่อง (ยังไม่ได้ = '?') — ไม่บอกว่าในหีบมีอะไร */
-  chest: { slots: string[]; note: string } | null;
+  /** คำพิทักษ์ 4 ช่อง (ยังไม่ได้ = '?') */
+  words: { slots: string[]; note: string } | null;
 }
 
 export function chapterIntroView(chapterId: string, p: ProgressData): ChapterIntroView | null {
@@ -243,7 +243,7 @@ export function chapterIntroView(chapterId: string, p: ProgressData): ChapterInt
     goal: main?.description ?? chapter.title,
     lines: intro.lines.map((l) => ({ speaker: l.speaker, text: resolveChapterText(l.text, p) })),
     playable: chapter.playable && !!chapter.levelId,
-    chest: intro.chest ? { slots: LEVEL_SEQUENCE.map((s) => p.codePieces[s.id]?.value ?? '?'), note: CHEST_FICTION_NOTE } : null,
+    words: intro.words ? { slots: LEVEL_SEQUENCE.map((s) => p.codePieces[s.id]?.value ?? '?'), note: LEGEND_NOTE } : null,
   };
 }
 
@@ -290,12 +290,12 @@ export function endingView(p: ProgressData, sum: JourneySummary = endingSummary(
     `จำนวนครั้งที่ตอบผิด: ${sum.mistakes.value}${known(sum.mistakes)}`,
   ];
   return {
-    title: 'เปิดหีบสมบัติสำเร็จ — สำรวจครบทั้ง 4 ตำบล',
-    subtitle: 'ในหีบไม้เก่าคือแผนที่ภูมิปัญญาอำเภอคลองลาน ที่เราเติมข้อมูลจนสมบูรณ์',
+    title: 'ชำระมลพิษสำเร็จ — ช่วยชาวบ้านครบทั้ง 4 ตำบล',
+    subtitle: 'คำพิทักษ์ทั้ง 4 คำปลดปล่อยพญาจระเข้ให้กลับมาปกป้องลำน้ำคลองลาน และแผนที่ภูมิปัญญาอำเภอคลองลานก็สมบูรณ์',
     wisdom,
     codes: sum.codes.map((c) => c?.value ?? '?'),
     stats,
     skills: sum.skills.map((k) => SKILL_LABEL[k as SkillId]).filter(Boolean),
-    note: `สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้ · ${CHEST_FICTION_NOTE}`,
+    note: `สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้ · ${LEGEND_NOTE}`,
   };
 }

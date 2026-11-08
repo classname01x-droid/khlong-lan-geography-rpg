@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH } from '../config/constants';
-import { CHAPTERS, CHEST_FICTION_NOTE, getChapter, getChapterIntro, type ChapterIntro } from '../content/story/chapters';
+import { CHAPTERS, getChapter, getChapterIntro, LEGEND_NOTE, type ChapterIntro } from '../content/story/chapters';
 import { LEVEL_SEQUENCE } from '../content/registry';
 import { chapterStates, currentChapter, IN_DEVELOPMENT_MESSAGE, resolveChapterText, type ChapterSlot } from '../core/campaign/Campaign';
 import { drawWorldMapArt } from '../graphics/MenuArt';
@@ -97,15 +97,14 @@ export class ChapterScene extends Phaser.Scene {
       .setOrigin(0.5, 0);
     this.add.text(GAME_WIDTH / 2, 72, chapter.title, this.style(18, '#f3ead2')).setOrigin(0.5, 0);
 
-    // ---- หีบไม้เก่า (placeholder) + ช่องรหัส 4 ช่อง — ไม่บอกว่าในหีบมีอะไร ----
-    if (intro.chest) {
+    // ---- คำพิทักษ์ 4 ช่อง (คำที่ได้แล้ว / ?) ----
+    if (intro.words) {
       const slots = LEVEL_SEQUENCE.map((lv) => progress.codePieces[lv.id]?.value ?? '?');
       const cg = this.add.graphics();
-      drawPixelFrame(cg, 790, 20, 156, 132, 'paper');
-      this.add.image(868, 58, 'chest').setScale(5);
-      this.add.text(868, 88, 'ช่องรหัสบนหีบ', this.style(14, PIXEL.ink)).setOrigin(0.5, 0);
-      this.add.text(868, 110, slots.map((c) => `[${c}]`).join(' '), this.style(14, PIXEL.warn)).setOrigin(0.5, 0);
-      this.add.text(GAME_WIDTH / 2, 116, CHEST_FICTION_NOTE, this.style(14, '#f3ead2', true)).setOrigin(0.5, 0);
+      drawPixelFrame(cg, 790, 20, 156, 92, 'paper');
+      this.add.text(868, 34, '🐊 คำพิทักษ์', this.style(15, PIXEL.ink)).setOrigin(0.5, 0);
+      this.add.text(868, 66, slots.map((c) => `[${c}]`).join(' '), this.style(14, PIXEL.warn)).setOrigin(0.5, 0);
+      this.add.text(GAME_WIDTH / 2, 116, LEGEND_NOTE, this.style(14, '#f3ead2', true)).setOrigin(0.5, 0);
     }
 
     // ---- กล่องบทสนทนา ----
@@ -201,7 +200,7 @@ export class ChapterScene extends Phaser.Scene {
       wrapThaiText(
         playable
           ? `${this.intro.heading}: ${this.chapter.tambon} — ${this.chapter.title}`
-          : 'ความคืบหน้าและรหัสลับทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ',
+          : 'ความคืบหน้าและคำพิทักษ์ทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ',
         PANEL.w - 56,
         `19px ${FONT_FAMILY}`,
       ),

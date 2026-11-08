@@ -4,7 +4,7 @@ import { khlongLanPattanaLevel as L4 } from '../src/content/levels/khlonglanpatt
 import { pongNamRonLevel as L3 } from '../src/content/levels/pongnamron';
 import { sakNgamLevel as L1 } from '../src/content/levels/sakngam';
 import { ALL_LEVELS, canEnterLevel, LEVEL_SEQUENCE, LEVELS } from '../src/content/registry';
-import { CHEST_FICTION_NOTE, CHAPTER_INTROS, CHAPTERS, FINALE_CHAPTER_ID, getChapterIntro } from '../src/content/story/chapters';
+import { LEGEND_NOTE, CHAPTER_INTROS, CHAPTERS, FINALE_CHAPTER_ID, getChapterIntro } from '../src/content/story/chapters';
 import {
   canPlayLevel,
   chapterStates,
@@ -206,24 +206,28 @@ describe('ฉากเชื่อมเรื่อง (Chapter Transition) —
     expect(resolveChapterText('{{code:level-4}}', s.data)).toBe('?');
   });
 
-  it('บทนำบทที่ 1 เปิดเรื่องหีบสมบัติ: หีบไม้เก่า รหัส 4 ชิ้น และแผนที่เก่าชี้ไป 4 ชุมชน (บอกว่าเป็นเรื่องแต่ง)', () => {
+  it('บทนำบทที่ 1: ผู้นำชุมชนคนใหม่ · คำพิทักษ์ 4 คำจาก 4 ชุมชน · พญาจระเข้ (บอกว่าเป็นเรื่องแต่ง)', () => {
     const intro = getChapterIntro('sakngam')!;
     const text = intro.lines.map((l) => l.text).join(' ');
-    expect(text).toContain('หีบไม้เก่า');
-    expect(text).toContain('รหัส');
+    expect(text).toContain('ผู้นำชุมชนคนใหม่');
+    expect(text).toContain('คำพิทักษ์');
+    expect(text).toContain('พญาจระเข้');
+    expect(text).not.toContain('หีบ');
     for (const t of ['สักงาม', 'คลองน้ำไหล', 'โป่งน้ำร้อน', 'คลองลานพัฒนา']) expect(text).toContain(t);
-    expect(intro.chest).toBe(true);
-    expect(CHEST_FICTION_NOTE).toContain('เรื่องแต่ง');
-    // ไม่บอกว่าในหีบมีอะไรตั้งแต่ต้น
-    expect(text).not.toContain('แผนที่ภูมิปัญญา');
+    expect(intro.words).toBe(true);
+    expect(LEGEND_NOTE).toContain('เรื่องแต่ง');
     // บทสนทนาสั้น: ไม่เกิน 2 ประโยคยาวต่อกล่อง
     for (const l of intro.lines) expect(l.text.length, l.text).toBeLessThanOrEqual(90);
   });
 
-  it('ทุกบทต่อเรื่องหีบ: บอกรหัสที่ได้และจำนวนที่เหลือ · บทสุดท้ายกลับมาเปิดหีบ', () => {
-    expect(getChapterIntro('level-2')!.lines[0].text).toContain('เหลืออีก 3 ชิ้น');
-    for (const id of ['level-2', 'level-3', 'level-4', 'finale']) expect(getChapterIntro(id)!.lines.map((l) => l.text).join(' ')).toContain('หีบ');
-    expect(getChapterIntro('finale')!.lines.map((l) => l.text).join(' ')).toContain('หีบไม้เก่ารอเราอยู่');
+  it('ทุกบทต่อตำนาน: บอกคำพิทักษ์ที่ได้และจำนวนที่เหลือ · บทสุดท้ายกลับมาที่ศาลพญาจระเข้', () => {
+    expect(getChapterIntro('level-2')!.lines[0].text).toContain('เหลืออีก 3 คำ');
+    for (const id of ['level-2', 'level-3', 'level-4', 'finale']) {
+      const t = getChapterIntro(id)!.lines.map((l) => l.text).join(' ');
+      expect(t).toContain('คำพิทักษ์');
+      expect(t).not.toContain('หีบ');
+    }
+    expect(getChapterIntro('finale')!.lines.map((l) => l.text).join(' ')).toContain('ศาลพญาจระเข้');
   });
 });
 
@@ -254,5 +258,20 @@ describe('ความเข้ากันได้ของข้อมูล�
 
   it('LEVEL_SEQUENCE และการ์ด 4 ตำบลยังอยู่ (ใช้เป็นแผนที่การเดินทาง)', () => {
     expect(LEVEL_SEQUENCE.map((s) => s.id)).toEqual(CHAPTERS.slice(0, 4).map((c) => c.id));
+  });
+});
+
+describe('Intro ตำนานพญาจระเข้ (3 ฉากก่อนเริ่มเกมใหม่)', () => {
+  it('3 ฉากตามลำดับเรื่อง · มีภาพจริงใน public/intro · บอกว่าเป็นเรื่องแต่ง', async () => {
+    const { existsSync } = (await import('node:' + 'fs')) as { existsSync: (p: string) => boolean };
+    const { INTRO_SCENES, INTRO_FICTION_NOTE } = await import('../src/content/story/chapters');
+    expect(INTRO_SCENES).toHaveLength(3);
+    expect(INTRO_SCENES[0].text).toContain('อุดมสมบูรณ์');
+    expect(INTRO_SCENES[1].text).toContain('สารเคมี');
+    expect(INTRO_SCENES[1].text).toContain('พิโรธ');
+    expect(INTRO_SCENES[2].text).toContain('ผู้นำชุมชนคนใหม่');
+    expect(INTRO_SCENES[2].text).toContain('ปลดปล่อยพญาจระเข้');
+    for (const s of INTRO_SCENES) expect(existsSync(`public/${s.image}`), s.image).toBe(true);
+    expect(INTRO_FICTION_NOTE).toContain('เรื่องแต่ง');
   });
 });

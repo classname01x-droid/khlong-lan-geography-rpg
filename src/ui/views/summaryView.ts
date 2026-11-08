@@ -36,9 +36,9 @@ export function buildSummaryView(s: GameSession, unlockedName: string | null, co
   }));
   const e = s.level.ending;
   const reward = [
-    e?.codePiece ? `ได้รับรหัสลับชิ้นที่ ${e.codePiece.index}/${e.codePiece.total}: "${e.codePiece.value}"  ·  ${e.rewardItem}` : e ? e.rewardItem : '',
+    e?.codePiece ? `ได้รับคำพิทักษ์คำที่ ${e.codePiece.index}/${e.codePiece.total}: "${e.codePiece.value}"  ·  ${e.rewardItem}` : e ? e.rewardItem : '',
     e?.codePiece && collected.length > 0
-      ? `รหัสลับที่สะสม: ${Array.from({ length: e.codePiece.total }, (_, i) => collected.find((c) => c.index === i + 1)?.value ?? '?').join(' · ')}`
+      ? `คำพิทักษ์ที่สะสม: ${Array.from({ length: e.codePiece.total }, (_, i) => collected.find((c) => c.index === i + 1)?.value ?? '?').join(' · ')}`
       : '',
     unlockedName ? `ปลดล็อก: ${unlockedName}` : '',
   ].filter(Boolean);

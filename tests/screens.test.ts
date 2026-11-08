@@ -103,7 +103,7 @@ describe('แผนที่การเดินทาง: แสดงคว�
     const v = journeyView(p);
     expect(v.primary.enabled).toBe(false);
     expect(v.notice.tone).toBe('bad');
-    expect(v.notice.text).toContain('รหัสลับครบ 4 ชิ้น');
+    expect(v.notice.text).toContain('คำพิทักษ์ครบ 4 คำ');
   });
 
   it('จบเกมแล้ว: ทุกบทสำรวจแล้ว ปุ่มหลัก = ดูสรุปการเดินทาง', () => {

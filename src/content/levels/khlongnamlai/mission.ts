@@ -347,7 +347,7 @@ export const namLaiEnding: EndingDefinition = {
       speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
       text: 'การเปรียบเทียบหลักฐาน: แผนที่ที่เชื่อถือได้ต้องสอดคล้องทั้งสัญลักษณ์ ระดับความสูง และจุดสังเกตที่เราไปตรวจด้วยตัวเอง',
     },
-    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 2 และแผนที่ตำบลคลองน้ำไหลให้ เก็บไว้รวมกับชิ้นแรกนะ' },
+    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบคำพิทักษ์คำที่ 2 และแผนที่ตำบลคลองน้ำไหลให้ เก็บไว้รวมกับคำแรกนะ' },
   ],
   // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
   codePiece: { index: 2, total: 4, value: 'น้ำ' },
@@ -368,7 +368,7 @@ export const namLaiQuests: QuestDefinition[] = [
       { text: 'รับข้อมูลระดับความสูงจากผู้ดูแลแหล่งน้ำ', done: { type: 'step', order: 3 } },
       { text: 'วิเคราะห์แผนที่สองฉบับ', done: { type: 'step', order: 4 } },
       { text: 'ค้นหาจุดสำรวจที่ตรงกับหลักฐาน และปักหมุด', done: { type: 'step', order: 5 } },
-      { text: 'ส่งผลและรับรหัสลับชิ้นที่ 2', done: { type: 'step', order: 6 } },
+      { text: 'ส่งผลและรับคำพิทักษ์คำที่ 2', done: { type: 'step', order: 6 } },
     ],
   },
   {
@@ -469,7 +469,7 @@ export const namLaiStory: StoryStep[] = [
   },
   {
     order: 6,
-    title: 'ส่งผลและรับรหัส',
+    title: 'ส่งผลและรับคำพิทักษ์',
     objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
     landmarkId: 'school',
     status: 'playable',
@@ -649,6 +649,6 @@ const NAMLAI_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
       done: { type: 'flag', flag: 'pin-verified' },
     }),
   ],
-  6: [hearReport({ id: 'report', code: 'รหัสลับชิ้นที่ 2', done: { type: 'flag', flag: 'mission-complete' } })],
+  6: [hearReport({ id: 'report', code: 'คำพิทักษ์คำที่ 2', done: { type: 'flag', flag: 'mission-complete' } })],
 };
 for (const st of namLaiStory) if (NAMLAI_MICRO[st.order]) st.micro = NAMLAI_MICRO[st.order];
