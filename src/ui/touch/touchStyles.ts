@@ -187,6 +187,10 @@ export const TOUCH_CSS = `
 .tl-compact .tl-tr-how li { counter-increment: tlhow; padding-left: 22px; text-indent: -22px; }
 .tl-compact .tl-tr-how li::before { content: "👉" counter(tlhow) " "; }
 .tl-tr-mini.tl-tr-go { background: #9be08a; font-weight: 700; flex: 1 1 auto; text-align: left; line-height: 1.2; }
+/* จอเตี้ย + อยู่ในระยะคุยเป้าหมาย: แถวเดียว */
+.tl-tr-near { display: flex; align-items: center; gap: 6px; }
+.tl-tr-near-o { flex: 1 1 auto; min-width: 0; font-weight: 700; color: #fff; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-tr-near .tl-tr-go { flex: none; }
 /* จอเตี้ย: ปุ่มทั้งหมดอยู่แถวเดียว (ปุ่มลัดตัดบรรทัดในปุ่มได้) */
 .tl-compact .tl-tr-btns { flex-wrap: nowrap; }
 .tl-compact .tl-tr-mini.tl-tr-go { min-width: 0; padding: 2px 6px; }

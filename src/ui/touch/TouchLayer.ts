@@ -1117,7 +1117,13 @@ export class TouchLayer {
           ? { ui: `guide-action:${t.action.id}`, label: t.action.label }
           : null;
     let html = '';
-    if (this.trackerCollapsed) {
+    // จอเตี้ยและอยู่ในระยะคุย/สำรวจเป้าหมายแล้ว: แถบเหลือแถวเดียว "เป้าหมาย + ✋ ปุ่มลัด" (ไม่บัง NPC ที่ยืนข้างผู้เล่น)
+    const nearAct = compact && t.micro && act?.ui === 'guide-action:talk' && !this.trackerCollapsed;
+    if (nearAct) {
+      html =
+        `<div class="tl-tr-near"><span class="tl-tr-near-o">🎯 ${esc(objective)}</span>` +
+        `<button class="tl-tr-mini tl-tr-go" data-ui="${esc(act!.ui)}">${esc(act!.label)}</button></div>`;
+    } else if (this.trackerCollapsed) {
       // ย่อแล้วยังเห็นเป้าหมายปัจจุบัน (บรรทัดเดียว)
       html =
         `<button class="tl-tr-pill" data-ui="tracker-toggle" aria-label="ขยายแถบภารกิจ">` +
@@ -1139,9 +1145,10 @@ export class TouchLayer {
         const part = t.stepNo && t.stepNo.parts > 1 ? ` (ส่วน ${t.stepNo.part}/${t.stepNo.parts})` : '';
         html += `<div class="tl-tr-obj">🎯 <span class="tl-tr-label">เป้าหมายปัจจุบัน:</span> ${esc(objective)}${esc(part)}${compact ? ` <span class="tl-tr-prog">${esc(prog)}</span>` : ''}</div>`;
         if (!compact) html += `<div class="tl-tr-prog-row">ความคืบหน้า <span class="tl-tr-prog">${esc(prog)}</span></div>`;
+        const steps = t.steps;
         if (t.tools.length) html += `<div class="tl-tr-tools">🧰 <span class="tl-tr-label">เครื่องมือ:</span> ${esc(t.tools.join(' · '))}</div>`;
-        if (t.steps.length) {
-          html += `<div class="tl-tr-how">${compact ? '' : '<span class="tl-tr-label">👉 วิธีทำ:</span>'}<ol>${t.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>`;
+        if (steps.length) {
+          html += `<div class="tl-tr-how">${compact ? '' : '<span class="tl-tr-label">👉 วิธีทำ:</span>'}<ol>${steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>`;
         }
         if (t.result) html += `<div class="tl-tr-result">✅ <span class="tl-tr-label">เมื่อสำเร็จ:</span> ${esc(t.result)}</div>`;
         if (t.hint) html += `<div class="tl-tr-hint tl-tr-hint-more">💡 คำแนะนำ ${t.hintTier + 1}/3: ${esc(t.hint)}</div>`;
@@ -1169,7 +1176,7 @@ export class TouchLayer {
     }
     this.setHtml('tracker', this.tracker, html);
     this.tracker.classList.toggle('tl-tr-open', this.trackerDetails);
-    this.tracker.style.width = this.trackerCollapsed ? 'auto' : `${width}px`;
+    this.tracker.style.width = this.trackerCollapsed || nearAct ? 'auto' : `${width}px`;
     this.tracker.style.maxWidth = `${width}px`;
     // จอเตี้ยที่มีขั้นย่อย: แถบอยู่ครึ่งขวาของภาพ (ไม่บังตัวผู้เล่น) จึงสูงได้มากกว่า เพื่อให้เห็นวิธีทำครบ
     this.tracker.style.maxHeight = `${cr.height * (this.trackerDetails ? 0.8 : compact && t.micro ? 0.88 : 0.62)}px`;
