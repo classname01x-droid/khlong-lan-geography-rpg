@@ -436,7 +436,9 @@ export class TouchLayer {
     }
     const t = s!.pinCursor!;
     const icon = s!.mapTool === 'settlement' ? '🔍' : '📍';
-    const text = s!.coords ? `${icon} ${GridSystem.format(s!.coords.tileToGrid(t))}` : `${icon} X ${t.x} · Y ${t.y}`;
+    const sa = s!.mapTool === 'settlement' ? s!.level.settlementAnalysis : undefined;
+    const ring = sa ? ` · วงกลม ${s!.scale.tilesToMeters(sa.radiusTiles)} ม.` : '';
+    const text = (s!.coords ? `${icon} ${GridSystem.format(s!.coords.tileToGrid(t))}` : `${icon} X ${t.x} · Y ${t.y}`) + ring;
     if (this.pinBadge.textContent !== text) this.pinBadge.textContent = text;
     const cr = this.canvasRect();
     const c = m!.mapTileCenter(t);

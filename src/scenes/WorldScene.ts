@@ -655,7 +655,9 @@ export class WorldScene extends Phaser.Scene {
   setPinCursor(tile: { x: number; y: number }): boolean {
     const s = this.session;
     if (!this.ready || !s || s.mode !== 'map' || s.pinStage !== 'cursor') return false;
-    const t = { x: Phaser.Math.Clamp(Math.round(tile.x), 0, s.grid.width - 1), y: Phaser.Math.Clamp(Math.round(tile.y), 0, s.grid.height - 1) };
+    let t = { x: Phaser.Math.Clamp(Math.round(tile.x), 0, s.grid.width - 1), y: Phaser.Math.Clamp(Math.round(tile.y), 0, s.grid.height - 1) };
+    // เลือกพื้นที่ (บทที่ 3): วงกลมต้องอยู่ในเขตสำรวจทั้งวง
+    if (s.mapTool === 'settlement') t = s.clampSettlementTile(t);
     if (s.pinCursor && s.pinCursor.x === t.x && s.pinCursor.y === t.y) return false;
     s.pinCursor = t;
     s.pinFeedback = null;
@@ -1181,7 +1183,7 @@ export class WorldScene extends Phaser.Scene {
       // โหมดวิเคราะห์พื้นที่: ใช้เคอร์เซอร์เดียวกับโหมดปักหมุด (แตะ/ลาก/ลูกศร) แต่วาดเป็นวงกลมวิเคราะห์
       const last = s.settlementAttempts[s.settlementAttempts.length - 1];
       s.pinStage = 'cursor';
-      s.pinCursor = s.pinCursor ?? (last ? { x: last.x, y: last.y } : { ...s.playerTile });
+      s.pinCursor = s.clampSettlementTile(s.pinCursor ?? (last ? { x: last.x, y: last.y } : { ...s.playerTile }));
     } else {
       s.pinStage = 'none';
     }
@@ -1230,6 +1232,7 @@ export class WorldScene extends Phaser.Scene {
         x: Phaser.Math.Clamp(s.pinCursor.x + m[0], 0, s.grid.width - 1),
         y: Phaser.Math.Clamp(s.pinCursor.y + m[1], 0, s.grid.height - 1),
       };
+      if (s.mapTool === 'settlement') s.pinCursor = s.clampSettlementTile(s.pinCursor);
       this.bumpUi();
     } else if (confirm) {
       if (s.mapTool === 'settlement') {
@@ -1255,10 +1258,10 @@ export class WorldScene extends Phaser.Scene {
     if (!r) return;
     s.pinFeedback = null;
     if (r.passed) {
-      s.toast(`วิเคราะห์ผ่าน! พื้นที่นี้ได้ ${r.percent}% (มากกว่า ${d.passPercent}%) — ปิดแผนที่แล้วเดินทางไปตรวจสอบพื้นที่`);
+      s.toast(`ผ่าน! ${r.total}/100 — นำพื้นที่นี้ไปสำรวจต่อได้`);
     } else {
       const who = [...new Set(r.weakTopics.map((t) => s.level.npcs.find((n) => n.id === d.topics[t].teacherId)?.name ?? ''))].filter(Boolean);
-      s.toast(`ยังไม่ผ่าน: ได้ ${r.percent}% (ต้องมากกว่า ${d.passPercent}%) — กลับไปเรียนเพิ่มกับ${who.join(' และ ')}`);
+      s.toast(`ยังไม่ผ่าน: ${r.total}/100 (ต้องมากกว่า ${d.passPercent}) — กลับไปพบ${who.join(' และ ')}`);
     }
     // ผ่านแล้วหรือต้องไปเรียนเสริม → ไม่เลื่อนวงต่อ (แผนที่แสดงผลและเหตุที่ต้องทำต่อ)
     s.pinStage = 'none';

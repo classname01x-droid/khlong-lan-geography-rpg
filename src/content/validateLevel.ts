@@ -164,8 +164,14 @@ export function validateLevel(
   // ---- วิเคราะห์พื้นที่ตั้งถิ่นฐาน (บทที่ 3): เกณฑ์ครบ · มีพื้นที่ที่ผ่านจริง · ทุกหัวข้อมีผู้สอนและมีพื้นที่ที่ผิดเพราะหัวข้อนั้น ----
   const stl = level.settlementAnalysis;
   if (stl) {
-    const w = stl.weights;
-    if (w.slope + w.height + w.landform + w.water !== 100) errors.push('การวิเคราะห์พื้นที่: คะแนนเต็มของทุกเกณฑ์ต้องรวมได้ 100');
+    if (stl.height.max + stl.water.max !== 100) errors.push('การวิเคราะห์พื้นที่: คะแนนเต็มของทั้งสองเกณฑ์ต้องรวมได้ 100');
+    for (const t of ['height', 'water'] as const) {
+      const { max, bands } = stl[t];
+      const bounds = bands.map((b) => b.below);
+      const sorted = bounds.slice(0, -1).every((v, i) => v !== null && (i === 0 || v > (bounds[i - 1] as number)));
+      if (!bands.length || bands[bands.length - 1].below !== null || !sorted) errors.push(`การวิเคราะห์พื้นที่: ช่วงคะแนน ${t} ต้องเรียงจากน้อยไปมาก และช่วงสุดท้าย below = null`);
+      if (Math.max(...bands.map((b) => b.score)) !== max || bands.some((b) => b.score < 0 || b.score > max)) errors.push(`การวิเคราะห์พื้นที่: ช่วงคะแนน ${t} ต้องมีช่วงที่ได้คะแนนเต็ม ${max} และไม่มีคะแนนเกิน`);
+    }
     if (!level.map.elevation) errors.push('การวิเคราะห์พื้นที่ต้องมีแบบจำลองความสูง');
     for (const t of Object.keys(stl.topics) as Array<keyof typeof stl.topics>) {
       if (!npcIds.has(stl.topics[t].teacherId)) errors.push(`การวิเคราะห์พื้นที่: หัวข้อ ${t} อ้างถึงผู้สอนที่ไม่มี: ${stl.topics[t].teacherId}`);

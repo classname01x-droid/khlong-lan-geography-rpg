@@ -13,7 +13,6 @@ export type SkillId =
   | 'relative-position'
   | 'evidence-synthesis'
   | 'contour-reading'
-  | 'slope-analysis'
   | 'site-suitability';
 
 export const SKILL_LABEL: Record<SkillId, string> = {
@@ -29,9 +28,8 @@ export const SKILL_LABEL: Record<SkillId, string> = {
   'grid-reference': 'การอ่านพิกัดกริด (E เพิ่มไปตะวันออก · N เพิ่มไปเหนือ)',
   'relative-position': 'การบอกตำแหน่งสัมพัทธ์ด้วยทิศและระยะจากจุดอ้างอิง',
   'evidence-synthesis': 'การบูรณาการหลักฐาน (ระยะทาง · ภูมิประเทศ · พิกัด)',
-  'contour-reading': 'การอ่านเส้นชั้นความสูง (เส้นห่าง = ลาดน้อย · เส้นถี่ = ชัน)',
-  'slope-analysis': 'การวิเคราะห์ความลาดชันและลักษณะภูมิประเทศ',
-  'site-suitability': 'การประเมินความเหมาะสมของพื้นที่ด้วยเกณฑ์ (ความลาดชัน · ความสูง · แหล่งน้ำ)',
+  'contour-reading': 'การอ่านระดับความสูงจากเส้นชั้นความสูง',
+  'site-suitability': 'การประเมินความเหมาะสมของพื้นที่ด้วยเกณฑ์ (ระดับความสูง · ระยะจากแหล่งน้ำ)',
 };
 
 export const ALL_SKILLS = Object.keys(SKILL_LABEL) as SkillId[];

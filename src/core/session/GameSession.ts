@@ -52,8 +52,9 @@ import { GridSystem, type GridRef } from '../world/GridSystem';
 import { readMeasure, type MeasureReading, type MeasureState } from '../measure/Measure';
 import {
   analyzeSettlement,
+  clampToSurvey,
   explainSettlementPart,
-  LANDFORM_LABEL,
+  idealRange,
   type SettlementReport,
   type SettlementWorld,
 } from '../site/SettlementAnalysis';
@@ -1359,12 +1360,12 @@ export class GameSession {
     const d = this.level.settlementAnalysis;
     const world = this.settlementWorld();
     if (!d || !world || !this.isSettlementAvailable()) return null;
+    tile = this.clampSettlementTile(tile); // ศูนย์กลางวงอยู่ในเขตสำรวจเสมอ
     const rep = analyzeSettlement(world, d, tile);
     this.lastSettlement = rep;
     this.settlementAttempts.push({ x: tile.x, y: tile.y, percent: rep.percent, passed: rep.passed, weak: [...rep.weakTopics] });
     this.flags.add(d.attemptFlag);
     this.skills.add('contour-reading');
-    this.skills.add('slope-analysis');
     if (rep.passed) {
       this.flags.add(d.successFlag);
       this.settlementChosen = { ...tile };
@@ -1430,69 +1431,62 @@ export class GameSession {
     return true;
   }
 
-  /** ตัวแปรข้อความ {{site:ค่า}} = พื้นที่ที่เลือก · {{try:ค่า}} = การวิเคราะห์ครั้งล่าสุด */
+  /** เขตสำรวจของการวิเคราะห์: ตำแหน่งที่แตะถูกเลื่อนให้วงกลมอยู่ในแผนที่ทั้งวง */
+  clampSettlementTile(t: TilePoint): TilePoint {
+    const d = this.level.settlementAnalysis;
+    return d ? clampToSurvey(this.grid, d.radiusTiles, t) : { x: t.x, y: t.y };
+  }
+
+  /** ตัวแปรข้อความ {{site:ค่า}} = พื้นที่ที่เลือก · {{try:ค่า}} = การวิเคราะห์ครั้งล่าสุด · {{cfg:ค่า}} = เกณฑ์ของด่าน */
   private resolveSettlementText(text: string): string {
     const d = this.level.settlementAnalysis;
     if (!d || !text.includes('{{')) return text;
-    const f1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US');
-    const value = (r: SettlementReport | null, key: string): string => {
-      if (!r) return '?';
+    const fmt = (v: number | null) => (v === null ? '-' : v.toLocaleString('en-US'));
+    const value = (r: SettlementReport | null, key: string, raw: string): string => {
+      if (!r) return '-';
       const m = r.measures;
-      const part = (id: SettlementTopic) => r.parts.find((p) => p.id === id)!;
+      const part = (id: 'height' | 'water') => r.parts.find((p) => p.id === id)!;
       switch (key) {
-        case 'percent': return f1(r.percent);
-        case 'total': return f1(r.total);
-        case 'slope': return f1(m.meanSlopePct);
-        case 'above': return m.heightAboveWater === null ? '?' : f1(m.heightAboveWater);
-        case 'relief': return f1(m.reliefMeters);
-        case 'landform': return LANDFORM_LABEL[m.landform];
-        case 'water': return m.waterDistanceMeters === null ? '?' : (Math.round(m.waterDistanceMeters / 10) * 10).toLocaleString('en-US');
-        case 'radius': return String(this.scale.tilesToMeters(r.radiusTiles));
-        case 'height': return f1(m.centerHeight);
-        case 'slopeScore': return f1(part('slope').score);
-        case 'heightScore': return f1(part('height').score);
-        case 'landformScore': return f1(part('landform').score);
-        case 'waterScore': return f1(part('water').score);
-        case 'flood': return String(d.height.floodLevelMeters);
+        case 'total': return fmt(r.total);
+        case 'percent': return fmt(r.percent);
+        case 'elev': return fmt(m.elevation);
+        case 'waterElev': return fmt(m.waterElevation);
+        case 'above': return fmt(m.heightAboveWater);
+        case 'water': return fmt(m.waterDistanceMeters);
+        case 'radius': return fmt(this.scale.tilesToMeters(r.radiusTiles));
+        case 'heightScore': return fmt(part('height').score);
+        case 'waterScore': return fmt(part('water').score);
+        case 'heightLabel': return part('height').label;
+        case 'waterLabel': return part('water').label;
         case 'weak': return r.weakTopics.map((t) => d.topics[t].label).join(' · ') || 'ไม่มี';
-        case 'explainSlope': return explainSettlementPart(r, d, 'slope');
         case 'explainHeight': return explainSettlementPart(r, d, 'height');
-        case 'explainLandform': return explainSettlementPart(r, d, 'landform');
         case 'explainWater': return explainSettlementPart(r, d, 'water');
-        default: return '?';
+        default: return raw; // ตัวแปรที่ไม่รู้จักคงไว้ตามเดิม (ทดสอบจับได้)
       }
     };
-    // {{cfg:ค่า}} = เกณฑ์ของด่าน (เขียนในเนื้อหาด้วยตัวแปรเพื่อให้ข้อความตรงกับข้อมูลที่ใช้คำนวณเสมอ)
-    const cfg = (k: string): string => {
-      const n = (v: number) => String(Math.round(v * 100) / 100);
+    const cfg = (k: string, raw: string): string => {
+      const h = idealRange(d.height.bands, d.height.max);
+      const w = idealRange(d.water.bands, d.water.max);
       switch (k) {
-        case 'slopeMin': return n(d.slope.idealMinPct);
-        case 'slopeMax': return n(d.slope.idealMaxPct);
-        case 'slopeZero': return n(d.slope.zeroAtPct);
-        case 'flood': return n(d.height.floodLevelMeters);
-        case 'safe': return n(d.height.floodLevelMeters + d.height.safeMarginMeters);
-        case 'tooHigh': return n(d.height.tooHighMeters);
-        case 'wClose': return n(d.water.tooCloseMeters);
-        case 'wIdeal': return n(d.water.idealMaxMeters);
-        case 'wZero': return n(d.water.zeroAtMeters);
-        case 'pass': return n(d.passPercent);
-        case 'radiusTiles': return n(d.radiusTiles);
-        case 'radius': return n(this.scale.tilesToMeters(d.radiusTiles));
-        case 'wSlope': return n(d.weights.slope);
-        case 'wHeight': return n(d.weights.height);
-        case 'wLandform': return n(d.weights.landform);
-        case 'wWater': return n(d.weights.water);
-        case 'wElev': return n(d.weights.height + d.weights.landform);
-        case 'interval': return n(this.level.contourIntervalMeters ?? 10);
-        case 'reliefFull': return n(d.landform.reliefFullMeters);
-        case 'reliefZero': return n(d.landform.reliefZeroMeters);
-        default: return '?';
+        case 'pass': return fmt(d.passPercent);
+        case 'radius': return fmt(this.scale.tilesToMeters(d.radiusTiles));
+        case 'radiusTiles': return fmt(d.radiusTiles);
+        case 'maxHeight': return fmt(d.height.max);
+        case 'maxWater': return fmt(d.water.max);
+        case 'idealHeightFrom': return fmt(h.from);
+        case 'idealHeightBelow': return fmt(h.below);
+        case 'idealWaterFrom': return fmt(w.from);
+        case 'idealWaterBelow': return fmt(w.below);
+        // สูงกว่าลำน้ำไม่ถึงค่านี้ = ได้ 0 (น้ำท่วมถึง) — ช่วงแรกของเกณฑ์ระดับความสูง
+        case 'flood': return fmt(d.height.bands[0].below);
+        case 'interval': return fmt(this.level.contourIntervalMeters ?? 10);
+        default: return raw;
       }
     };
     return text
-      .replace(/\{\{cfg:(\w+)\}\}/g, (_m, k: string) => cfg(k))
-      .replace(/\{\{site:(\w+)\}\}/g, (_m, k: string) => value(this.chosenReport(), k))
-      .replace(/\{\{try:(\w+)\}\}/g, (_m, k: string) => value(this.lastSettlement, k));
+      .replace(/\{\{cfg:(\w+)\}\}/g, (m, k: string) => cfg(k, m))
+      .replace(/\{\{site:(\w+)\}\}/g, (m, k: string) => value(this.chosenReport(), k, m))
+      .replace(/\{\{try:(\w+)\}\}/g, (m, k: string) => value(this.lastSettlement, k, m));
   }
 
   /* ---------------- นำทาง: เข้าใกล้ NPC เป้าหมาย ---------------- */

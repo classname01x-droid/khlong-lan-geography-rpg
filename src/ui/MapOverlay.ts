@@ -386,6 +386,12 @@ export class MapOverlay {
       g.fillStyle(0xffd84d, 0.18).fillCircle(c.x, c.y, R);
       g.lineStyle(3, 0xffd84d, 1).strokeCircle(c.x, c.y, R);
       g.fillStyle(0xffd84d, 1).fillCircle(c.x, c.y, Math.max(2, cell * 0.35));
+      // ขนาดวงเป็นเมตร (ตาม ScaleSystem) ใต้วงกลม
+      this.dyn.add(
+        scene.add
+          .text(c.x, c.y + R + 2, `รัศมี ${s.scale.tilesToMeters(d.radiusTiles)} ม.`, { ...textStyle(big, '#fff3b0'), stroke: '#10141f', strokeThickness: 3 })
+          .setOrigin(0.5, 0),
+      );
     }
   }
 

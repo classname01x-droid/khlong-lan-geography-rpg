@@ -6,7 +6,7 @@ import {
   type QuestStatus,
 } from '../../core/session/GameSession';
 import { dirName, fmtMeters10 } from '../format';
-import { explainSettlementPart } from '../../core/site/SettlementAnalysis';
+import { explainSettlementPart, PART_TITLE } from '../../core/site/SettlementAnalysis';
 import { GridSystem } from '../../core/world/GridSystem';
 import { hasMicroSteps, microStates, phaseProgress } from '../../core/guide/MicroQuest';
 import { guideText } from '../../core/guide/GuideText';
@@ -180,7 +180,7 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       const where = (a: { x: number; y: number }) => (s.coords ? GridSystem.format(s.coords.tileToGrid(a)) : `ช่อง ${a.x},${a.y}`);
       s.settlementAttempts.forEach((a, i) =>
         line(
-          `ครั้งที่ ${i + 1} · วงที่ ${where(a)}: ${a.percent}% ${a.passed ? 'ผ่าน ✓' : `ไม่ผ่าน ✗ — ต้องทบทวน: ${a.weak.map((t) => sa.topics[t].label).join(' · ') || '-'}`}`,
+          `ครั้งที่ ${i + 1} · วงที่ ${where(a)}: ${a.percent}/100 ${a.passed ? 'ผ่าน ✓' : `ไม่ผ่าน ✗ — ต้องทบทวน: ${a.weak.map((t) => sa.topics[t].label).join(' · ') || '-'}`}`,
           14,
           a.passed ? '#1f6b2a' : '#7a2e1e',
           20,
@@ -191,8 +191,8 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       if (rep) {
         space(2);
         line('รายละเอียดครั้งล่าสุด (คำนวณจากแผนที่)', 15, '#5a3a1e', 20, 2);
-        for (const p of rep.parts) line(`• ${sa.topics[p.id].label} ${p.score}/${p.max} — ${explainSettlementPart(rep, sa, p.id)}`, 14, p.weak ? '#7a2e1e' : '#2b2118', 30, 2);
-        line('คะแนนนี้คือความเหมาะสมตามเกณฑ์จำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง', 13, '#7a6448', 20, 8);
+        for (const p of rep.parts) line(`• ${PART_TITLE[p.id]}: ${explainSettlementPart(rep, sa, p.id)} ${p.score}/${p.max}`, 14, p.score < p.max ? '#7a2e1e' : '#2b2118', 30, 2);
+        line(`คะแนนรวม ${rep.total}/100 · คะแนนนี้คือความเหมาะสมตามเงื่อนไขจำลอง` + ' ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง', 13, '#7a6448', 20, 8);
       }
     }
     line('หลักฐานการสำรวจ', 17, '#5a3a1e', 0, 4);

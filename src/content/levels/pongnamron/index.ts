@@ -17,14 +17,15 @@ import { pongNamRonNpcs } from './npcs';
  * ใช้ id 'level-3' ที่จองไว้ใน LEVEL_SEQUENCE → ปลดล็อกเมื่อจบด่าน 2 และปลดล็อกบทที่ 4 เมื่อจบ
  * โฟลเดอร์นี้มีแต่เนื้อหา — ระบบวิเคราะห์พื้นที่อยู่ที่ core/site/SettlementAnalysis.ts
  *
- * contentVersion 2: เนื้อหาบทนี้ถูกรื้อใหม่ทั้งบท — บันทึกกลางด่านรุ่นเดิม (รุ่น 1: ปริศนาพิกัด RP/A-B-C) ใช้ต่อไม่ได้
+ * contentVersion 3: กิจกรรมวิเคราะห์ใช้ 2 เกณฑ์ (ระดับความสูง · ระยะจากแหล่งน้ำ) — บันทึกกลางบทรุ่นก่อน
+ * (รุ่น 1: ปริศนาพิกัด RP/A-B-C · รุ่น 2: เกณฑ์ 4 ข้อรวมความลาดชัน) ใช้ต่อไม่ได้
  * ระบบจะรีเซ็ตเฉพาะการเล่นกลางบทที่ 3 พร้อมแจ้งผู้เล่น · บทที่ 1–2 · รหัสที่ได้รับ · การปลดล็อกบท ไม่ถูกแตะต้อง
  *
  * เรื่องเมืองโบราณเป็นสถานการณ์จำลองเพื่อการเรียนรู้ ไม่ใช่ประวัติศาสตร์จริงของตำบลโป่งน้ำร้อน
  */
 export const pongNamRonLevel: LevelDefinition = {
   id: 'level-3',
-  contentVersion: 2,
+  contentVersion: 3,
   tambon: 'ตำบลโป่งน้ำร้อน',
   title: 'ปริศนาเมืองโบราณใต้ผืนดิน',
   map: pongNamRonMap,
@@ -32,7 +33,7 @@ export const pongNamRonLevel: LevelDefinition = {
   fog: { revealRadiusTiles: 5 },
   // พิกัดกริดจำลอง: มุมตะวันตกเฉียงใต้ของแผนที่ = E 4,000 · N 1,000 (ใช้บอกที่ตั้งพื้นที่ที่เลือกในรายงาน)
   grid: { falseEasting: 4000, falseNorthing: 1000 },
-  // แผนที่ภูมิประเทศ: เส้นชั้นความสูงทุก 2 ม. (เส้นหนาทุก 10 ม.) แสดงทั้งตำบลเมื่อได้รับจากครูเนม
+  // แผนที่ภูมิประเทศ: เส้นชั้นความสูงทุก 2 ม. (เส้นหนาทุก 10 ม.) แสดงทั้งตำบลเมื่อได้รับจากครูเนม — ใช้อ่านระดับความสูง
   contourIntervalMeters: 2,
   topoMapFlag: 'got-topo-map',
 
@@ -65,5 +66,5 @@ export const pongNamRonLevel: LevelDefinition = {
   settlementAnalysis: pongSettlement,
   ending: pongEnding,
   unlocks: 'level-4',
-  skills: ['contour-reading', 'slope-analysis', 'site-suitability', 'grid-reference', 'scale', 'direction'],
+  skills: ['contour-reading', 'site-suitability', 'grid-reference', 'scale', 'direction'],
 };

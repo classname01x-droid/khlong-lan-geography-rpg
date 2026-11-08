@@ -1,48 +1,51 @@
-import type { SettlementAnalysisDefinition, SettlementTopic } from '../../content/types';
+import type { SettlementAnalysisDefinition, SettlementBand, SettlementTopic } from '../../content/types';
 import type { ScaleSystem } from '../scale/ScaleSystem';
 import type { ElevationModel } from '../world/Elevation';
 import type { TilePoint } from '../world/types';
 import type { WorldGrid } from '../world/WorldGrid';
 
 /**
- * วิเคราะห์ความเหมาะสมของ "วงกลมวิเคราะห์" สำหรับการตั้งถิ่นฐานจำลอง (ตรรกะล้วน ทดสอบได้)
+ * วิเคราะห์ความเหมาะสมของ "วงกลมวิเคราะห์" สำหรับการตั้งถิ่นฐานจำลอง — 2 เกณฑ์เท่านั้น (ตรรกะล้วน ทดสอบได้)
  *
- * ทุกค่ามาจากข้อมูลจริงของแผนที่จำลอง — แบบจำลองความสูง (ElevationModel) และน้ำในโลกเกม (WorldGrid):
- *   ความลาดชัน        เฉลี่ยของความชันที่จุดตัวอย่างทุกช่องในวง
- *   ความสูงเหนือน้ำ   ความสูงที่ศูนย์กลาง − ความสูงของผิวน้ำที่ใกล้ที่สุด
- *   ลักษณะพื้นที่     เทียบศูนย์กลางกับบริเวณรอบวง + ความต่างระดับในวง
- *   ความใกล้น้ำ       ระยะถึงช่องน้ำที่ใกล้ที่สุด (ScaleSystem)
- * ไม่มีการสุ่ม ไม่มีคำตอบตายตัว — วงไหนก็ตามที่คำนวณได้มากกว่าเกณฑ์ถือว่าผ่าน
- * คะแนนเป็นความเหมาะสมตามเกณฑ์จำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง
+ *   เกณฑ์ที่ 1 ระดับความสูง (50)       ระดับความสูงเฉลี่ยในวง − ระดับผิวลำน้ำที่ใกล้ที่สุด = "สูงกว่าลำน้ำ" (ม.)
+ *                                     (ลำน้ำไหลลงจากเหนือไปใต้ ระดับผิวน้ำไม่เท่ากันทั้งสาย → ต้องเทียบกับลำน้ำตรงนั้น จึงบอกความเสี่ยงน้ำท่วมได้ถูก)
+ *   เกณฑ์ที่ 2 ความใกล้แหล่งน้ำ (50)   ระยะจากศูนย์กลางวงถึงช่องน้ำที่ใกล้ที่สุด (ScaleSystem: 1 ช่อง = 10 ม.)
+ *
+ *   คะแนนรวม = คะแนนระดับความสูง + คะแนนความใกล้แหล่งน้ำ · ผ่านเมื่อมากกว่า passPercent
+ *
+ * คะแนนแต่ละเกณฑ์ได้จาก "ช่วงคะแนน" (bands) ในข้อมูลด่าน — ค่าที่วัดได้ตกช่วงไหนได้คะแนนช่วงนั้น
+ * ทุกค่ามาจากแบบจำลองความสูง (ElevationModel) และช่องน้ำในโลกเกม (WorldGrid) — ไม่มีการสุ่ม ไม่มีคำตอบตายตัว ไม่ใช้ความลาดชัน
+ * คะแนนเป็นความเหมาะสมตามเงื่อนไขจำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง
  */
-export type Landform = 'shelf' | 'summit' | 'basin';
+
+export interface SettlementWorld {
+  elevation: ElevationModel;
+  grid: WorldGrid;
+  scale: ScaleSystem;
+}
 
 export interface SettlementMeasures {
-  /** จำนวนช่องตัวอย่างในวง */
+  /** จำนวนช่องในวง (ใช้หาค่าเฉลี่ย) */
   samples: number;
-  meanSlopePct: number;
-  maxSlopePct: number;
-  centerHeight: number;
-  /** ความสูงผิวน้ำที่ใกล้ที่สุด (ม.) — null = ไม่มีน้ำในแผนที่ */
-  waterHeight: number | null;
+  /** ระดับความสูงเฉลี่ยในวง (ม. ปัดเป็นจำนวนเต็ม — ค่าเดียวกับที่แสดงผู้เล่น) */
+  elevation: number;
+  /** ระดับผิวน้ำของช่องน้ำที่ใกล้ที่สุด (ม.) — null = แผนที่ไม่มีน้ำ */
+  waterElevation: number | null;
+  /** สูงกว่าลำน้ำ (ม.) = elevation − waterElevation */
   heightAboveWater: number | null;
-  /** ความต่างระดับสูงสุด–ต่ำสุดในวง (ม.) */
-  reliefMeters: number;
-  /** ศูนย์กลางสูงกว่า (+) หรือต่ำกว่า (−) บริเวณรอบวง (ม.) */
-  ringDelta: number;
-  landform: Landform;
+  /** ระยะถึงช่องน้ำที่ใกล้ที่สุด (ม. ปัดเป็นจำนวนเต็ม) */
   waterDistanceMeters: number | null;
-  /** ช่องน้ำที่ใกล้ที่สุด */
   waterTile: TilePoint | null;
 }
 
 export interface SettlementPart {
   id: SettlementTopic;
+  /** ค่าที่วัดได้ของเกณฑ์นี้ (สูงกว่าลำน้ำ ม. / ระยะถึงน้ำ ม.) */
+  value: number | null;
   score: number;
   max: number;
-  /** score / max */
-  ratio: number;
-  weak: boolean;
+  /** คำอธิบายช่วงที่ค่าตก (จากข้อมูลด่าน เช่น "เหมาะสม") */
+  label: string;
 }
 
 export interface SettlementReport {
@@ -50,22 +53,16 @@ export interface SettlementReport {
   radiusTiles: number;
   measures: SettlementMeasures;
   parts: SettlementPart[];
-  /** คะแนนรวม (ปัด 1 ตำแหน่ง) จากคะแนนเต็ม 100 */
+  /** คะแนนรวม = ผลรวมคะแนนทุกเกณฑ์ */
   total: number;
+  /** คะแนนรวมคิดเป็นร้อยละของคะแนนเต็ม */
   percent: number;
   passed: boolean;
-  /** หัวข้อที่ยังไม่เข้าใจ เรียงตามคะแนนที่เสียมากสุดก่อน */
+  /** เกณฑ์ที่ยังไม่ได้คะแนนเต็ม (ต้องทบทวนเมื่อไม่ผ่าน) */
   weakTopics: SettlementTopic[];
 }
 
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const r1 = (v: number) => Math.round(v * 10) / 10;
-
-export interface SettlementWorld {
-  elevation: ElevationModel;
-  grid: WorldGrid;
-  scale: ScaleSystem;
-}
+export const TOPIC_ORDER: readonly SettlementTopic[] = ['height', 'water'];
 
 /** ช่องน้ำทั้งหมดของแผนที่ (คำนวณครั้งเดียวต่อโลก) */
 const waterCache = new WeakMap<WorldGrid, TilePoint[]>();
@@ -79,193 +76,116 @@ export function waterTiles(grid: WorldGrid): TilePoint[] {
   return list;
 }
 
-/** ความลาดชัน (%) ที่จุดหนึ่ง: ขนาดเกรเดียนต์จากผลต่างกึ่งกลางของแบบจำลองความสูง */
-export function slopePctAt(world: SettlementWorld, x: number, y: number): number {
-  const e = world.elevation;
-  const dhx = (e.heightAt(x + 0.5, y) - e.heightAt(x - 0.5, y)) / 1; // ม./ช่อง
-  const dhy = (e.heightAt(x, y + 0.5) - e.heightAt(x, y - 0.5)) / 1;
-  return (Math.hypot(dhx, dhy) / world.scale.config.metersPerTile) * 100;
+/** เขตสำรวจ: ศูนย์กลางวงต้องห่างขอบแผนที่อย่างน้อยรัศมีวง (วงทั้งวงอยู่ในแผนที่) */
+export function surveyBounds(grid: WorldGrid, radiusTiles: number): { minX: number; minY: number; maxX: number; maxY: number } {
+  return { minX: radiusTiles, minY: radiusTiles, maxX: grid.width - 1 - radiusTiles, maxY: grid.height - 1 - radiusTiles };
 }
 
-export function measureSettlement(world: SettlementWorld, center: TilePoint, radiusTiles: number): SettlementMeasures {
-  const { elevation, grid, scale } = world;
-  const cx = center.x + 0.5;
-  const cy = center.y + 0.5;
-  const inRing = (d: number) => d >= radiusTiles * 1.5 && d <= radiusTiles * 2.5;
-  let n = 0;
-  let sumSlope = 0;
-  let maxSlope = 0;
-  let minH = Infinity;
-  let maxH = -Infinity;
-  let ringSum = 0;
-  let ringN = 0;
-  const reach = Math.ceil(radiusTiles * 2.5);
-  for (let y = center.y - reach; y <= center.y + reach; y++) {
-    for (let x = center.x - reach; x <= center.x + reach; x++) {
-      if (!grid.inBounds(x, y)) continue;
-      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      if (d <= radiusTiles) {
-        const s = slopePctAt(world, x + 0.5, y + 0.5);
-        const h = elevation.heightAt(x + 0.5, y + 0.5);
-        n++;
-        sumSlope += s;
-        maxSlope = Math.max(maxSlope, s);
-        minH = Math.min(minH, h);
-        maxH = Math.max(maxH, h);
-      } else if (inRing(d)) {
-        ringSum += elevation.heightAt(x + 0.5, y + 0.5);
-        ringN++;
-      }
-    }
-  }
-  const centerH = elevation.heightAt(cx, cy);
-  const ringDelta = ringN > 0 ? centerH - ringSum / ringN : 0;
-  // น้ำที่ใกล้ที่สุด (ระยะจากศูนย์กลาง)
-  let best: TilePoint | null = null;
-  let bestD = Infinity;
-  for (const w of waterTiles(grid)) {
-    const d = Math.hypot(w.x + 0.5 - cx, w.y + 0.5 - cy);
-    if (d < bestD) {
-      bestD = d;
-      best = w;
-    }
-  }
-  const waterH = best ? elevation.heightAt(best.x + 0.5, best.y + 0.5) : null;
-  return {
-    samples: n,
-    meanSlopePct: n ? sumSlope / n : 0,
-    maxSlopePct: maxSlope,
-    centerHeight: centerH,
-    waterHeight: waterH,
-    heightAboveWater: waterH === null ? null : centerH - waterH,
-    reliefMeters: n ? maxH - minH : 0,
-    ringDelta,
-    landform: 'shelf', // ตั้งตามเกณฑ์ใน scoreSettlement
-    waterDistanceMeters: best ? scale.tilesToMeters(bestD) : null,
-    waterTile: best,
-  };
+export function inSurveyArea(grid: WorldGrid, radiusTiles: number, t: TilePoint): boolean {
+  const b = surveyBounds(grid, radiusTiles);
+  return t.x >= b.minX && t.x <= b.maxX && t.y >= b.minY && t.y <= b.maxY;
 }
 
-/** คำนวณคะแนนตามเกณฑ์ของด่าน (ไม่สุ่ม ไม่ hardcode ตำแหน่ง) */
-export function analyzeSettlement(world: SettlementWorld, def: SettlementAnalysisDefinition, center: TilePoint): SettlementReport {
-  const m = measureSettlement(world, center, def.radiusTiles);
-  const w = def.weights;
-
-  // ความลาดชัน: ลาดเล็กน้อยดีที่สุด · ราบสนิทระบายน้ำไม่ดี · ชันมากไม่เหมาะ
-  const sl = def.slope;
-  let slopeF: number;
-  if (m.meanSlopePct < sl.idealMinPct) slopeF = sl.flatFactor + (1 - sl.flatFactor) * (m.meanSlopePct / sl.idealMinPct);
-  else if (m.meanSlopePct <= sl.idealMaxPct) slopeF = 1;
-  else slopeF = 1 - clamp01((m.meanSlopePct - sl.idealMaxPct) / (sl.zeroAtPct - sl.idealMaxPct));
-
-  // ความสูงเหนือน้ำ: ต้องพ้นระดับน้ำท่วม + ระยะปลอดภัย · สูงเกินไปใช้น้ำลำบาก
-  const ht = def.height;
-  let heightF = 0;
-  if (m.heightAboveWater !== null) {
-    const a = m.heightAboveWater;
-    heightF = clamp01((a - ht.floodLevelMeters) / ht.safeMarginMeters);
-    if (a > ht.tooHighMeters) heightF = Math.min(heightF, 1 - (1 - ht.tooHighFactor) * clamp01((a - ht.tooHighMeters) / ht.tooHighMeters));
-  }
-
-  // ลักษณะพื้นที่: ชานเนิน/ลานราบเรียบ (shelf) ดีที่สุด · ยอดเนินโล่ง/แอ่งรับน้ำลดคะแนน · ต่างระดับในวงมากลดคะแนน
-  const lf = def.landform;
-  const landform: Landform = m.ringDelta > lf.summitMarginMeters ? 'summit' : m.ringDelta < -lf.basinMarginMeters ? 'basin' : 'shelf';
-  const classF = landform === 'summit' ? lf.summitFactor : landform === 'basin' ? lf.basinFactor : 1;
-  const reliefF = 1 - clamp01((m.reliefMeters - lf.reliefFullMeters) / (lf.reliefZeroMeters - lf.reliefFullMeters));
-  const landformF = classF * reliefF;
-
-  // ความใกล้น้ำ
-  const wt = def.water;
-  let waterF = 0;
-  if (m.waterDistanceMeters !== null) {
-    const d = m.waterDistanceMeters;
-    waterF = d < wt.tooCloseMeters ? wt.tooCloseFactor : d <= wt.idealMaxMeters ? 1 : 1 - clamp01((d - wt.idealMaxMeters) / (wt.zeroAtMeters - wt.idealMaxMeters));
-  }
-
-  const ratios: Record<SettlementTopic, number> = { slope: slopeF, height: heightF, landform: landformF, water: waterF };
-  const topics = Object.keys(ratios) as SettlementTopic[];
-  const parts: SettlementPart[] = topics.map((id) => ({
-    id,
-    score: r1(w[id] * ratios[id]),
-    max: w[id],
-    ratio: ratios[id],
-    weak: ratios[id] < def.weakBelow,
-  }));
-  const maxTotal = topics.reduce((a, t) => a + w[t], 0);
-  const total = r1(parts.reduce((a, p) => a + p.score, 0));
-  const percent = r1((total / maxTotal) * 100);
-  const weakTopics = parts
-    .filter((p) => p.weak)
-    .sort((a, b) => b.max - b.score - (a.max - a.score))
-    .map((p) => p.id);
-  return {
-    center: { ...center },
-    radiusTiles: def.radiusTiles,
-    measures: { ...m, landform },
-    parts,
-    total,
-    percent,
-    passed: percent > def.passPercent,
-    weakTopics,
-  };
+/** เลื่อนตำแหน่งที่แตะให้อยู่ในเขตสำรวจ (แตะใกล้ขอบ → วงชิดขอบแต่ยังอยู่ในแผนที่ทั้งวง) */
+export function clampToSurvey(grid: WorldGrid, radiusTiles: number, t: TilePoint): TilePoint {
+  const b = surveyBounds(grid, radiusTiles);
+  return { x: Math.min(b.maxX, Math.max(b.minX, Math.round(t.x))), y: Math.min(b.maxY, Math.max(b.minY, Math.round(t.y))) };
 }
 
-/** วิเคราะห์ทุกช่องของแผนที่ (ใช้ตรวจเนื้อหาด่านและทดสอบ — ไม่ใช้ในเกมเพื่อเลือกคำตอบแทนผู้เล่น) */
-export function scanSettlement(world: SettlementWorld, def: SettlementAnalysisDefinition, step = 1): SettlementReport[] {
-  const out: SettlementReport[] = [];
-  for (let y = 0; y < world.grid.height; y += step) {
-    for (let x = 0; x < world.grid.width; x += step) {
-      // วงต้องอยู่ในแผนที่ทั้งวง และไม่ทับน้ำ/สิ่งกีดขวางที่ศูนย์กลาง
-      if (x - def.radiusTiles < 0 || y - def.radiusTiles < 0 || x + def.radiusTiles >= world.grid.width || y + def.radiusTiles >= world.grid.height) continue;
-      if (world.grid.getTerrain(x, y) === 'water') continue;
-      out.push(analyzeSettlement(world, def, { x, y }));
+/** ช่องที่อยู่ในวงกลมวิเคราะห์ (ศูนย์กลางช่องห่างจากศูนย์กลางวงไม่เกินรัศมี) */
+export function circleTiles(grid: WorldGrid, center: TilePoint, radiusTiles: number): TilePoint[] {
+  const out: TilePoint[] = [];
+  const r = Math.ceil(radiusTiles);
+  for (let y = center.y - r; y <= center.y + r; y++) {
+    for (let x = center.x - r; x <= center.x + r; x++) {
+      if (grid.inBounds(x, y) && Math.hypot(x - center.x, y - center.y) <= radiusTiles) out.push({ x, y });
     }
   }
   return out;
 }
 
-/** ข้อความอธิบายผลของแต่ละเกณฑ์ (ไม่เฉลยตำแหน่ง — บอกค่าที่วัดได้และเหตุผล) */
-export const PART_LABEL: Record<SettlementTopic, string> = {
-  slope: 'ความลาดชัน',
-  height: 'ความสูงเหนือระดับน้ำ',
-  landform: 'ลักษณะพื้นที่',
-  water: 'ความใกล้แหล่งน้ำ',
-};
-export const LANDFORM_LABEL: Record<Landform, string> = {
-  shelf: 'ชานเนิน/ลานราบเรียบ',
-  summit: 'ยอดเนินโล่ง',
-  basin: 'แอ่งรับน้ำ',
-};
-
-export function explainSettlementPart(r: SettlementReport, def: SettlementAnalysisDefinition, id: SettlementTopic): string {
-  const m = r.measures;
-  const f1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US');
-  switch (id) {
-    case 'slope': {
-      const s = def.slope;
-      const v = `ลาดเฉลี่ย ${f1(m.meanSlopePct)}%`;
-      return m.meanSlopePct > s.idealMaxPct ? `${v} — ชันเกินไป (ที่เหมาะ ${s.idealMinPct}–${s.idealMaxPct}%)` : m.meanSlopePct < s.idealMinPct ? `${v} — ราบเกินไป ระบายน้ำไม่ดี (ที่เหมาะ ${s.idealMinPct}–${s.idealMaxPct}%)` : `${v} — กำลังเหมาะ`;
-    }
-    case 'height': {
-      if (m.heightAboveWater === null) return 'ไม่มีแหล่งน้ำให้เทียบ';
-      const h = def.height;
-      const v = `สูงกว่าผิวน้ำ ${f1(m.heightAboveWater)} ม.`;
-      return m.heightAboveWater <= h.floodLevelMeters
-        ? `${v} — น้ำท่วมถึง (ระดับน้ำท่วมสูงสุด ${h.floodLevelMeters} ม.)`
-        : m.heightAboveWater < h.floodLevelMeters + h.safeMarginMeters
-          ? `${v} — พ้นน้ำท่วมแต่ยังใกล้ระดับน้ำ`
-          : m.heightAboveWater > h.tooHighMeters
-            ? `${v} — สูงจนใช้น้ำลำบาก`
-            : `${v} — พ้นระดับน้ำท่วม`;
-    }
-    case 'landform':
-      return `${LANDFORM_LABEL[m.landform]} · ต่างระดับในวง ${f1(m.reliefMeters)} ม.`;
-    case 'water': {
-      if (m.waterDistanceMeters === null) return 'ไม่มีแหล่งน้ำในแผนที่';
-      const w = def.water;
-      const d = Math.round(m.waterDistanceMeters / 10) * 10;
-      const v = `ห่างลำห้วย ~${d.toLocaleString('en-US')} ม.`;
-      return m.waterDistanceMeters < w.tooCloseMeters ? `${v} — ติดลำห้วยเกินไป` : m.waterDistanceMeters <= w.idealMaxMeters ? `${v} — ใกล้พอใช้น้ำ` : `${v} — ไกลเกินไป`;
+export function measureSettlement(world: SettlementWorld, center: TilePoint, radiusTiles: number): SettlementMeasures {
+  const { elevation, grid, scale } = world;
+  const tiles = circleTiles(grid, center, radiusTiles);
+  const mean = tiles.reduce((a, t) => a + elevation.heightAt(t.x + 0.5, t.y + 0.5), 0) / Math.max(1, tiles.length);
+  let best: TilePoint | null = null;
+  let bestD = Infinity;
+  for (const w of waterTiles(grid)) {
+    const d = Math.hypot(w.x - center.x, w.y - center.y);
+    if (d < bestD) {
+      bestD = d;
+      best = w;
     }
   }
+  const elev = Math.round(mean);
+  const waterElev = best ? Math.round(elevation.heightAt(best.x + 0.5, best.y + 0.5)) : null;
+  return {
+    samples: tiles.length,
+    elevation: elev,
+    waterElevation: waterElev,
+    heightAboveWater: waterElev === null ? null : elev - waterElev,
+    waterDistanceMeters: best ? Math.round(scale.tilesToMeters(bestD)) : null,
+    waterTile: best,
+  };
 }
+
+/** ช่วงคะแนนที่ค่าตก: ช่วงแรกที่ value < below (below = null คือช่วงสุดท้าย) · ไม่มีค่า = ช่วงสุดท้าย */
+export function bandFor(bands: readonly SettlementBand[], value: number | null): SettlementBand {
+  if (value !== null) for (const b of bands) if (b.below === null || value < b.below) return b;
+  return bands[bands.length - 1];
+}
+
+/** ช่วงที่ได้คะแนนเต็ม (ใช้เขียนข้อความเกณฑ์) — [ต่ำสุด, ไม่ถึง) */
+export function idealRange(bands: readonly SettlementBand[], max: number): { from: number | null; below: number | null } {
+  const i = bands.findIndex((b) => b.score === max);
+  return { from: i > 0 ? bands[i - 1].below : null, below: i >= 0 ? bands[i].below : null };
+}
+
+/** คำนวณคะแนนตามเกณฑ์ของด่าน (ไม่สุ่ม ไม่ hardcode ตำแหน่ง) */
+export function analyzeSettlement(world: SettlementWorld, def: SettlementAnalysisDefinition, center: TilePoint): SettlementReport {
+  const m = measureSettlement(world, center, def.radiusTiles);
+  const values: Record<SettlementTopic, number | null> = { height: m.heightAboveWater, water: m.waterDistanceMeters };
+  const parts: SettlementPart[] = TOPIC_ORDER.map((id) => {
+    const band = bandFor(def[id].bands, values[id]);
+    return { id, value: values[id], score: band.score, max: def[id].max, label: band.label };
+  });
+  const total = parts.reduce((a, p) => a + p.score, 0);
+  const full = parts.reduce((a, p) => a + p.max, 0);
+  const percent = Math.round((total / full) * 1000) / 10;
+  return {
+    center: { x: center.x, y: center.y },
+    radiusTiles: def.radiusTiles,
+    measures: m,
+    parts,
+    total,
+    percent,
+    passed: percent > def.passPercent,
+    weakTopics: parts.filter((p) => p.score < p.max).map((p) => p.id),
+  };
+}
+
+/** วิเคราะห์ทุกตำแหน่งในเขตสำรวจ (ใช้ตรวจเนื้อหาด่านและทดสอบ — ไม่ใช้ในเกมเพื่อเลือกคำตอบแทนผู้เล่น) */
+export function scanSettlement(world: SettlementWorld, def: SettlementAnalysisDefinition, step = 1): SettlementReport[] {
+  const b = surveyBounds(world.grid, def.radiusTiles);
+  const out: SettlementReport[] = [];
+  for (let y = b.minY; y <= b.maxY; y += step) for (let x = b.minX; x <= b.maxX; x += step) out.push(analyzeSettlement(world, def, { x, y }));
+  return out;
+}
+
+/** ข้อความผลของแต่ละเกณฑ์ (บอกค่าที่วัดได้และช่วงคะแนน ไม่เฉลยตำแหน่ง) */
+export function explainSettlementPart(r: SettlementReport, _def: SettlementAnalysisDefinition, id: SettlementTopic): string {
+  const m = r.measures;
+  const p = r.parts.find((x) => x.id === id)!;
+  const fmt = (v: number) => v.toLocaleString('en-US');
+  if (id === 'height') {
+    if (m.heightAboveWater === null || m.waterElevation === null) return `ระดับความสูง ${fmt(m.elevation)} ม. — ${p.label}`;
+    return `${fmt(m.elevation)} ม. (สูงกว่าลำน้ำ ${fmt(m.heightAboveWater)} ม.) — ${p.label}`;
+  }
+  return m.waterDistanceMeters === null ? `ไม่มีแหล่งน้ำ — ${p.label}` : `~${fmt(m.waterDistanceMeters)} ม. — ${p.label}`;
+}
+
+/** ชื่อเกณฑ์สำหรับแสดงผล */
+export const PART_TITLE: Record<SettlementTopic, string> = {
+  height: 'ระดับความสูง',
+  water: 'ระยะจากแหล่งน้ำ',
+};
