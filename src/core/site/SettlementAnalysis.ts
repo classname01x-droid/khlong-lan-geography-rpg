@@ -179,7 +179,9 @@ export function explainSettlementPart(r: SettlementReport, _def: SettlementAnaly
   const fmt = (v: number) => v.toLocaleString('en-US');
   if (id === 'height') {
     if (m.heightAboveWater === null || m.waterElevation === null) return `ระดับความสูง ${fmt(m.elevation)} ม. — ${p.label}`;
-    return `${fmt(m.elevation)} ม. (สูงกว่าลำน้ำ ${fmt(m.heightAboveWater)} ม.) — ${p.label}`;
+    const a = m.heightAboveWater;
+    const rel = a >= 0 ? `สูงกว่าลำน้ำ ${fmt(a)} ม.` : `ต่ำกว่าลำน้ำ ${fmt(-a)} ม.`;
+    return `${fmt(m.elevation)} ม. (${rel}) — ${p.label}`;
   }
   return m.waterDistanceMeters === null ? `ไม่มีแหล่งน้ำ — ${p.label}` : `~${fmt(m.waterDistanceMeters)} ม. — ${p.label}`;
 }

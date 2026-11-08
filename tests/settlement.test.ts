@@ -175,3 +175,14 @@ describe('แผนที่โป่งน้ำร้อน: คะแนน�
     expect(validateLevel(badBands).join('\n')).toContain('ช่วงคะแนน height');
   }, 30000);
 });
+
+describe('ข้อความผล', () => {
+  it('ต่ำกว่าลำน้ำเขียนว่า "ต่ำกว่าลำน้ำ" ไม่ใช่ "สูงกว่าลำน้ำ -x"', async () => {
+    const { explainSettlementPart } = await import('../src/core/site/SettlementAnalysis');
+    const low = analyzeSettlement(W, D, { x: 4, y: 20 }); // สูงกว่าลำน้ำ −1 ม.
+    expect(low.measures.heightAboveWater).toBe(-1);
+    expect(explainSettlementPart(low, D, 'height')).toBe('104 ม. (ต่ำกว่าลำน้ำ 1 ม.) — ต่ำเกินไป เสี่ยงน้ำท่วม');
+    expect(explainSettlementPart(score(13), D, 'height')).toBe('113 ม. (สูงกว่าลำน้ำ 8 ม.) — เหมาะสม');
+    expect(explainSettlementPart(score(13), D, 'water')).toBe('~80 ม. — เหมาะสม');
+  });
+});
