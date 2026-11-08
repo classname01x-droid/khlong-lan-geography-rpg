@@ -1,4 +1,5 @@
 import type { GameSession } from '../../core/session/GameSession';
+import { explainSettlementPart } from '../../core/site/SettlementAnalysis';
 import { GridSystem } from '../../core/world/GridSystem';
 
 /** ข้อความประกอบหน้าแผนที่ (M) — ใช้ร่วมกันระหว่าง MapOverlay (canvas) และแถบข้อความบนจอสัมผัส */
@@ -33,8 +34,48 @@ export function mapHint(s: GameSession): string {
         : 'กด M หรือ Esc เพื่อปิด';
 }
 
+/**
+ * วิเคราะห์พื้นที่ตั้งถิ่นฐาน (บทที่ 3): สถานะเครื่องมือ · ผลคะแนนล่าสุด · เหตุที่ยังวิเคราะห์ไม่ได้
+ * จอสัมผัสแสดงสั้น (3 บรรทัด — ไม่แย่งพื้นที่แผนที่) ส่วนรายละเอียดอยู่ในสมุด หน้า "หลักฐาน/ข้อความ"
+ */
+export function settlementLines(s: GameSession, opts: { touch?: boolean } = {}): { lines: string[]; problem: boolean } {
+  const d = s.level.settlementAnalysis;
+  if (!d) return { lines: [], problem: false };
+  const lines: string[] = [];
+  const last = s.latestSettlementReport();
+  const radiusM = s.scale.tilesToMeters(d.radiusTiles);
+  const teacherName = (id: string) => s.level.npcs.find((n) => n.id === id)?.name ?? id;
+  const where = (t: { x: number; y: number }) => (s.coords ? GridSystem.format(s.coords.tileToGrid(t)) : `ช่อง X ${t.x}, Y ${t.y}`);
+  if (last) {
+    lines.push(`🔍 วงที่ ${where(last.center)}: ${last.percent}% (${last.total}/100) — ${last.passed ? `ผ่าน ✓ (มากกว่า ${d.passPercent}%)` : `ยังไม่ผ่าน (ต้องมากกว่า ${d.passPercent}%)`}`);
+    if (opts.touch) {
+      lines.push(last.parts.map((p) => `${d.topics[p.id].label} ${p.score}/${p.max}`).join(' · '));
+    } else {
+      for (const p of last.parts) lines.push(`• ${d.topics[p.id].label} ${p.score}/${p.max} — ${explainSettlementPart(last, d, p.id)}`);
+    }
+  }
+  const lock = s.settlementLock();
+  if (lock?.kind === 'lessons') {
+    const by = new Map<string, string[]>();
+    for (const t of lock.topics) by.set(d.topics[t].teacherId, [...(by.get(d.topics[t].teacherId) ?? []), d.topics[t].label]);
+    lines.push(`🔒 กลับไปเรียนก่อนวิเคราะห์ใหม่: ${[...by].map(([id, ts]) => `${teacherName(id)} (${ts.join(' · ')})`).join(' · ')}`);
+  } else if (lock?.kind === 'early') {
+    lines.push('🔒 เครื่องมือวิเคราะห์จะเปิดหลังเรียนรู้เรื่องเส้นชั้นความสูงและข้อมูลแหล่งน้ำ');
+  } else if (s.mapTool === 'settlement' && s.pinCursor) {
+    lines.push(
+      opts.touch
+        ? `โหมดวิเคราะห์ · วงรัศมี ${d.radiusTiles} ช่อง (${radiusM} ม.) ที่ ${where(s.pinCursor)} · แตะแผนที่/ลากวง/ลูกศร แล้วแตะ "วิเคราะห์พื้นที่นี้"`
+        : `โหมดวิเคราะห์พื้นที่ · วงกลมรัศมี ${d.radiusTiles} ช่อง (${radiusM} ม.) ที่ ${where(s.pinCursor)} · คลิก/ลากวง หรือ WASD/ลูกศร: เลื่อน · Space: วิเคราะห์พื้นที่นี้`,
+    );
+  } else if (s.settlementSolved && s.settlementChosen) {
+    lines.push(`✓ พื้นที่ที่เลือก: ${where(s.settlementChosen)} — เดินทางไปตรวจสอบภาคสนาม (วงสีเขียวบนแผนที่)`);
+  }
+  return { lines, problem: !!last && !last.passed };
+}
+
 /** สถานะการปักหมุด + ผลการปัก (บรรทัดว่าง = ไม่มีอะไรแสดง) */
 export function mapPinLines(s: GameSession, opts: { touch?: boolean } = {}): { lines: string[]; problem: boolean } {
+  if (s.level.settlementAnalysis && !s.level.pinTask) return settlementLines(s, opts);
   const lines: string[] = [];
   const pinning = s.pinStage !== 'none' && s.pinCursor;
   if (pinning && s.pinCursor) {

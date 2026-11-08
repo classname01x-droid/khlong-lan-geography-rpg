@@ -14,6 +14,7 @@ import type {
   QuestDefinition,
   QuestKind,
   RouteDefinition,
+  SettlementTopic,
   StoryStep,
   TriggerZone,
 } from '../../content/types';
@@ -49,6 +50,13 @@ import {
 } from '../site/IntegratedSiteAnalysis';
 import { GridSystem, type GridRef } from '../world/GridSystem';
 import { readMeasure, type MeasureReading, type MeasureState } from '../measure/Measure';
+import {
+  analyzeSettlement,
+  explainSettlementPart,
+  LANDFORM_LABEL,
+  type SettlementReport,
+  type SettlementWorld,
+} from '../site/SettlementAnalysis';
 import { currentMicro } from '../guide/MicroQuest';
 
 export type SessionMode = 'explore' | 'dialogue' | 'map' | 'notebook' | 'summary' | 'pause' | 'compare' | 'gridcheck';
@@ -95,6 +103,17 @@ export interface SessionSnapshot {
   completed: boolean;
   /** ประวัติการเลือกจุดในกระดานวิเคราะห์พิกัด (ไม่มี = บันทึกรุ่นก่อน) */
   gridAttempts?: Array<{ landmarkId: string; ok: boolean }>;
+  /** การวิเคราะห์พื้นที่ตั้งถิ่นฐาน (บทที่ 3) — ไม่มี = ด่านนี้ไม่ใช้/บันทึกรุ่นก่อน */
+  settlement?: { attempts: SettlementAttempt[]; chosen: TilePoint | null };
+}
+
+/** ประวัติการวิเคราะห์พื้นที่หนึ่งครั้ง (ข้อมูลเล็ก คำนวณคะแนนใหม่จากแผนที่ได้เสมอ) */
+export interface SettlementAttempt {
+  x: number;
+  y: number;
+  percent: number;
+  passed: boolean;
+  weak: SettlementTopic[];
 }
 
 export const CLUE_TYPE_LABEL: Record<ClueType, string> = {
@@ -199,7 +218,8 @@ export class GameSession {
   readonly odometer: DistanceTracker;
   readonly discoveredLandmarks = new Set<string>();
   readonly talkedTo = new Set<string>();
-  readonly landmarkPoints: Readonly<Record<string, TilePoint>>;
+  /** ตำแหน่งจุดสังเกตตามข้อมูลด่าน + จุด "chosen" (พื้นที่ที่ผู้เล่นเลือกผ่านการวิเคราะห์) ใช้กับตัวแปรข้อความ {{grid:chosen}} {{dist:a>chosen}} */
+  readonly landmarkPoints: Record<string, TilePoint>;
 
   readonly flags = new Set<string>();
   /** id เบาะแสตามลำดับที่ได้รับ */
@@ -262,6 +282,10 @@ export class GameSession {
   measure: MeasureState | null = null;
   /** เปิดแผนที่ครั้งถัดไปให้เลื่อนไปที่ช่องนี้ (ปุ่ม "ดูตำแหน่งบนแผนที่") */
   mapFocus: TilePoint | null = null;
+  /** วิเคราะห์ความเหมาะสมของพื้นที่ (บทที่ 3): ประวัติ · พื้นที่ที่ผ่าน · ผลล่าสุด (สถานะของ UI) */
+  readonly settlementAttempts: SettlementAttempt[] = [];
+  settlementChosen: TilePoint | null = null;
+  lastSettlement: SettlementReport | null = null;
   /** เบาะแสที่เพิ่งอ่านครั้งแรกในการเปิดสมุดครั้งนี้ (ป้าย "ใหม่") — สถานะของ UI ไม่บันทึก */
   readonly newClues: string[] = [];
   /** NPC ที่มีเป้าหมาย "เดินไปพบ" (จด flag near:<id> เมื่อเข้าใกล้) */
@@ -312,6 +336,7 @@ export class GameSession {
       return m === null ? match : (Math.round(m / 10) * 10).toLocaleString('en-US');
     });
     text = this.resolveIntegratedText(text);
+    text = this.resolveSettlementText(text);
     // "site-analysis" ในตัวแปรข้อความ = จุดที่ระบบวิเคราะห์ว่าผ่านหลักฐานทุกข้อ (ไม่เขียนชื่อจุดคำตอบในเนื้อหา)
     if (text.includes('site-analysis}}')) {
       const target = this.siteTargetId();
@@ -468,7 +493,7 @@ export class GameSession {
     npcId: string | null,
     key: string | null,
   ): DialogueOutcome {
-    const runner = new DialogueRunner(nodes, {
+    const runner = new DialogueRunner(nodes.filter((n) => !n.when || this.matches(n.when)), {
       resolveText: (t) => this.resolveText(t),
       getQuiz: (id) => this.level.quizzes?.find((q) => q.id === id),
       applyEffect: (e) => this.applyEffect(e),
@@ -741,6 +766,7 @@ export class GameSession {
    * สถานะเดินหน้าอย่างเดียว ไม่ย้อนกลับ; รางวัลของภารกิจทำงานครั้งเดียวตอนสำเร็จ
    */
   updateQuests(silent = false): void {
+    this.syncSettlementFlags();
     const quests = this.level.quests ?? [];
     for (let changed = true, guard = 0; changed && guard < 10; guard++) {
       changed = false;
@@ -1286,6 +1312,189 @@ export class GameSession {
 
   /* ---------------- บันทึก / โหลดการเล่นกลางด่าน ---------------- */
 
+  /* ---------------- วิเคราะห์ความเหมาะสมของพื้นที่ตั้งถิ่นฐาน (บทที่ 3) ---------------- */
+
+  /** โลกสำหรับคำนวณคะแนน (ต้องมีแบบจำลองความสูง) */
+  settlementWorld(): SettlementWorld | null {
+    return this.elevation ? { elevation: this.elevation, grid: this.grid, scale: this.scale } : null;
+  }
+
+  get settlementSolved(): boolean {
+    const d = this.level.settlementAnalysis;
+    return !!d && this.flags.has(d.successFlag);
+  }
+
+  /** หัวข้อที่ยังต้องกลับไปเรียนเสริม (วิเคราะห์ไม่ผ่านเพราะหัวข้อนี้ และยังไม่ได้ฟังบทเรียน) */
+  settlementPending(): SettlementTopic[] {
+    const d = this.level.settlementAnalysis;
+    if (!d || this.settlementSolved) return [];
+    return (Object.keys(d.topics) as SettlementTopic[]).filter((t) => this.flags.has(`weak:${t}`) && !this.flags.has(`relearned:${t}`));
+  }
+
+  /** เครื่องมือที่แผนที่ใช้อยู่ตอนนี้: ปักหมุด · วิเคราะห์พื้นที่ · ไม่มี */
+  get mapTool(): 'pin' | 'settlement' | null {
+    return this.isPinAvailable() ? 'pin' : this.isSettlementAvailable() ? 'settlement' : null;
+  }
+
+  /** เครื่องมือวิเคราะห์เปิดให้ใช้ได้หรือไม่ (ต้องผ่านเงื่อนไขของฉาก และไม่ค้างบทเรียนเสริม) */
+  isSettlementAvailable(): boolean {
+    const d = this.level.settlementAnalysis;
+    return !!d && !this.settlementSolved && this.matches(d.availableWhen) && this.settlementPending().length === 0 && !!this.elevation;
+  }
+
+  /** เหตุที่ยังวิเคราะห์ไม่ได้ (null = ใช้ได้ หรือด่านนี้ไม่มี) */
+  settlementLock(): { kind: 'lessons'; topics: SettlementTopic[] } | { kind: 'early' } | null {
+    const d = this.level.settlementAnalysis;
+    if (!d || this.settlementSolved) return null;
+    if (!this.matches(d.availableWhen)) return { kind: 'early' };
+    const pending = this.settlementPending();
+    return pending.length ? { kind: 'lessons', topics: pending } : null;
+  }
+
+  /**
+   * วิเคราะห์วงกลมที่ศูนย์กลางช่องนี้: คำนวณคะแนนจากแผนที่จริง → บันทึกผล
+   *   ผ่าน (มากกว่าเกณฑ์) → จำพื้นที่ที่เลือก (chosen) · ไม่ผ่าน → จดหัวข้อที่ยังไม่เข้าใจ ต้องไปเรียนเสริมก่อนวิเคราะห์ใหม่
+   */
+  analyzeSettlementAt(tile: TilePoint): SettlementReport | null {
+    const d = this.level.settlementAnalysis;
+    const world = this.settlementWorld();
+    if (!d || !world || !this.isSettlementAvailable()) return null;
+    const rep = analyzeSettlement(world, d, tile);
+    this.lastSettlement = rep;
+    this.settlementAttempts.push({ x: tile.x, y: tile.y, percent: rep.percent, passed: rep.passed, weak: [...rep.weakTopics] });
+    this.flags.add(d.attemptFlag);
+    this.skills.add('contour-reading');
+    this.skills.add('slope-analysis');
+    if (rep.passed) {
+      this.flags.add(d.successFlag);
+      this.settlementChosen = { ...tile };
+      this.landmarkPoints.chosen = { ...tile };
+      this.skills.add('site-suitability');
+    } else {
+      this.mistakes.compare++;
+      for (const t of rep.weakTopics) {
+        this.flags.add(`weak:${t}`);
+        this.flags.delete(`relearned:${t}`);
+      }
+    }
+    this.updateQuests();
+    this.uiVersion++;
+    return rep;
+  }
+
+  /** ผลวิเคราะห์ครั้งล่าสุด (หลังโหลดเกมคำนวณใหม่จากประวัติ — คำนวณจากแผนที่เหมือนเดิมทุกครั้ง) */
+  latestSettlementReport(): SettlementReport | null {
+    if (this.lastSettlement) return this.lastSettlement;
+    const d = this.level.settlementAnalysis;
+    const world = this.settlementWorld();
+    const a = this.settlementAttempts[this.settlementAttempts.length - 1];
+    return d && world && a ? analyzeSettlement(world, d, { x: a.x, y: a.y }) : null;
+  }
+
+  /** รายงานของพื้นที่ที่ผู้เล่นเลือก (คำนวณใหม่จากแผนที่เสมอ ไม่ต้องบันทึกตัวเลข) */
+  chosenReport(): SettlementReport | null {
+    const d = this.level.settlementAnalysis;
+    const world = this.settlementWorld();
+    return d && world && this.settlementChosen ? analyzeSettlement(world, d, this.settlementChosen) : null;
+  }
+
+  /** flag "pending:<ผู้สอน>" = ผู้สอนคนนี้มีบทเรียนเสริมรออยู่ (ใช้เลือกบทพูด) */
+  private syncSettlementFlags(): void {
+    const d = this.level.settlementAnalysis;
+    if (!d) return;
+    const teachers = new Set(Object.values(d.topics).map((t) => t.teacherId));
+    const pending = this.settlementPending();
+    for (const id of teachers) {
+      const need = pending.some((t) => d.topics[t].teacherId === id);
+      if (need) this.flags.add(`pending:${id}`);
+      else this.flags.delete(`pending:${id}`);
+    }
+    // วิเคราะห์ไม่ผ่านแล้ว และฟังบทเรียนเสริมครบทุกหัวข้อแล้ว → พร้อมวิเคราะห์ใหม่ ("lessons-done")
+    if (this.flags.has(d.attemptFlag) && !this.settlementSolved && pending.length === 0) this.flags.add('lessons-done');
+    else this.flags.delete('lessons-done');
+  }
+
+  /** ผู้เล่นยืนในพื้นที่ที่เลือก และยังไม่ได้ตรวจสอบภาคสนาม */
+  fieldCheckAvailable(tile: TilePoint): boolean {
+    const d = this.level.settlementAnalysis;
+    const c = this.settlementChosen;
+    if (!d || !c || !this.settlementSolved || this.flags.has(d.fieldCheck.flag) || !this.matches(d.fieldCheck.when)) return false;
+    return Math.hypot(c.x - tile.x, c.y - tile.y) <= d.fieldCheck.radiusTiles;
+  }
+
+  /** ตรวจสอบภาคสนาม: บทพูด/ผลตรวจใช้ตัวแปร {{site:...}} จากพื้นที่ที่เลือก (คำนวณจากแผนที่) */
+  startFieldCheck(): boolean {
+    const d = this.level.settlementAnalysis;
+    if (!d || !this.fieldCheckAvailable(this.playerTile)) return false;
+    this.startDialogue(d.fieldCheck.nodes, 'npc', null, null);
+    return true;
+  }
+
+  /** ตัวแปรข้อความ {{site:ค่า}} = พื้นที่ที่เลือก · {{try:ค่า}} = การวิเคราะห์ครั้งล่าสุด */
+  private resolveSettlementText(text: string): string {
+    const d = this.level.settlementAnalysis;
+    if (!d || !text.includes('{{')) return text;
+    const f1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US');
+    const value = (r: SettlementReport | null, key: string): string => {
+      if (!r) return '?';
+      const m = r.measures;
+      const part = (id: SettlementTopic) => r.parts.find((p) => p.id === id)!;
+      switch (key) {
+        case 'percent': return f1(r.percent);
+        case 'total': return f1(r.total);
+        case 'slope': return f1(m.meanSlopePct);
+        case 'above': return m.heightAboveWater === null ? '?' : f1(m.heightAboveWater);
+        case 'relief': return f1(m.reliefMeters);
+        case 'landform': return LANDFORM_LABEL[m.landform];
+        case 'water': return m.waterDistanceMeters === null ? '?' : (Math.round(m.waterDistanceMeters / 10) * 10).toLocaleString('en-US');
+        case 'radius': return String(this.scale.tilesToMeters(r.radiusTiles));
+        case 'height': return f1(m.centerHeight);
+        case 'slopeScore': return f1(part('slope').score);
+        case 'heightScore': return f1(part('height').score);
+        case 'landformScore': return f1(part('landform').score);
+        case 'waterScore': return f1(part('water').score);
+        case 'flood': return String(d.height.floodLevelMeters);
+        case 'weak': return r.weakTopics.map((t) => d.topics[t].label).join(' · ') || 'ไม่มี';
+        case 'explainSlope': return explainSettlementPart(r, d, 'slope');
+        case 'explainHeight': return explainSettlementPart(r, d, 'height');
+        case 'explainLandform': return explainSettlementPart(r, d, 'landform');
+        case 'explainWater': return explainSettlementPart(r, d, 'water');
+        default: return '?';
+      }
+    };
+    // {{cfg:ค่า}} = เกณฑ์ของด่าน (เขียนในเนื้อหาด้วยตัวแปรเพื่อให้ข้อความตรงกับข้อมูลที่ใช้คำนวณเสมอ)
+    const cfg = (k: string): string => {
+      const n = (v: number) => String(Math.round(v * 100) / 100);
+      switch (k) {
+        case 'slopeMin': return n(d.slope.idealMinPct);
+        case 'slopeMax': return n(d.slope.idealMaxPct);
+        case 'slopeZero': return n(d.slope.zeroAtPct);
+        case 'flood': return n(d.height.floodLevelMeters);
+        case 'safe': return n(d.height.floodLevelMeters + d.height.safeMarginMeters);
+        case 'tooHigh': return n(d.height.tooHighMeters);
+        case 'wClose': return n(d.water.tooCloseMeters);
+        case 'wIdeal': return n(d.water.idealMaxMeters);
+        case 'wZero': return n(d.water.zeroAtMeters);
+        case 'pass': return n(d.passPercent);
+        case 'radiusTiles': return n(d.radiusTiles);
+        case 'radius': return n(this.scale.tilesToMeters(d.radiusTiles));
+        case 'wSlope': return n(d.weights.slope);
+        case 'wHeight': return n(d.weights.height);
+        case 'wLandform': return n(d.weights.landform);
+        case 'wWater': return n(d.weights.water);
+        case 'wElev': return n(d.weights.height + d.weights.landform);
+        case 'interval': return n(this.level.contourIntervalMeters ?? 10);
+        case 'reliefFull': return n(d.landform.reliefFullMeters);
+        case 'reliefZero': return n(d.landform.reliefZeroMeters);
+        default: return '?';
+      }
+    };
+    return text
+      .replace(/\{\{cfg:(\w+)\}\}/g, (_m, k: string) => cfg(k))
+      .replace(/\{\{site:(\w+)\}\}/g, (_m, k: string) => value(this.chosenReport(), k))
+      .replace(/\{\{try:(\w+)\}\}/g, (_m, k: string) => value(this.lastSettlement, k));
+  }
+
   /* ---------------- นำทาง: เข้าใกล้ NPC เป้าหมาย ---------------- */
 
   /** ระยะ (ช่อง) ที่นับว่า "ไปถึง NPC แล้ว" */
@@ -1400,6 +1609,9 @@ export class GameSession {
       pinnedAt: this.pinnedAt ? { ...this.pinnedAt } : null,
       completed: this.completed,
       gridAttempts: this.gridAttempts.map((a) => ({ ...a })),
+      ...(this.level.settlementAnalysis
+        ? { settlement: { attempts: this.settlementAttempts.map((a) => ({ ...a, weak: [...a.weak] })), chosen: this.settlementChosen ? { ...this.settlementChosen } : null } }
+        : {}),
     };
   }
 
@@ -1439,6 +1651,11 @@ export class GameSession {
     this.gridAttempts.splice(0, this.gridAttempts.length, ...(snap.gridAttempts ?? []).map((a) => ({ ...a })));
     this.lastGridChoice = null;
     this.gridSelection = null;
+    this.settlementAttempts.splice(0, this.settlementAttempts.length, ...(snap.settlement?.attempts ?? []).map((a) => ({ ...a, weak: [...a.weak] })));
+    this.settlementChosen = snap.settlement?.chosen ? { ...snap.settlement.chosen } : null;
+    this.lastSettlement = null;
+    if (this.settlementChosen) this.landmarkPoints.chosen = { ...this.settlementChosen };
+    else delete this.landmarkPoints.chosen;
     this.discoveredLandmarks.clear();
     this.checkLandmarkDiscovery();
     this.updateQuests(true);

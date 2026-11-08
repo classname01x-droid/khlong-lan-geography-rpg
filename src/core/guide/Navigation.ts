@@ -12,7 +12,7 @@ import { currentMicro } from './MicroQuest';
  *     และกันซ้ำที่นี่: สถานที่ที่มี revealFlag ต้องเปิดเผยแล้ว · NPC/สถานที่ต้องผ่านเงื่อนไข when ก่อน
  */
 export interface GuideTarget {
-  kind: 'npc' | 'landmark';
+  kind: 'npc' | 'landmark' | 'area';
   id: string;
   name: string;
   at: TilePoint;
@@ -26,6 +26,16 @@ export function guideTarget(s: GameSession): GuideTarget | null {
   if (t.npcId) {
     const npc = s.level.npcs.find((n) => n.id === t.npcId);
     return npc ? { kind: 'npc', id: npc.id, name: npc.name, at: { ...npc.at } } : null;
+  }
+  if (t.pendingTeacher) {
+    const d = s.level.settlementAnalysis;
+    const first = s.settlementPending()[0];
+    const npc = d && first ? s.level.npcs.find((n) => n.id === d.topics[first].teacherId) : undefined;
+    return npc ? { kind: 'npc', id: npc.id, name: npc.name, at: { ...npc.at } } : null;
+  }
+  if (t.area === 'chosen') {
+    // พื้นที่ที่ผู้เล่นเลือกเองจากการวิเคราะห์ที่ผ่านแล้ว — ไม่ใช่การเฉลย
+    return s.settlementChosen ? { kind: 'area', id: 'chosen', name: 'พื้นที่ที่เลือก', at: { ...s.settlementChosen } } : null;
   }
   if (t.landmarkId) {
     const lm = s.level.landmarks.find((l) => l.id === t.landmarkId);

@@ -3,6 +3,7 @@ import { evaluateRoute, measureRoute, roadMetersBetween, straightMeters } from '
 import { defaultScale, type ScaleSystem } from '../core/scale/ScaleSystem';
 import { referencedPoints, referencedRoutes, referencedWaterways, ROAD_TEMPLATE_PATTERN } from '../core/text/geoTemplate';
 import { INTEGRATED_CHECKS } from '../core/site/IntegratedSiteAnalysis';
+import { scanSettlement } from '../core/site/SettlementAnalysis';
 import { THAI_DIRECTION } from '../core/direction/Compass';
 import { GameSession } from '../core/session/GameSession';
 import { ElevationModel } from '../core/world/Elevation';
@@ -50,6 +51,7 @@ export function validateLevel(
   const checkText = (where: string, text: string) => {
     for (const ref of referencedPoints(text)) {
       // 'site-analysis' = จุดที่ระบบวิเคราะห์ได้ (ใช้ได้เมื่อด่านมีการวิเคราะห์สถานที่)
+      if (ref === 'chosen' && level.settlementAnalysis) continue;
       if (ref === 'site-analysis' && (level.siteAnalysis || level.gridSiteAnalysis || level.integratedSiteAnalysis)) continue;
       if (!landmarkIds.has(ref)) errors.push(`${where} อ้างถึงจุดสังเกตที่ไม่มี: ${ref}`);
     }
@@ -156,6 +158,32 @@ export function validateLevel(
       }
       if (m.measure && !landmarkIds.has(m.measure.from)) errors.push(`${where} วัดระยะจากจุดที่ไม่มี: ${m.measure.from}`);
       if (m.phase && !phaseIds.has(m.phase)) errors.push(`${where} อ้างถึงช่วงภารกิจที่ไม่มี: ${m.phase}`);
+    }
+  }
+
+  // ---- วิเคราะห์พื้นที่ตั้งถิ่นฐาน (บทที่ 3): เกณฑ์ครบ · มีพื้นที่ที่ผ่านจริง · ทุกหัวข้อมีผู้สอนและมีพื้นที่ที่ผิดเพราะหัวข้อนั้น ----
+  const stl = level.settlementAnalysis;
+  if (stl) {
+    const w = stl.weights;
+    if (w.slope + w.height + w.landform + w.water !== 100) errors.push('การวิเคราะห์พื้นที่: คะแนนเต็มของทุกเกณฑ์ต้องรวมได้ 100');
+    if (!level.map.elevation) errors.push('การวิเคราะห์พื้นที่ต้องมีแบบจำลองความสูง');
+    for (const t of Object.keys(stl.topics) as Array<keyof typeof stl.topics>) {
+      if (!npcIds.has(stl.topics[t].teacherId)) errors.push(`การวิเคราะห์พื้นที่: หัวข้อ ${t} อ้างถึงผู้สอนที่ไม่มี: ${stl.topics[t].teacherId}`);
+    }
+    if (!evidenceIds.has(stl.fieldCheck.evidenceId)) errors.push('การตรวจภาคสนามอ้างถึงหลักฐานที่ไม่มี');
+    checkNodes('ตรวจภาคสนาม', stl.fieldCheck.nodes);
+    const elev = level.map.elevation ? new ElevationModel(level.map.elevation) : null;
+    if (elev) {
+      const reps = scanSettlement({ elevation: elev, grid, scale }, stl, 1);
+      const passing = reps.filter((r) => r.passed);
+      if (passing.length === 0) errors.push('การวิเคราะห์พื้นที่: ไม่มีวงกลมใดผ่านเกณฑ์ ผู้เล่นจะผ่านด่านไม่ได้');
+      for (const t of Object.keys(stl.topics) as Array<keyof typeof stl.topics>) {
+        if (!reps.some((r) => !r.passed && r.weakTopics.includes(t))) errors.push(`การวิเคราะห์พื้นที่: ไม่มีพื้นที่ที่ไม่ผ่านเพราะหัวข้อ ${t} (บทเรียนเสริมจะไม่ถูกใช้)`);
+      }
+      // วงที่ผ่านต้องเดินไปถึงได้ (ศูนย์กลางไม่ถูกสิ่งกีดขวางทับ และต่อกับจุดเกิด)
+      if (!passing.some((r) => !grid.isBlocked(r.center.x, r.center.y) && isPointReachable(grid, reachable, r.center))) {
+        errors.push('การวิเคราะห์พื้นที่: ไม่มีวงที่ผ่านซึ่งเดินไปถึงได้');
+      }
     }
   }
 

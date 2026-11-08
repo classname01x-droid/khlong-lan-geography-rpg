@@ -4,7 +4,7 @@ import type { GameSession } from '../core/session/GameSession';
 import { MAP_COLOR_OBJECT, MAP_COLOR_TERRAIN } from '../graphics/tileIndex';
 import type { MapSymbol } from '../core/world/types';
 import { drawMapSymbol } from './mapSymbols';
-import { drawLegendIcon, legendEntries, legendLabel } from './legend';
+import { drawLegendIcon, legendEntries, legendLabel, setContourInterval } from './legend';
 import { drawBaseSheet } from './sheetRenderer';
 import { mapHint, mapInfo, mapPinLines } from './views/mapText';
 import { wrapThaiText } from './textWrap';
@@ -31,6 +31,9 @@ export class MapOverlay {
   private readonly labels: Phaser.GameObjects.Container;
   private readonly playerDot: Phaser.GameObjects.Rectangle;
   private readonly cursor: Phaser.GameObjects.Rectangle;
+  /** วงกลมวิเคราะห์ (บทที่ 3) และข้อความที่เปลี่ยนตามการวิเคราะห์ */
+  private readonly circleG: Phaser.GameObjects.Graphics;
+  private readonly dyn: Phaser.GameObjects.Container;
   private readonly pinPanel: Phaser.GameObjects.Text;
   private readonly hint: Phaser.GameObjects.Text;
   private geom: { x: number; y: number; cell: number };
@@ -101,7 +104,9 @@ export class MapOverlay {
     this.legendLabels = scene.add.container(0, 0);
     this.legendRoot = scene.add.container(0, 0, [this.legendG, this.legendLabels]);
 
-    const mapParts = [this.graphics, this.labels, this.playerDot, this.cursor];
+    this.circleG = scene.add.graphics();
+    this.dyn = scene.add.container(0, 0);
+    const mapParts = [this.graphics, this.labels, this.circleG, this.dyn, this.playerDot, this.cursor];
     if (touch) {
       // ข้อความหัว/มาตราส่วน/สถานะหมุด → แถบ DOM (TouchLayer) · ตัวแผนที่ → ชั้นขยาย/เลื่อนได้ (อยู่ชั้นบนสุด ไม่ซ้อนใน container อื่นเพื่อให้ mask ทำงาน)
       this.zp = new ZoomPanLayer(scene);
@@ -214,10 +219,13 @@ export class MapOverlay {
     const { x: mx, y: my, cell } = this.geom;
 
     const pinning = s.pinStage !== 'none' && s.pinCursor;
-    this.cursor.setVisible(!!pinning);
+    const analyzing = s.mapTool === 'settlement';
+    // โหมดวิเคราะห์พื้นที่: เคอร์เซอร์เป็นวงกลมรัศมี radiusTiles (วาดใน drawCircles) แทนสี่เหลี่ยม 3×3 ของหมุด
+    this.cursor.setVisible(!!pinning && !analyzing);
     if (s.pinCursor) {
       this.cursor.setPosition(mx + (s.pinCursor.x + 0.5) * cell, my + (s.pinCursor.y + 0.5) * cell);
     }
+    this.drawCircles();
     this.hint.setText(mapHint(s));
     const pin = mapPinLines(s);
     this.pinPanel.setText(wrapThaiText(pin.lines.join('\n'), GAME_WIDTH - 80, `15px ${FONT_FAMILY}`));
@@ -232,11 +240,15 @@ export class MapOverlay {
     const { width, height } = s.grid;
     const scene = this.root.scene;
     this.title.setText(`แผนที่สำรวจ ${s.level.tambon}`);
+    setContourInterval(s.level.contourIntervalMeters ?? CONTOUR_INTERVAL_M);
     g.clear();
     g.fillStyle(0x1b2233, 1).fillRect(mx, my, width * cell, height * cell);
+    // แผนที่ภูมิประเทศที่ได้รับ (topoMapFlag): แสดงภูมิประเทศและเส้นชั้นความสูงทั้งแผ่นโดยไม่ต้องเดินสำรวจก่อน
+    const topo = !!s.level.topoMapFlag && s.flags.has(s.level.topoMapFlag);
+    const seen = (x: number, y: number) => topo || s.fog.isExplored(x, y);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        if (!s.fog.isExplored(x, y)) continue;
+        if (!seen(x, y)) continue;
         const obj = s.grid.getObject(x, y);
         const color = obj ? MAP_COLOR_OBJECT[obj] : MAP_COLOR_TERRAIN[s.grid.getTerrain(x, y)!];
         g.fillStyle(color, 1).fillRect(mx + x * cell, my + y * cell, cell, cell);
@@ -262,22 +274,30 @@ export class MapOverlay {
     const legend: Array<MapSymbol | 'contour' | 'spot'> = [];
     if (elev) {
       legend.push('contour', 'spot');
-      g.lineStyle(1.5, 0xf0c27a, 0.9);
+      const interval = s.level.contourIntervalMeters ?? CONTOUR_INTERVAL_M;
+      // เส้นชั้นความสูงทุก interval เมตร · เส้นหนา (index contour) ทุก 5 ชั้น — เส้นห่าง = ลาดน้อย · เส้นถี่ = ชัน
+      const line = (a: number, b: number, x1: number, y1: number, x2: number, y2: number) => {
+        const index = Math.max(a, b) % 5 === 0;
+        g.lineStyle(index ? 2.5 : 1.3, index ? 0xffd27a : 0xf0c27a, index ? 1 : 0.85);
+        g.lineBetween(x1, y1, x2, y2);
+      };
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          if (!s.fog.isExplored(x, y)) continue;
-          const b = elev.band(x + 0.5, y + 0.5, CONTOUR_INTERVAL_M);
-          if (x + 1 < width && s.fog.isExplored(x + 1, y) && elev.band(x + 1.5, y + 0.5, CONTOUR_INTERVAL_M) !== b) {
-            g.lineBetween(mx + (x + 1) * cell, my + y * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+          if (!seen(x, y)) continue;
+          const b = elev.band(x + 0.5, y + 0.5, interval);
+          if (x + 1 < width && seen(x + 1, y)) {
+            const b2 = elev.band(x + 1.5, y + 0.5, interval);
+            if (b2 !== b) line(b, b2, mx + (x + 1) * cell, my + y * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
           }
-          if (y + 1 < height && s.fog.isExplored(x, y + 1) && elev.band(x + 0.5, y + 1.5, CONTOUR_INTERVAL_M) !== b) {
-            g.lineBetween(mx + x * cell, my + (y + 1) * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+          if (y + 1 < height && seen(x, y + 1)) {
+            const b2 = elev.band(x + 0.5, y + 1.5, interval);
+            if (b2 !== b) line(b, b2, mx + x * cell, my + (y + 1) * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
           }
         }
       }
       // จุดระดับความสูง (▲ + ค่าความสูงที่คำนวณจากแบบจำลอง)
       for (const p of s.level.spotHeights ?? []) {
-        if (!s.fog.isExplored(p.x, p.y)) continue;
+        if (!seen(p.x, p.y)) continue;
         const px = mx + (p.x + 0.5) * cell;
         const py = my + (p.y + 0.5) * cell;
         g.fillStyle(0x10141f, 1).fillTriangle(px - 4, py + 3, px + 4, py + 3, px, py - 4);
@@ -325,6 +345,44 @@ export class MapOverlay {
     }
     this.drawGuide();
     this.drawLegend(legend);
+  }
+
+  /**
+   * วงกลมวิเคราะห์ (บทที่ 3): เคอร์เซอร์วงกลมสีเหลือง · วงที่เคยวิเคราะห์ไม่ผ่าน (แดง + เปอร์เซ็นต์) · พื้นที่ที่ผ่านและเลือกไว้ (เขียว)
+   * รัศมีมาจากข้อมูลด่าน (กี่ช่อง = กี่เมตรตาม ScaleSystem) — ใช้ขนาดเดียวกับที่ระบบคำนวณคะแนนจริง
+   */
+  private drawCircles(): void {
+    const s = this.s;
+    const d = s.level.settlementAnalysis;
+    const g = this.circleG;
+    g.clear();
+    this.dyn.removeAll(true);
+    if (!d) return;
+    const scene = this.root.scene;
+    const { x: mx, y: my, cell } = this.geom;
+    const R = d.radiusTiles * cell;
+    const at = (t: { x: number; y: number }) => ({ x: mx + (t.x + 0.5) * cell, y: my + (t.y + 0.5) * cell });
+    const big = this.labelSize(12);
+    for (const a of s.settlementAttempts) {
+      if (a.passed) continue;
+      const c = at(a);
+      g.lineStyle(2, 0xff7a6a, 0.7).strokeCircle(c.x, c.y, R);
+      this.dyn.add(scene.add.text(c.x, c.y, `${a.percent}%`, { ...textStyle(big, '#ffb4a3'), stroke: '#10141f', strokeThickness: 3 }).setOrigin(0.5));
+    }
+    if (s.settlementChosen) {
+      const c = at(s.settlementChosen);
+      g.fillStyle(0x7ee07a, 0.22).fillCircle(c.x, c.y, R);
+      g.lineStyle(3, 0x7ee07a, 1).strokeCircle(c.x, c.y, R);
+      this.dyn.add(
+        scene.add.text(c.x, c.y - R - 3, 'พื้นที่ที่เลือก (ผ่านเกณฑ์)', { ...textStyle(big, '#d6ffd2'), stroke: '#10141f', strokeThickness: 3 }).setOrigin(0.5, 1),
+      );
+    }
+    if (s.mapTool === 'settlement' && s.pinCursor) {
+      const c = at(s.pinCursor);
+      g.fillStyle(0xffd84d, 0.18).fillCircle(c.x, c.y, R);
+      g.lineStyle(3, 0xffd84d, 1).strokeCircle(c.x, c.y, R);
+      g.fillStyle(0xffd84d, 1).fillCircle(c.x, c.y, Math.max(2, cell * 0.35));
+    }
   }
 
   /**

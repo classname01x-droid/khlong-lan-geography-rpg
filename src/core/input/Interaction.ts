@@ -54,6 +54,11 @@ export function interactionTargets(s: GameSession, npcRadiusTiles: number): Inte
       distance: at ? Math.hypot(at.x - t.x, at.y - t.y) : 0,
     });
   }
+  // ตรวจสอบภาคสนามที่พื้นที่ซึ่งผู้เล่นเลือกจากการวิเคราะห์ (บทที่ 3)
+  if (s.fieldCheckAvailable(t) && s.settlementChosen) {
+    const c = s.settlementChosen;
+    out.push({ kind: 'verify', id: 'field-check', label: 'ตรวจสอบพื้นที่ที่เลือก', verb: 'ตรวจสอบ', distance: Math.hypot(c.x - t.x, c.y - t.y) });
+  }
   // sort เสถียร: ลำดับในข้อมูลด่านคงอยู่เมื่อระยะและชนิดเท่ากัน
   return out.sort((a, b) => a.distance - b.distance || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
 }

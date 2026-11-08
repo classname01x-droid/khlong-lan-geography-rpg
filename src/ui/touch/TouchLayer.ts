@@ -50,6 +50,7 @@ interface WorldControls {
 
 /** ปุ่มลัดของแถบภารกิจ → ปุ่มเครื่องมือที่ไฮไลต์ในคอลัมน์ปุ่ม (จอสัมผัส) */
 const GUIDE_TO_BUTTON: Record<GuideActionId, ActionId> = {
+  settlement: 'analysis',
   map: 'map',
   pin: 'map',
   target: 'map',
@@ -434,7 +435,8 @@ export class TouchLayer {
       return;
     }
     const t = s!.pinCursor!;
-    const text = s!.coords ? `📍 ${GridSystem.format(s!.coords.tileToGrid(t))}` : `📍 X ${t.x} · Y ${t.y}`;
+    const icon = s!.mapTool === 'settlement' ? '🔍' : '📍';
+    const text = s!.coords ? `${icon} ${GridSystem.format(s!.coords.tileToGrid(t))}` : `${icon} X ${t.x} · Y ${t.y}`;
     if (this.pinBadge.textContent !== text) this.pinBadge.textContent = text;
     const cr = this.canvasRect();
     const c = m!.mapTileCenter(t);
@@ -536,12 +538,13 @@ export class TouchLayer {
         ? { available: s.isAnalysisOpen() || s.analysisSolved, label: 'วิเคราะห์' }
         : L.mapComparison
           ? { available: s.availableSheets().length >= 2, label: 'เทียบแผนที่' }
-          : L.routeAnalysis
+          : L.routeAnalysis || L.settlementAnalysis
             ? { available: true, label: 'วิเคราะห์' }
             : null,
       dialogue: view ? { kind: view.kind, choices: view.kind === 'quiz' ? view.choices : [] } : null,
       map: {
         pinStage: s.pinStage,
+        tool: s.mapTool,
         canSwitchSheet: s.availableSheets().length > 0,
         wisdomChoices: (L.pinTask?.wisdomChoices ?? []).map((c) => s.resolveText(c.label)),
       },
@@ -1111,7 +1114,7 @@ export class TouchLayer {
     // ปุ่มลัด: เข้าใกล้เป้าหมายแล้ว → "คุย/สำรวจ" · นอกนั้นเปิดเครื่องมือของขั้นนี้
     const near = this.lastTarget;
     const act =
-      near && t.micro && (t.target?.id === near.id || (!t.target && !t.action))
+      near && t.micro && (t.target?.id === near.id || (near.id === 'field-check' && t.target?.id === 'chosen') || (!t.target && !t.action))
         ? { ui: 'guide-action:talk', label: `✋ ${near.verb}${near.kind === 'npc' ? near.label.replace(/^พูดคุยกับ/, 'กับ') : ''}` }
         : t.action
           ? { ui: `guide-action:${t.action.id}`, label: t.action.label }

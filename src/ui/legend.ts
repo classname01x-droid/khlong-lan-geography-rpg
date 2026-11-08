@@ -4,6 +4,12 @@ import { drawMapSymbol, SYMBOL_LABEL } from './mapSymbols';
 import { drawFlowArrow } from './sheetRenderer';
 
 /** รายการในคำอธิบายสัญลักษณ์แผนที่ ('you' 'dot' 'pinned' ใช้เฉพาะแผงคำอธิบายบนจอสัมผัส) */
+/** ระยะห่างเส้นชั้นความสูงของด่านที่กำลังเล่น (ตั้งโดย MapOverlay) */
+let contourInterval = 10;
+export function setContourInterval(m: number): void {
+  contourInterval = m;
+}
+
 export type LegendItem = MapSymbol | 'contour' | 'spot' | 'flow' | 'you' | 'dot' | 'pinned';
 
 export function legendLabel(item: LegendItem): string {
@@ -15,7 +21,7 @@ export function legendLabel(item: LegendItem): string {
     case 'pinned':
       return 'หมุดที่ปักแล้ว';
     case 'contour':
-      return 'เส้นชั้นความสูง 10 ม.';
+      return contourInterval === 10 ? 'เส้นชั้นความสูง 10 ม.' : `เส้นชั้นความสูงทุก ${contourInterval} ม. (เส้นหนาทุก ${contourInterval * 5} ม.)`;
     case 'spot':
       return 'ระดับความสูง (ม.)';
     case 'flow':

@@ -345,7 +345,10 @@ describe('บทที่ 5: ปริศนาสุดท้าย', () => {
     expect(q2.question).toContain('จุด A สูง 145 ม. · จุด B สูง 130 ม. · จุด C สูง 115 ม.');
     expect(q2.choices.find((c) => c.id === 'site-c')!.hint).toContain('ตำแหน่งบนจอไม่ได้บอกความสูง');
     const q3 = F.quizzes!.find((q) => q.id === 'board-3')!;
-    expect(q3.choices.find((c) => c.id === q3.correctChoiceId)!.label).toBe('E 4,660 · N 1,410');
+    expect(q3.question).toContain('ความลาดชัน 40 · ความสูงและลักษณะพื้นที่ 35 · แหล่งน้ำ 25');
+    expect(q3.question).toContain('มากกว่า 70%');
+    expect(q3.choices.find((c) => c.id === q3.correctChoiceId)!.label).toContain('ตรวจภาคสนามและขุดค้นก่อนสรุป');
+    expect(q3.choices.find((c) => c.id === 'real')!.hint).toContain('ไม่ใช่ความน่าจะเป็น');
     const q1 = F.quizzes!.find((q) => q.id === 'board-1')!;
     expect(q1.choices.find((c) => c.id === q1.correctChoiceId)!.label).toBe('6.1 ซม.');
     const q4 = F.quizzes!.find((q) => q.id === 'board-4')!;

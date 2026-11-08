@@ -2,387 +2,308 @@ import type {
   ClueDefinition,
   EndingDefinition,
   EvidenceDefinition,
-  GridSiteAnalysisDefinition,
-  InspectPoint,
-  PinTaskDefinition,
   QuestDefinition,
   QuizDefinition,
+  SettlementAnalysisDefinition,
   StoryStep,
 } from '../../types';
-import { answerQuiz, hearReport, inspectAt, openTool, pinOnMap, talkTo } from '../../guide/steps';
+import { answerQuiz, hearReport, talkTo } from '../../guide/steps';
 
 /**
- * ภารกิจด่านโป่งน้ำร้อน — ทักษะ: พิกัดกริด (E/N) · ทิศทางของแกน · ตำแหน่งสัมพัทธ์ · ตรวจหลักฐานภาคสนาม
- * เล่นได้ครบ 6 ฉาก: รับแผนที่กริด → หมุดอ้างอิง → ผู้เก็บบันทึก → กระดานวิเคราะห์พิกัด (C) → ยืนยันภาคสนาม + ปักหมุด → รายงานครู
+ * ภารกิจบทที่ 3 (โป่งน้ำร้อน) — "ปริศนาเมืองโบราณใต้ผืนดิน" (6 ฉาก · รหัสลับชิ้นที่ 3 = "พิกัด")
+ *
+ *   ฉาก 1  รับเอกสารเกณฑ์วิเคราะห์และแผนที่ภูมิประเทศจากครูเนม
+ *   ฉาก 2  เรียนเส้นชั้นความสูงและความลาดชันกับลุงสอน · ถามข้อมูลแหล่งน้ำกับป้าจันทร์
+ *   ฉาก 3  วิเคราะห์พื้นที่: แตะเลือกบนแผนที่ → วงกลมวิเคราะห์ → คำนวณคะแนนจากแบบจำลองความสูงจริง
+ *   ฉาก 4  คะแนนไม่ผ่าน → กลับไปเรียนเฉพาะหัวข้อที่ผิดกับลุงสอน/ครูเนม แล้ววิเคราะห์ใหม่ (ผ่านตั้งแต่ครั้งแรก = ข้าม)
+ *   ฉาก 5  เดินทางไปตรวจสอบพื้นที่ที่เลือกและหาหลักฐานภาคสนามกับพี่เขียว
+ *   ฉาก 6  ครูเนมสรุปผล · รับรหัส "พิกัด" · ปลดล็อกบทที่ 4
+ *
+ * เรื่องเมืองโบราณเป็นสถานการณ์จำลองเพื่อการเรียนรู้ ไม่ใช่ประวัติศาสตร์จริง — คะแนนคือความเหมาะสมตามเกณฑ์จำลอง
+ * ไม่มีตำแหน่งคำตอบเขียนไว้ในเนื้อหา: คะแนนทุกครั้งคำนวณจากภูมิประเทศ (core/site/SettlementAnalysis.ts)
  */
+
+/* ---------------- เกณฑ์วิเคราะห์ความเหมาะสม (ข้อมูลของด่าน) ---------------- */
+
+export const pongSettlement: SettlementAnalysisDefinition = {
+  radiusTiles: 4,
+  // ความลาดชัน 40 · ความสูงเหนือน้ำ 20 + ลักษณะพื้นที่ 15 (= ความสูงและลักษณะพื้นที่ 35) · แหล่งน้ำ 25
+  weights: { slope: 40, height: 20, landform: 15, water: 25 },
+  passPercent: 70,
+  weakBelow: 0.7,
+  slope: { idealMinPct: 1, idealMaxPct: 4, zeroAtPct: 6.2, flatFactor: 0.55 },
+  height: { floodLevelMeters: 3, safeMarginMeters: 3, tooHighMeters: 14, tooHighFactor: 0.4 },
+  landform: { summitMarginMeters: 7, basinMarginMeters: 2.5, summitFactor: 0.45, basinFactor: 0.3, reliefFullMeters: 3, reliefZeroMeters: 12 },
+  water: { tooCloseMeters: 70, tooCloseFactor: 0.3, idealMaxMeters: 180, zeroAtMeters: 320 },
+  topics: {
+    slope: { label: 'ความลาดชัน', teacherId: 'villager-son' },
+    height: { label: 'ความสูงเหนือระดับน้ำ', teacherId: 'teacher-nem' },
+    landform: { label: 'ลักษณะพื้นที่', teacherId: 'villager-son' },
+    water: { label: 'ความใกล้แหล่งน้ำ', teacherId: 'teacher-nem' },
+  },
+  availableWhen: { minStep: 3 },
+  attemptFlag: 'settlement-attempted',
+  successFlag: 'settlement-passed',
+  fieldCheck: {
+    radiusTiles: 5,
+    when: { flags: ['explorer-briefed'] },
+    flag: 'field-checked',
+    evidenceId: 'evidence-field',
+    nodes: [
+      { speaker: 'สมุดภาคสนาม — ตรวจสอบพื้นที่ที่เลือก', text: 'ที่ตั้ง: {{grid:chosen}} · ความสูง {{elev:chosen}} ม. (รทก.จำลอง) · วงตรวจรัศมี {{site:radius}} ม.' },
+      { speaker: 'สมุดภาคสนาม — ตรวจสอบพื้นที่ที่เลือก', text: '① ความสูง/ชั้นตะกอน: {{site:explainHeight}} (น้ำท่วมสูงสุด {{cfg:flood}} ม.)' },
+      { speaker: 'สมุดภาคสนาม — ตรวจสอบพื้นที่ที่เลือก', text: '② ความลาด/พื้นผิว: {{site:explainSlope}} · {{site:explainLandform}}' },
+      { speaker: 'สมุดภาคสนาม — ตรวจสอบพื้นที่ที่เลือก', text: '③ แหล่งน้ำ: {{site:explainWater}}' },
+      {
+        speaker: 'สมุดภาคสนาม — ตรวจสอบพื้นที่ที่เลือก',
+        text: 'บันทึกหลักฐาน: ค่าที่วัดจริงตรงกับที่วิเคราะห์จากแผนที่ (ในเกมวางเศษภาชนะดินเผา "จำลอง" ไว้ในชั้นตะกอนเพื่อฝึกบันทึกหลักฐาน — ของจริงต้องให้นักโบราณคดีตรวจ) กลับไปให้พี่เขียวตรวจหลักฐานร่วมกัน',
+        effects: [
+          { type: 'evidence', evidenceId: 'evidence-field' },
+          { type: 'flag', flag: 'field-checked' },
+        ],
+      },
+    ],
+  },
+};
+
+/* ---------------- คำถามในบทเรียน ---------------- */
 
 export const pongQuizzes: QuizDefinition[] = [
   {
-    // ตัวเลือกคำนวณจากตำแหน่งเสาธงจริง: ถูก / นับ N จากขอบบน / สลับ E กับ N
-    id: 'grid-axes',
-    speaker: 'ครูเนม',
-    question: 'ลองอ่านแผนที่กริด: เสาธงโรงเรียนอยู่ที่พิกัดใด?',
+    id: 'contour-spacing',
+    speaker: 'ลุงสอน',
+    question: 'เส้นชั้นความสูงสองเส้นบนแผนที่อยู่ห่างกันมาก หมายความว่าตรงนั้นเป็นอย่างไร?',
     choices: [
-      {
-        id: 'top',
-        label: '{{gridtop:school}}',
-        hint: 'ค่า N ต้องนับจากขอบล่าง (ใต้) ขึ้นไปทางเหนือ ไม่ใช่นับจากขอบบนลงมาแบบแกน y ของจอ',
-      },
-      {
-        id: 'swap',
-        label: '{{gridswap:school}}',
-        hint: 'อ่าน E (ตะวันออก) ก่อน แล้วจึงอ่าน N (เหนือ) — ตัวเลือกนี้สลับกัน',
-      },
-      { id: 'correct', label: '{{grid:school}}' },
+      { id: 'steep', label: 'ชันมาก', hint: 'เส้นห่างหมายถึงต้องเดินไกลกว่าจะสูงขึ้น {{cfg:interval}} ม. = ลาดเอียงน้อย ส่วนเส้นถี่ต่างหากที่ชัน' },
+      { id: 'gentle', label: 'ลาดเอียงน้อย (ค่อย ๆ สูงขึ้น)' },
+      { id: 'peak', label: 'เป็นยอดเขาที่สูงที่สุด', hint: 'ยอดเขามักเป็นเส้นวงปิดเล็ก ๆ ไม่ใช่เส้นที่ห่างกัน' },
     ],
-    correctChoiceId: 'correct',
-    fallbackHint: 'E เพิ่มไปทางตะวันออก N เพิ่มไปทางเหนือ',
-    correctFeedback: 'ถูกต้อง! เสาธงอยู่ที่ {{grid:school}} — โรงเรียนอยู่ใกล้มุมตะวันตกเฉียงใต้ ค่า E และ N จึงน้อย',
-    effects: [{ type: 'flag', flag: 'axes-ok' }],
+    correctChoiceId: 'gentle',
+    fallbackHint: 'เส้นถี่ = ชัน เส้นห่าง = ลาด',
+    correctFeedback: 'ถูกต้อง! เส้นห่าง = ลาดเอียงน้อย',
+    effects: [{ type: 'flag', flag: 'quiz-contour' }],
   },
   {
-    id: 'north-100',
-    speaker: 'ป้าเรือน (ผู้เก็บบันทึกสำรวจ)',
-    question: 'ถ้าเดินจากจุดหนึ่งไปทางทิศเหนือ 100 เมตร พิกัดจะเปลี่ยนอย่างไร?',
+    id: 'slope-calc',
+    speaker: 'ลุงสอน',
+    question: 'จุดสองจุดสูงต่างกัน 2 เมตร ห่างกันในแนวราบ 50 เมตร ความลาดชันกี่เปอร์เซ็นต์?',
     choices: [
-      { id: 'n-down', label: 'ค่า N ลดลง 100', hint: 'เดินไปทางเหนือ (ขึ้นด้านบนจอ) ค่า N ต้องเพิ่มขึ้น แม้แกน y ของจอจะลดลง' },
-      { id: 'n-up', label: 'ค่า N เพิ่มขึ้น 100' },
-      { id: 'e-up', label: 'ค่า E เพิ่มขึ้น 100', hint: 'ค่า E เปลี่ยนเมื่อเดินไปทางตะวันออกหรือตะวันตกเท่านั้น' },
+      { id: 'inverted', label: '25%', hint: 'นี่คือ 50 ÷ 2 สลับตัวตั้งกับตัวหารแล้ว ต้องเอาความสูงที่เปลี่ยน (2) ตั้ง' },
+      { id: 'ok', label: '4%' },
+      { id: 'forgot', label: '0.04%', hint: 'ลืมคูณ 100 — 2 ÷ 50 = 0.04 แล้วคูณ 100 จึงเป็นเปอร์เซ็นต์' },
     ],
-    correctChoiceId: 'n-up',
-    fallbackHint: 'N เพิ่มไปทางเหนือ',
-    correctFeedback: 'ถูกต้อง! ทางเหนือ N เพิ่ม · ทางตะวันออก E เพิ่ม — ใช้ข้อนี้ตรวจว่าบันทึกเก่านับ N ถูกหรือไม่',
-    effects: [{ type: 'flag', flag: 'record-checked' }],
+    correctChoiceId: 'ok',
+    fallbackHint: 'ลาดชัน (%) = ความสูงที่เปลี่ยน ÷ ระยะราบ × 100',
+    correctFeedback: 'ถูกต้อง! 2 ÷ 50 × 100 = 4% — อยู่ในช่วงที่เหมาะกับที่ตั้งหมู่บ้าน ({{cfg:slopeMin}}–{{cfg:slopeMax}}%)',
+    effects: [{ type: 'flag', flag: 'learned-slope' }],
+  },
+  {
+    id: 'relearn-slope',
+    speaker: 'ลุงสอน',
+    question: 'ที่ตั้งหมู่บ้านควรมีความลาดชันแบบใด?',
+    choices: [
+      { id: 'flat', label: 'ราบสนิท 0% ดีที่สุด', hint: 'ราบสนิทน้ำระบายไม่ดี ฝนตกแล้วท่วมขัง' },
+      { id: 'ok', label: 'ลาด {{cfg:slopeMin}}–{{cfg:slopeMax}}% ระบายน้ำดีและยังสร้างบ้านได้' },
+      { id: 'steep', label: 'ยิ่งชันยิ่งดี น้ำจะไม่ท่วม', hint: 'ชันเกิน {{cfg:slopeZero}}% สร้างบ้านและเดินลำบาก ดินพังง่าย' },
+    ],
+    correctChoiceId: 'ok',
+    fallbackHint: 'ลาดเล็กน้อย ไม่ราบสนิท ไม่ชัน',
+    correctFeedback: 'ถูกต้อง! ลาดเล็กน้อยคือกำลังเหมาะ',
+    effects: [{ type: 'flag', flag: 'relearned:slope' }],
+  },
+  {
+    id: 'relearn-landform',
+    speaker: 'ลุงสอน',
+    question: 'แถบที่เส้นชั้นความสูงห่างออกกว้างเป็นขั้นบันไดบนไหล่เนิน เรียกว่าอะไร และเหมาะตั้งหมู่บ้านไหม?',
+    choices: [
+      { id: 'summit', label: 'ยอดเนิน — เหมาะที่สุด', hint: 'ยอดเนินโล่ง ลมแรง และมักอยู่ไกลน้ำ เส้นรอบยอดเนินเป็นวงปิดเล็ก ไม่ใช่แถบกว้าง' },
+      { id: 'ok', label: 'ชานเนิน — เหมาะ เรียบ ไม่ท่วม ไม่โล่งลม' },
+      { id: 'basin', label: 'แอ่ง — เหมาะเพราะมีน้ำขัง', hint: 'แอ่งน้ำท่วมขัง ไม่ใช่ที่ตั้งหมู่บ้าน เส้นจะล้อมพื้นที่ต่ำกว่ารอบข้าง' },
+    ],
+    correctChoiceId: 'ok',
+    fallbackHint: 'ขั้นบันไดบนไหล่เนินเรียกชานเนิน',
+    correctFeedback: 'ถูกต้อง! ชานเนินเรียบและพ้นน้ำท่วม',
+    effects: [{ type: 'flag', flag: 'relearned:landform' }],
+  },
+  {
+    id: 'relearn-height',
+    speaker: 'ครูเนม',
+    question: 'น้ำท่วมสูงสุด {{cfg:flood}} ม. เหนือผิวน้ำ ที่ตั้งหมู่บ้านควรสูงกว่าผิวน้ำอย่างน้อยเท่าไร?',
+    choices: [
+      { id: 'one', label: '1 ม. ก็พอ', hint: '1 ม. ต่ำกว่าระดับน้ำท่วมสูงสุด น้ำท่วมถึง' },
+      { id: 'equal', label: 'เท่าระดับน้ำท่วมสูงสุดพอดี ({{cfg:flood}} ม.)', hint: 'เท่าระดับน้ำท่วมสูงสุดยังเสี่ยง ต้องเผื่อความปลอดภัยด้วย' },
+      { id: 'ok', label: 'อย่างน้อย {{cfg:safe}} ม. (พ้นน้ำท่วมและเผื่อไว้)' },
+    ],
+    correctChoiceId: 'ok',
+    fallbackHint: 'ระดับน้ำท่วมสูงสุด + ระยะเผื่อ',
+    correctFeedback: 'ถูกต้อง! สูงกว่าผิวน้ำอย่างน้อย {{cfg:safe}} ม. แต่ไม่ควรเกิน {{cfg:tooHigh}} ม.',
+    effects: [{ type: 'flag', flag: 'relearned:height' }],
+  },
+  {
+    id: 'relearn-water',
+    speaker: 'ครูเนม',
+    question: 'บนแผนที่ 1:10,000 วัดจากวงถึงลำห้วยได้ 1.5 ซม. ระยะจริงเท่าไร และใกล้พอใช้น้ำไหม (ใกล้พอ = ไม่เกิน {{cfg:wIdeal}} ม.)?',
+    choices: [
+      { id: 'x10', label: '15 ม. — ติดลำห้วยเกินไป', hint: '1 ซม. บนแผนที่ 1:10,000 = 100 ม. ไม่ใช่ 10 ม.' },
+      { id: 'ok', label: '150 ม. — ใกล้พอใช้น้ำ' },
+      { id: 'x1000', label: '1,500 ม. — ไกลเกินไป', hint: 'คูณ 100 ไม่ใช่ 1,000 — 1.5 ซม. = 150 ม.' },
+    ],
+    correctChoiceId: 'ok',
+    fallbackHint: '1 ซม. = 100 ม. จริง',
+    correctFeedback: 'ถูกต้อง! 1.5 ซม. × 100 = 150 ม. ซึ่งอยู่ในช่วงใกล้พอใช้น้ำ',
+    effects: [{ type: 'flag', flag: 'relearned:water' }],
   },
 ];
 
-/** ภารกิจปริศนา: แปลงตำแหน่งสัมพัทธ์ (ทิศ + ระยะจาก RP-1) เป็นพิกัดกริด */
-pongQuizzes.push({
-  id: 'old-mark-coord',
-  speaker: 'หมุดสำรวจเก่า',
-  question: 'หมุดนี้อยู่จาก RP-1 ({{grid:rp-1}}) ไปทาง{{dir:rp-1>old-mark}} {{dist:rp-1>old-mark}} เมตร — พิกัดของหมุดนี้คือข้อใด?',
-  choices: [
-    { id: 'minus', label: '{{gridtop:old-mark}}', hint: 'เดินไปทางเหนือ ค่า N ต้องเพิ่มขึ้น ไม่ใช่ลดลง' },
-    { id: 'east', label: 'E 4,350 · N 1,200', hint: 'ไปทางเหนือ ค่า E ไม่เปลี่ยน — ค่าที่เปลี่ยนคือ N' },
-    { id: 'correct', label: '{{grid:old-mark}}' },
-  ],
-  correctChoiceId: 'correct',
-  fallbackHint: 'ทางเหนือ N เพิ่ม · ค่า E คงเดิม',
-  correctFeedback: 'ถูกต้อง! N ของ RP-1 + {{dist:rp-1>old-mark}} = {{grid:old-mark}} — ตรงกับตัวเลขที่ตอกบนหมุดเก่า',
-  effects: [
-    { type: 'flag', flag: 'found-old-mark' },
-    { type: 'evidence', evidenceId: 'old-mark-plate' },
-  ],
-});
+/* ---------------- เบาะแสและหลักฐาน ---------------- */
 
 export const pongClues: ClueDefinition[] = [
   {
-    id: 'clue-grid-rule',
-    type: 'coordinate',
+    id: 'clue-criteria',
+    type: 'comparison',
     source: 'ครูเนม',
-    text: 'พิกัดกริดจำลอง: E (เมตร) เพิ่มไปทางตะวันออก · N (เมตร) เพิ่มไปทางเหนือ · จุดกำเนิดอยู่มุมตะวันตกเฉียงใต้ของแผนที่ · 1 ช่อง = 10 ม.',
+    text: 'เกณฑ์วิเคราะห์พื้นที่ (เต็ม 100): ความลาดชัน {{cfg:wSlope}} · ความสูงเหนือน้ำ {{cfg:wHeight}} + ลักษณะพื้นที่ {{cfg:wLandform}} · ความใกล้แหล่งน้ำ {{cfg:wWater}} · ผ่านเมื่อมากกว่า {{cfg:pass}}% · วงกลมวิเคราะห์รัศมี {{cfg:radius}} ม.',
   },
   {
-    id: 'clue-record',
-    type: 'coordinate',
-    source: 'บันทึกสำรวจเก่า',
-    text: 'บ่อน้ำร้อนธรรมชาติอยู่ที่ {{gridrecord}} (ตามที่เขียนไว้ในบันทึก)',
-  },
-  {
-    id: 'clue-rps',
-    type: 'landmark',
+    id: 'clue-topo',
+    type: 'elevation',
     source: 'ครูเนม',
-    text: 'หมุดอ้างอิง (RP) 3 หมุดในชุมชน มีพิกัดตอกไว้บนหมุด ใช้เทียบกับพิกัดของตัวเองได้',
+    text: 'แผนที่ภูมิประเทศ: เส้นชั้นความสูงทุก {{cfg:interval}} ม. เส้นหนาทุก 10 ม. — ไม่มีใครบอกว่าพื้นที่ไหนเหมาะ ต้องวิเคราะห์เอง',
   },
-  { id: 'clue-rp-1', type: 'coordinate', source: 'หมุด RP-1', text: 'พิกัดบนหมุด: {{grid:rp-1}}' },
-  { id: 'clue-rp-2', type: 'coordinate', source: 'หมุด RP-2', text: 'พิกัดบนหมุด: {{grid:rp-2}}' },
-  { id: 'clue-rp-3', type: 'coordinate', source: 'หมุด RP-3', text: 'พิกัดบนหมุด: {{grid:rp-3}}' },
   {
-    id: 'clue-footbath',
+    id: 'clue-contour',
+    type: 'elevation',
+    source: 'ลุงสอน',
+    text: 'เส้นชั้นความสูง = เส้นที่ผ่านจุดสูงเท่ากัน · เส้นถี่ = ชัน · เส้นห่าง = ลาดเอียงน้อย',
+  },
+  {
+    id: 'clue-slope-rule',
+    type: 'elevation',
+    source: 'ลุงสอน',
+    text: 'ลาดชัน (%) = ความสูงที่เปลี่ยน ÷ ระยะราบ × 100 · ที่ตั้งหมู่บ้านชอบ {{cfg:slopeMin}}–{{cfg:slopeMax}}% · ชันเกิน {{cfg:slopeZero}}% ถือว่าชันเกินไป',
+  },
+  {
+    id: 'clue-landform',
     type: 'landmark',
     source: 'ลุงสอน',
-    text: 'มีหลายที่ที่คนเรียกว่า "บ่อน้ำร้อน" รวมถึงบ่อแช่เท้าคอนกรีตที่ชุมชนต่อท่อน้ำอุ่นมา ซึ่งมีไอน้ำลอยขึ้น',
+    text: 'ลักษณะพื้นที่: ชานเนิน (ลานเรียบเป็นขั้น) เหมาะ · ยอดเนินโล่งลมแรง · แอ่งน้ำท่วมขัง · ที่ราบริมห้วยน้ำท่วมถึง',
   },
   {
-    id: 'clue-convention',
-    type: 'coordinate',
-    source: 'ป้าเรือน',
-    text: 'นักสำรวจรุ่นแรกบางคนนับค่า N จากขอบบนของแผนที่ลงมา (ผิดทิศ) — พิกัดในบันทึกจึงอาจต้องอ่านใหม่',
+    id: 'clue-flood',
+    type: 'elevation',
+    source: 'ป้าจันทร์',
+    text: 'น้ำท่วมสูงสุด {{cfg:flood}} ม. เหนือผิวน้ำปกติ — ควรอยู่สูงกว่าผิวน้ำอย่างน้อย {{cfg:safe}} ม. แต่ไม่เกิน {{cfg:tooHigh}} ม.',
   },
   {
-    id: 'clue-relative',
-    type: 'direction',
-    source: 'ป้าเรือน (จากบันทึก)',
-    text: 'จากหมุด RP-2 ไปทาง{{dir:rp-2>site-b}} ราว {{dist:rp-2>site-b}} เมตร',
+    id: 'clue-water',
+    type: 'distance',
+    source: 'ป้าจันทร์',
+    text: 'ใกล้น้ำพอตักได้ไม่เกิน {{cfg:wIdeal}} ม. · ไม่ควรติดลำห้วยกว่า {{cfg:wClose}} ม. · ไกลเกิน {{cfg:wZero}} ม. ใช้น้ำลำบาก',
   },
-  {
-    id: 'clue-field',
-    type: 'landmark',
-    source: 'ป้าเรือน (จากบันทึก)',
-    text: 'ที่บ่อมีไอน้ำร้อนลอยขึ้น และมีหินปูนสีขาวล้อมรอบ',
-  },
-  {
-    id: 'clue-viewpoint',
-    type: 'coordinate',
-    source: 'พี่เขียว',
-    text: 'จุดชมวิวของตำบลอยู่ที่ {{grid:viewpoint}} (ฝึกเดินตามพิกัด)',
-  },
-  {
-    id: 'clue-old-mark',
-    type: 'direction',
-    source: 'ลุงสอน',
-    text: 'หมุดสำรวจเก่าของปู่: จากหมุด RP-1 ไปทาง{{dir:rp-1>old-mark}} {{dist:rp-1>old-mark}} เมตร (ไม่มีป้ายบอก ต้องคำนวณพิกัดแล้วเดินไปเอง)',
-  },
-  { id: 'clue-survey-a', type: 'landmark', source: 'สำรวจจุด A', text: 'สระน้ำนิ่ง ไม่มีไอน้ำ มีหินสีขาวก้อนหนึ่งอยู่ริมสระ' },
-  { id: 'clue-survey-b', type: 'landmark', source: 'สำรวจจุด B', text: 'บ่อน้ำมีไอน้ำร้อนลอยขึ้น รอบบ่อเป็นหินปูนสีขาว' },
-  { id: 'clue-survey-c', type: 'landmark', source: 'สำรวจจุด C', text: 'บ่อคอนกรีตมีไอน้ำอุ่นลอยขึ้น ต่อท่อมาจากที่อื่น ไม่มีหินปูน' },
 ];
 
 export const pongEvidence: EvidenceDefinition[] = [
-  { id: 'grid-map', name: 'แผนที่กริดตำบลโป่งน้ำร้อน', description: 'แผนที่พิกัดกริดจำลอง (E/N เป็นเมตร) มาตราส่วน 1:10,000' },
-  { id: 'old-record', name: 'บันทึกสำรวจเก่า', description: 'บันทึกของนักสำรวจรุ่นแรก ระบุพิกัดบ่อน้ำร้อนธรรมชาติ' },
-  { id: 'survey-a', name: 'บันทึกสำรวจจุด A', description: 'สิ่งที่พบจริงที่จุด A' },
-  { id: 'survey-b', name: 'บันทึกสำรวจจุด B', description: 'สิ่งที่พบจริงที่จุด B' },
-  { id: 'survey-c', name: 'บันทึกสำรวจจุด C', description: 'สิ่งที่พบจริงที่จุด C' },
-  {
-    id: 'field-report',
-    name: 'รายงานยืนยันภาคสนาม',
-    description: 'ผลตรวจ ณ จุดที่วิเคราะห์ได้: พิกัด E/N · ทิศและระยะจาก RP-2 · ไอน้ำและหินปูนขาว',
-  },
-  { id: 'old-mark-plate', name: 'แผ่นหมุดสำรวจเก่า', description: 'หมุดสำรวจของนักสำรวจรุ่นแรก พบได้ด้วยการคำนวณพิกัด' },
+  { id: 'evidence-topo-map', name: 'แผนที่ภูมิประเทศเส้นชั้นความสูง', description: 'แผนที่ทั้งตำบลจากครูเนม (เส้นชั้นความสูงทุก 2 ม. เส้นหนาทุก 10 ม.)' },
+  { id: 'evidence-field', name: 'บันทึกตรวจภาคสนามพื้นที่ที่เลือก', description: 'ค่าความสูงเหนือน้ำ ความลาด ลักษณะพื้นที่ และระยะถึงลำห้วย ที่ตรวจจริงในพื้นที่ (ข้อมูลจำลอง)' },
 ];
 
-const readRp = (n: 1 | 2 | 3, at: { x: number; y: number }): InspectPoint => ({
-  id: `rp-${n}-read`,
-  at,
-  radiusTiles: 1.6,
-  when: { notFlags: [`read-rp-${n}`] },
-  nodes: [
-    {
-      speaker: `หมุดอ้างอิง RP-${n}`,
-      text: `ตัวเลขที่ตอกบนหมุด: {{grid:rp-${n}}} — ลองเทียบกับพิกัดของตัวเองที่มุมซ้ายบนจอ`,
-      effects: [
-        { type: 'clue', clueId: `clue-rp-${n}` },
-        { type: 'flag', flag: `read-rp-${n}` },
-      ],
-    },
-  ],
-});
+/* ---------------- ตอนจบ ---------------- */
 
-const SURVEY_TEXT: Record<'a' | 'b' | 'c', string> = {
-  a: 'สระน้ำนิ่ง ไม่มีไอน้ำ มีหินสีขาวก้อนหนึ่งอยู่ริมสระ · พิกัดตรงนี้ {{grid:site-a}}',
-  b: 'บ่อน้ำมีไอน้ำร้อนลอยขึ้น รอบบ่อเป็นหินปูนสีขาว · พิกัดตรงนี้ {{grid:site-b}}',
-  c: 'บ่อคอนกรีตมีไอน้ำอุ่นลอยขึ้น ต่อท่อมาจากที่อื่น ไม่มีหินปูน · พิกัดตรงนี้ {{grid:site-c}}',
-};
-
-const survey = (id: 'a' | 'b' | 'c', at: { x: number; y: number }): InspectPoint => ({
-  id: `survey-${id}`,
-  at,
-  radiusTiles: 2.5,
-  when: { flags: ['record-checked'], notFlags: [`surveyed-${id}`] },
-  nodes: [
-    {
-      speaker: `สมุดภาคสนาม — จุด ${id.toUpperCase()}`,
-      text: SURVEY_TEXT[id],
-      effects: [
-        { type: 'clue', clueId: `clue-survey-${id}` },
-        { type: 'evidence', evidenceId: `survey-${id}` },
-        { type: 'flag', flag: `surveyed-${id}` },
-      ],
-    },
-  ],
-});
-
-export const pongInspectPoints: InspectPoint[] = [
-  readRp(1, { x: 20, y: 39 }),
-  readRp(2, { x: 40, y: 49 }),
-  readRp(3, { x: 70, y: 39 }),
-  survey('a', { x: 66, y: 41 }),
-  survey('b', { x: 66, y: 18 }),
-  survey('c', { x: 73, y: 28 }),
-  {
-    // ภารกิจปริศนา — ไม่มีป้ายบนแผนที่ ต้องเดินตามพิกัดที่คำนวณเอง
-    id: 'old-mark',
-    at: { x: 20, y: 24 },
-    radiusTiles: 1.5,
-    when: { clues: ['clue-old-mark'], notFlags: ['found-old-mark'] },
-    nodes: [
-      { speaker: 'หมุดสำรวจเก่า', text: 'พบหมุดคอนกรีตเก่าจมดินอยู่ครึ่งหนึ่ง ตัวเลขบนหมุดลบเลือน ต้องคำนวณพิกัดเอง' },
-      { quiz: 'old-mark-coord' },
-    ],
-  },
-];
-
-/**
- * จุดเป้าหมาย 3 แห่ง — บันทึกเขียนพิกัดแบบ "นับ N จากขอบบน" (ผิด)
- *   อ่านตามที่เขียน → จุด A · อ่านแบบแก้แล้ว → จุด B
- * ระบบคำนวณเองว่าจุดใดผ่าน พิกัด + ตำแหน่งสัมพัทธ์ + หลักฐานภาคสนาม (validateLevel ตรวจว่ามีจุดเดียว)
- */
-export const pongGridSiteAnalysis: GridSiteAnalysisDefinition = {
-  record: { e: 4660, n: 1180 },
-  recordConvention: 'top-counted',
-  relative: { fromId: 'rp-2', direction: 'NE', meters: 400, toleranceMeters: 30 },
-  requiredFeatures: ['steam', 'white-rock'],
-  featureLabels: { steam: 'ไอน้ำร้อน', 'white-rock': 'หินปูนสีขาว', pond: 'สระน้ำนิ่ง' },
-  toleranceTiles: 3,
-  candidates: [
-    { landmarkId: 'site-a', label: 'จุด A', evidenceId: 'survey-a' },
-    { landmarkId: 'site-b', label: 'จุด B', evidenceId: 'survey-b' },
-    { landmarkId: 'site-c', label: 'จุด C', evidenceId: 'survey-c' },
-  ],
-  correctLandmarkId: 'site-b',
-  placeType: 'natural-hot-spring',
-  requiredClueIds: ['clue-convention', 'clue-relative', 'clue-field'],
-  availableWhen: { minStep: 4 },
-  successFlag: 'grid-checked',
-  // ฉาก 5: กด E ที่จุดเป้าหมาย → ระบบตรวจพิกัด/ทิศ-ระยะ/สิ่งที่พบให้ดูทีละข้อ
-  verify: { radiusTiles: 3, when: { flags: ['grid-checked'] }, evidenceId: 'field-report', flag: 'site-verified' },
-};
-
-export const pongPinTask: PinTaskDefinition = {
-  targetId: 'site-analysis',
-  toleranceTiles: 2,
-  mustStandWithinTiles: 5,
-  wisdomPrompt: 'สถานที่ที่ปักหมุดคืออะไร',
-  wisdomChoices: [
-    { id: 'pond', label: 'สระน้ำ' },
-    { id: 'natural-hot-spring', label: 'บ่อน้ำร้อนธรรมชาติ' },
-    { id: 'foot-bath', label: 'บ่อแช่เท้าของชุมชน' },
-  ],
-  correctWisdomId: 'natural-hot-spring',
-  // ต้องมีรายงานยืนยันภาคสนาม — เดินไปถึงอย่างเดียวปักไม่ผ่าน
-  requiredEvidenceIds: ['field-report'],
-  problemHints: {
-    far: 'ต้องยืนใกล้ตำแหน่งที่จะปัก (ไม่เกิน 50 ม.) — เดินไปที่จุดนั้นก่อน',
-    unexplored: 'ตำแหน่งที่ปักยังอยู่ในหมอก ต้องเดินไปสำรวจบริเวณนั้นก่อน',
-    location: 'ตำแหน่งที่ปักยังไม่ตรงกับจุดที่วิเคราะห์ได้ — เทียบพิกัด E/N ของหมุดกับพิกัดที่แก้ไขแล้ว',
-    wisdom: 'ประเภทสถานที่ยังไม่ถูก — ทบทวนหลักฐานภาคสนาม (ไอน้ำร้อน หินปูนขาว) ว่าเป็นสถานที่แบบใด',
-    evidence: 'ยังขาดหลักฐาน',
-  },
-  availableWhen: { flags: ['grid-checked'] },
-  successFlag: 'pin-verified',
-};
-
+const NEM_BOOK = 'ครูเนม (ผ่านสมุดภาคสนาม)';
 export const pongEnding: EndingDefinition = {
+  // เริ่มเองเมื่อพี่เขียวยืนยันหลักฐานภาคสนาม (ฉาก 5 จบ → ฉาก 6)
+  startWhen: { flags: ['evidence-verified'] },
   messages: [
-    {
-      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'ครูได้รับรายงานแล้ว! บ่อน้ำร้อนธรรมชาติอยู่ที่ {{grid:site-analysis}} ถูกต้องทั้งพิกัด ทิศ/ระยะ และหลักฐานภาคสนาม',
-    },
-    {
-      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'ทบทวนแกนพิกัด: ค่า E เพิ่มเมื่อไปทางตะวันออก ค่า N เพิ่มเมื่อไปทางเหนือ',
-    },
-    {
-      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'บนจอเกม แกน Y ของ Phaser นับเพิ่มลงด้านล่าง ซึ่งตรงข้ามกับ N — บันทึกเก่า {{gridrecord}} นับ N จากขอบบนแบบแกน Y ถ้าอ่านตามที่เขียนจึงได้ตำแหน่งผิด',
-    },
-    {
-      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'การอ่านพิกัดต้องรู้จุดกำเนิดที่กำหนด: แผนที่นี้เริ่มที่ E 4,000 · N 1,000 มุมตะวันตกเฉียงใต้',
-    },
-    {
-      speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)',
-      text: 'และการยืนยันตำแหน่งต้องใช้หลักฐานประกอบ: พิกัด + ทิศและระยะจากจุดอ้างอิง + สิ่งที่พบจริง ไม่ใช่ตัวเลขอย่างเดียว',
-    },
-    { speaker: 'ครูเนม (ผ่านสมุดภาคสนาม)', text: 'ครูมอบรหัสลับชิ้นที่ 3 และแผนที่กริดตำบลโป่งน้ำร้อนให้ เก็บไว้รวมกับสองชิ้นแรกนะ' },
+    { speaker: NEM_BOOK, text: 'ครูได้รับรายงานจากพี่เขียวแล้ว พื้นที่ที่เธอเลือกอยู่ที่พิกัด {{grid:chosen}} สูง {{elev:chosen}} ม. ได้คะแนนความเหมาะสม {{site:percent}}%' },
+    { speaker: NEM_BOOK, text: 'ความลาดเฉลี่ย {{site:slope}}% · สูงกว่าผิวน้ำ {{site:above}} ม. · {{site:landform}} · ห่างลำห้วย ~{{site:water}} ม. — ผ่านทั้งความลาดชัน ความสูงและลักษณะพื้นที่ และแหล่งน้ำ' },
+    { speaker: NEM_BOOK, text: 'ย้ำอีกครั้ง: คะแนนนี้คือความเหมาะสมตามเกณฑ์จำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง ถ้าจะรู้ว่ามีชุมชนโบราณจริงหรือไม่ ต้องขุดค้นทางโบราณคดีและมีหลักฐานจริง' },
+    { speaker: NEM_BOOK, text: 'สิ่งที่เราใช้: เส้นห่าง = ลาด เส้นถี่ = ชัน · ลาดชัน (%) = ความสูงที่เปลี่ยน ÷ ระยะราบ × 100 · และพิกัดกริด E/N บอกที่ตั้งให้คนอื่นหาเจอ' },
+    { speaker: NEM_BOOK, text: 'รหัสหีบชิ้นที่ 3 คือ "พิกัด" — เหลืออีกชิ้นเดียว! ครูมอบแผนที่ตำบลโป่งน้ำร้อนให้เก็บไว้ด้วยนะ' },
   ],
-  // รหัสชั่วคราว — เปลี่ยนได้ที่นี่ภายหลัง
   codePiece: { index: 3, total: 4, value: 'พิกัด' },
-  rewardItem: 'แผนที่กริดตำบลโป่งน้ำร้อน',
+  rewardItem: 'แผนที่ตำบลโป่งน้ำร้อน',
   completeFlag: 'mission-complete',
 };
+
+/* ---------------- ภารกิจ ---------------- */
 
 export const pongQuests: QuestDefinition[] = [
   {
     id: 'main-pong',
     kind: 'main',
-    title: 'ปริศนาพิกัดลับแห่งโป่งน้ำร้อน',
-    description: 'ตรวจสอบบันทึกสำรวจเก่า แล้วระบุตำแหน่งบ่อน้ำร้อนธรรมชาติด้วยพิกัด ตำแหน่งสัมพัทธ์ และหลักฐานภาคสนาม',
+    title: 'ปริศนาเมืองโบราณใต้ผืนดิน',
+    description: 'ใช้เส้นชั้นความสูงวิเคราะห์ว่าพื้นที่ใดเหมาะกับการตั้งถิ่นฐาน แล้วไปตรวจสอบภาคสนาม (สถานการณ์จำลอง) เพื่อรับรหัสหีบชิ้นที่ 3',
     lockedHint: '',
     objectives: [
-      { text: 'รับแผนที่กริดและบันทึกสำรวจจากครูเนม', done: { type: 'step', order: 1 } },
-      { text: 'ตรวจหมุดอ้างอิงในชุมชน', done: { type: 'step', order: 2 } },
-      { text: 'ฟังเบาะแสจากผู้เก็บบันทึก', done: { type: 'step', order: 3 } },
-      { text: 'วิเคราะห์พิกัดบนกระดาน (C) เลือกจุดที่ตรงหลักฐานครบ', done: { type: 'step', order: 4 } },
-      { text: 'ยืนยันภาคสนามและปักหมุดตำแหน่งที่ถูกต้อง', done: { type: 'step', order: 5 } },
-      { text: 'ส่งรายงานและรับรหัสลับชิ้นที่ 3', done: { type: 'step', order: 6 } },
+      { text: 'รับเอกสารและแผนที่ภูมิประเทศจากครูเนม', done: { type: 'step', order: 1 } },
+      { text: 'เรียนเส้นชั้นความสูงกับลุงสอน และฟังข้อมูลแหล่งน้ำจากป้าจันทร์', done: { type: 'step', order: 2 } },
+      { text: 'เลือกพื้นที่บนแผนที่และวิเคราะห์คะแนนความเหมาะสม', done: { type: 'step', order: 3 } },
+      { text: 'ทบทวนหัวข้อที่ผิดแล้ววิเคราะห์ใหม่จนผ่านเกณฑ์', done: { type: 'step', order: 4 } },
+      { text: 'ไปตรวจสอบพื้นที่และหลักฐานกับนักสำรวจ', done: { type: 'step', order: 5 } },
+      { text: 'ครูเนมสรุปผลและมอบรหัส "พิกัด"', done: { type: 'step', order: 6 } },
     ],
   },
   {
-    id: 'side-viewpoint',
+    id: 'side-contours',
     kind: 'side',
-    title: 'เดินตามพิกัด',
-    description: 'พี่เขียวบอกพิกัดจุดชมวิวมา ลองเดินไปให้ถึงโดยดูพิกัดของตัวเองบนจอ',
-    unlockWhen: { clues: ['clue-viewpoint'] },
-    lockedHint: 'คุยกับเจ้าหน้าที่ป่าไม้ใกล้ถนนขึ้นเขา',
-    objectives: [{ text: 'เดินไปถึงจุดชมวิว', done: { type: 'discover', landmarkId: 'viewpoint' } }],
-    reward: { text: 'บันทึกในสมุด: เดินตามพิกัดกริดได้สำเร็จ' },
-  },
-  {
-    id: 'mystery-old-mark',
-    kind: 'mystery',
-    title: 'หมุดสำรวจที่หายไป',
-    description: 'ลุงสอนเล่าว่าปู่ฝังหมุดสำรวจไว้ ห่างจาก RP-1 ตามทิศและระยะที่บอก — คำนวณพิกัดเองแล้วเดินไปให้ถึง',
-    unlockWhen: { clues: ['clue-old-mark'] },
-    lockedHint: 'คุยกับลุงสอนอีกครั้งหลังฟังผู้เก็บบันทึก',
-    objectives: [{ text: 'หาหมุดสำรวจเก่าและตอบพิกัดให้ถูก', done: { type: 'flag', flag: 'found-old-mark' } }],
-    reward: { text: 'หลักฐาน: แผ่นหมุดสำรวจเก่า' },
+    title: 'นักอ่านเส้นชั้นความสูง',
+    description: 'ฝึกอ่านภูมิประเทศจากแผนที่ แล้วไปดูของจริงที่จุดชมวิว',
+    unlockWhen: { flags: ['got-topo-map'] },
+    lockedHint: 'รับแผนที่ภูมิประเทศจากครูเนมก่อน',
+    objectives: [
+      { text: 'เปิดแผนที่ดูเส้นชั้นความสูง', done: { type: 'flag', flag: 'opened:map' } },
+      { text: 'เดินไปจุดชมวิวทางเหนือ ดูภาพรวมภูมิประเทศ', done: { type: 'discover', landmarkId: 'viewpoint' } },
+    ],
+    reward: { text: 'บันทึกในสมุด: ทางเหนือพื้นสูงกว่าทางใต้ ลำห้วยจึงไหลจากเหนือลงใต้' },
   },
 ];
+
+/* ---------------- ฉากและขั้นย่อย ---------------- */
 
 export const pongStory: StoryStep[] = [
   {
     order: 1,
-    title: 'ครูเนมมอบแผนที่กริด',
-    objective: 'คุยกับครูเนม รับแผนที่กริดและบันทึกสำรวจเก่า และฝึกอ่านพิกัด',
+    title: 'รับเอกสารและแผนที่จากครูเนม',
+    objective: 'คุยกับครูเนม รับเอกสารเกณฑ์วิเคราะห์และแผนที่ภูมิประเทศ',
     landmarkId: 'school',
     status: 'playable',
-    completeWhen: { type: 'flag', flag: 'axes-ok' },
+    completeWhen: { type: 'flag', flag: 'topo-received' },
   },
   {
     order: 2,
-    title: 'สำรวจจุดอ้างอิงในชุมชน',
-    objective: 'ตรวจหมุดอ้างอิง RP-1, RP-2, RP-3 (กด E ที่หมุด) และคุยกับลุงสอน',
-    landmarkId: 'rp-2',
+    title: 'เรียนรู้เส้นชั้นความสูงกับลุงสอน',
+    objective: 'ฟังลุงสอนสอนอ่านเส้นชั้นความสูง และถามป้าจันทร์เรื่องแหล่งน้ำ',
+    landmarkId: 'village',
     status: 'playable',
-    completeWhen: {
-      type: 'all',
-      of: [
-        { type: 'flag', flag: 'read-rp-1' },
-        { type: 'flag', flag: 'read-rp-2' },
-        { type: 'flag', flag: 'read-rp-3' },
-        { type: 'talk', npcId: 'villager-son' },
-      ],
-    },
+    completeWhen: { type: 'all', of: [{ type: 'flag', flag: 'learned-slope' }, { type: 'flag', flag: 'water-info' }] },
   },
   {
     order: 3,
-    title: 'ผู้เก็บบันทึก',
-    objective: 'คุยกับป้าเรือนที่ศาลาประชาคม ฟังเบาะแสเรื่องพิกัดที่อาจบันทึกผิด',
-    landmarkId: 'hall',
+    title: 'วิเคราะห์พื้นที่ที่อาจเหมาะกับการตั้งถิ่นฐาน',
+    objective: 'เปิดแผนที่ เลือกพื้นที่ แล้ววิเคราะห์คะแนนความเหมาะสม',
+    landmarkId: 'viewpoint',
     status: 'playable',
-    completeWhen: { type: 'flag', flag: 'record-checked' },
+    completeWhen: { type: 'flag', flag: 'settlement-attempted' },
   },
   {
     order: 4,
-    title: 'เปรียบเทียบพิกัดและตำแหน่งสัมพัทธ์',
-    objective: 'สำรวจจุด A, B, C (กด E) แล้วกด C เปิดกระดานวิเคราะห์พิกัด เลือกจุดที่ตรงหลักฐานครบ 3 ชนิด',
-    landmarkId: 'rp-2',
+    title: 'ทบทวนและวิเคราะห์ใหม่จนผ่านเกณฑ์',
+    objective: 'ถ้าคะแนนไม่ผ่าน ไปเรียนเพิ่มตามหัวข้อที่ผิด แล้ววิเคราะห์ใหม่',
+    landmarkId: 'village',
     status: 'playable',
-    completeWhen: { type: 'flag', flag: 'grid-checked' },
+    completeWhen: { type: 'flag', flag: 'settlement-passed' },
   },
   {
     order: 5,
-    title: 'สำรวจและยืนยันตำแหน่ง',
-    objective: 'เดินไปจุดที่วิเคราะห์ได้ กด E ตรวจยืนยัน แล้วเปิดแผนที่ (M) ปักหมุดและเลือกประเภทสถานที่',
-    landmarkId: 'site-b',
+    title: 'ตรวจสอบพื้นที่และค้นหาหลักฐานกับนักสำรวจ',
+    objective: 'ไปตรวจสอบพื้นที่ที่เลือกกับพี่เขียว แล้วยืนยันหลักฐานร่วมกัน',
+    landmarkId: 'camp',
     status: 'playable',
-    completeWhen: { type: 'flag', flag: 'pin-verified' },
+    completeWhen: { type: 'flag', flag: 'evidence-verified' },
   },
   {
     order: 6,
-    title: 'ส่งรายงานและรับรหัส',
+    title: 'รายงานผลและรับรหัส "พิกัด"',
     objective: 'ครูเนมสรุปผลผ่านสมุดภาคสนาม',
     landmarkId: 'school',
     status: 'playable',
@@ -390,144 +311,184 @@ export const pongStory: StoryStep[] = [
   },
 ];
 
-/* ---------------- ขั้นย่อย (v0.19: นำทางด้วย "การกระทำ") ----------------
- * นำทางไป NPC และหมุดอ้างอิง RP (ครูเนมบอกไว้แล้ว — ฝึกอ่านพิกัดจากแผ่นป้าย)
- * ไม่นำทางไปจุด A/B/C (ต้องหาจากพิกัด E/N เอง) และไม่บอกว่าจุดไหนถูก
- */
-const rpStep = (n: 1 | 2 | 3): NonNullable<StoryStep['micro']>[number] =>
-  inspectAt({
-    id: `read-rp-${n}`,
-    goal: `อ่านพิกัดที่หมุดอ้างอิง RP-${n}`,
-    find: `หมุด RP-${n} อยู่ทาง{{dir:school>rp-${n}}}ของโรงเรียน — ดูลูกศรสีเหลืองที่ขอบจอ`,
-    result: `พิกัด E/N ของ RP-${n} ถูกจดลงสมุด`,
-    tool: 'แผ่นป้ายบนหมุดบอกพิกัด E/N — เทียบกับพิกัดของเราที่แถบสถานะ (มุมซ้ายบน)',
-    think: `พิกัดของ RP-${n} คือ E เท่าไร N เท่าไร? ตอนยืนที่หมุด พิกัดของเราตรงกันไหม`,
-    target: { landmarkId: `rp-${n}` },
-    done: { type: 'flag', flag: `read-rp-${n}` },
-  });
+export const PONG_PHASES = [
+  { id: 'learn', title: 'ช่วงที่ 1 · รับภารกิจและเรียนรู้' },
+  { id: 'analyze', title: 'ช่วงที่ 2 · วิเคราะห์พื้นที่' },
+  { id: 'field', title: 'ช่วงที่ 3 · ตรวจสอบภาคสนามและรายงาน' },
+];
 
 const PONG_MICRO: Record<number, NonNullable<StoryStep['micro']>> = {
   1: [
     talkTo({
       id: 'talk-nem',
+      phase: 'learn',
       npcId: 'teacher-nem',
       name: 'ครูเนม',
-      goal: 'ไปคุยกับครูเนม รับแผนที่กริด',
+      goal: 'ไปคุยกับครูเนม รับเอกสารและแผนที่',
       where: 'ที่โรงเรียน',
-      result: 'ได้แผนที่กริด บันทึกสำรวจเก่า และคำถามฝึกอ่านพิกัด',
-      think: 'พิกัดกริดบอกตำแหน่งด้วยตัวเลขสองตัว — ตัวไหนบอกแนวตะวันออก ตัวไหนบอกแนวเหนือ?',
-      done: { type: 'clue', clueId: 'clue-grid-rule' },
-      impliedByLater: true,
-    }),
-    answerQuiz({
-      id: 'quiz-axes',
-      npcId: 'teacher-nem',
-      name: 'ครูเนม',
-      goal: 'ตอบคำถามเรื่องการอ่านพิกัด E/N',
-      result: 'ได้เบาะแสตำแหน่งหมุดอ้างอิง RP-1, RP-2, RP-3 — ต่อไปออกไปอ่านพิกัดที่หมุด',
-      tool: 'อ่าน E (ตะวันออก) ก่อน แล้วค่อยอ่าน N (เหนือ) · เปิด{tap:map} ดูเลข E/N ที่ขอบแผนที่',
-      think: 'ถ้าเดินไปทางตะวันออก ตัวเลขไหนเพิ่มขึ้น?',
-      done: { type: 'flag', flag: 'axes-ok' },
+      result: 'ได้เอกสารเกณฑ์วิเคราะห์ (เต็ม 100) และแผนที่ภูมิประเทศเส้นชั้นความสูง (จดลงสมุดให้เอง)',
+      think: 'เรื่องเมืองโบราณในเกมเป็นสถานการณ์จำลอง — ครูเนมให้เกณฑ์อะไรบ้างในการเลือกที่ตั้งหมู่บ้าน?',
+      done: { type: 'flag', flag: 'topo-received' },
+      doneText: '✓ ได้เอกสารและแผนที่แล้ว!',
     }),
   ],
   2: [
-    rpStep(1),
-    rpStep(2),
-    rpStep(3),
     talkTo({
-      id: 'talk-son',
+      id: 'go-son',
+      phase: 'learn',
       npcId: 'villager-son',
       name: 'ลุงสอน',
-      where: 'ในชุมชนโป่งน้ำร้อน',
-      result: 'ได้เรื่องเล่าของชุมชนเกี่ยวกับบ่อน้ำร้อน',
-      think: 'ชาวบ้านใช้อะไรเป็นจุดสังเกตของบ่อน้ำร้อน?',
-      done: { type: 'talk', npcId: 'villager-son' },
+      goal: 'ไปพบลุงสอน',
+      where: 'ในชุมชน ใกล้สะพานบนถนนหลัก',
+      result: 'ลุงสอนเริ่มสอนเส้นชั้นความสูง',
+      think: 'ลุงสอนจะสอนอะไร? ลองนึกถึงเส้นบนแผนที่ที่ผ่านจุดสูงเท่ากัน',
+      done: { type: 'near', npcId: 'villager-son' },
+      doneText: '✓ ถึงลุงสอนแล้ว!',
+      impliedByNext: true,
+    }),
+    answerQuiz({
+      id: 'learn-contour',
+      phase: 'learn',
+      npcId: 'villager-son',
+      name: 'ลุงสอน',
+      goal: 'ฟังบทเรียนเส้นชั้นความสูง แล้วตอบคำถาม 2 ข้อ',
+      result: 'รู้ว่าเส้นห่าง = ลาด เส้นถี่ = ชัน และคำนวณความลาดชัน (%) ได้',
+      tool: '{tap:notebook} ดูเบาะแสของลุงสอนซ้ำได้ · ลาดชัน (%) = ความสูงที่เปลี่ยน ÷ ระยะราบ × 100',
+      think: 'เส้นห่างกันมาก ต้องเดินไกลกว่าจะสูงขึ้นเท่าเดิม — ตรงนั้นชันหรือลาด?',
+      done: { type: 'flag', flag: 'learned-slope' },
+      doneText: '✓ เรียนเส้นชั้นความสูงแล้ว!',
+    }),
+    {
+      id: 'read-topo',
+      phase: 'learn',
+      goal: 'เปิดแผนที่ภูมิประเทศ ดูเส้นชั้นความสูง',
+      tools: ['แผนที่'],
+      steps: ['{tap:guide} — แผนที่เปิดให้เห็นทั้งตำบลโดยไม่ต้องเดินสำรวจ', 'ดูเส้นหนา (ทุก 10 ม.) และเส้นบาง (ทุก {{cfg:interval}} ม.)', 'สังเกตแถบที่เส้น "ห่างกว้าง" กับแถบที่เส้น "ถี่" แล้ว{tap:closeMap}'],
+      result: 'เห็นภาพรวมภูมิประเทศ: ทางเหนือสูง ทางใต้ต่ำ ลำห้วยตัดเป็นหุบ',
+      tool: 'เส้นหนาคือเส้นหลัก (index) ทุก 10 ม. ใช้นับความสูงจากลำห้วย · เส้นบางทุก {{cfg:interval}} ม.',
+      think: 'ตรงไหนบนแผนที่ที่เส้นห่างเป็นแถบกว้าง ตรงไหนเส้นถี่จนแทบติดกัน?',
+      doneText: '✓ ดูแผนที่ภูมิประเทศแล้ว!',
+      action: 'map',
+      done: { type: 'flag', flag: 'opened:map' },
+      impliedByLater: true,
+    },
+    talkTo({
+      id: 'talk-jan',
+      phase: 'learn',
+      npcId: 'water-keeper',
+      name: 'ป้าจันทร์',
+      goal: 'ไปคุยกับป้าจันทร์ ถามเรื่องแหล่งน้ำ',
+      where: 'ที่ศาลาประชาคม',
+      result: 'ได้ข้อมูลระดับน้ำท่วมสูงสุดและระยะใช้น้ำสะดวก (จดลงสมุดให้เอง)',
+      think: 'ที่ตั้งหมู่บ้านควรอยู่สูงกว่าผิวน้ำเท่าไร และห่างลำห้วยเท่าไรจึงพอดี?',
+      done: { type: 'flag', flag: 'water-info' },
+      doneText: '✓ ได้ข้อมูลแหล่งน้ำแล้ว!',
     }),
   ],
   3: [
-    talkTo({
-      id: 'talk-ruean',
-      npcId: 'record-keeper',
-      name: 'ป้าเรือน',
-      goal: 'ไปพบป้าเรือนที่ศาลาประชาคม',
-      where: 'ที่ศาลาประชาคม',
-      result: 'ได้เบาะแสเรื่องพิกัดที่อาจบันทึกผิด แล้วป้าเรือนจะถามคำถาม',
-      think: 'ถ้าบันทึกพิกัดผิดไป ตำแหน่งบนแผนที่จะคลาดไปทางไหน?',
-      done: { type: 'clue', clueId: 'clue-convention' },
-      impliedByLater: true,
-    }),
-    answerQuiz({
-      id: 'quiz-north',
-      npcId: 'record-keeper',
-      name: 'ป้าเรือน',
-      goal: 'ตอบคำถามเรื่องพิกัดเมื่อเดินไปทางเหนือ',
-      result: 'รู้วิธีตรวจพิกัดในบันทึกเก่า — ต่อไปสำรวจจุด A B C',
-      tool: '{tap:map} ดูเลขพิกัดที่ขอบแผนที่ — เทียบเลขด้านบน (เหนือ) กับด้านล่าง (ใต้)',
-      think: 'เมื่อเดินไปทางเหนือ ค่า E หรือค่า N ที่เปลี่ยน และเปลี่ยนอย่างไร?',
-      done: { type: 'flag', flag: 'record-checked' },
-    }),
+    {
+      id: 'analyze',
+      phase: 'analyze',
+      goal: 'เลือกพื้นที่บนแผนที่ แล้ววิเคราะห์ความเหมาะสม',
+      tools: ['แผนที่', 'วงกลมวิเคราะห์'],
+      steps: [
+        '{tap:guide} — แผนที่เปิดในโหมดวิเคราะห์ (วงกลมสีเหลืองรัศมี {{cfg:radius}} ม.)',
+        '{tapmap} ให้วงอยู่ตรงพื้นที่ที่คิดว่าเหมาะ — ดูว่าเส้นชั้นความสูงลาดเล็กน้อยไหม และห่างลำห้วยแค่ไหน',
+        '{tap:pinHere} แล้วอ่านคะแนนทีละเกณฑ์ใต้แผนที่',
+      ],
+      result: 'ได้คะแนนความเหมาะสมตามเกณฑ์ · ถ้ามากกว่า {{cfg:pass}}% ผ่านและไปตรวจภาคสนาม · ถ้าไม่ผ่าน ระบบบอกหัวข้อที่ต้องทบทวนและผู้สอน',
+      tool: 'ใช้เส้นชั้นความสูง (ห่าง = ลาด) และวัดระยะถึงลำห้วยด้วยมาตราส่วน (1 ช่อง = 10 ม.) · ดูเกณฑ์ซ้ำในสมุด หน้าเบาะแส',
+      think: 'ที่ไหนที่เส้นห่างเป็นแถบกว้าง สูงพ้นผิวน้ำอย่างน้อย {{cfg:safe}} ม. แต่ยังไม่ไกลจากลำห้วยเกิน {{cfg:wIdeal}} ม.?',
+      doneText: '✓ วิเคราะห์พื้นที่แล้ว!',
+      action: 'settlement',
+      done: { type: 'flag', flag: 'settlement-attempted' },
+    },
   ],
   4: [
     {
-      id: 'survey-abc',
-      goal: 'สำรวจจุด A, B และ C',
-      tools: ['กระดานวิเคราะห์', 'แผนที่', 'ปุ่มสำรวจ'],
-      steps: ['{tap:guide} ดูพิกัด E/N ของจุด A B C', '{tap:map} หาช่องที่พิกัดตรงกัน แล้ว{walk}ไป', 'ที่แต่ละจุด {tap:inspect}'],
-      result: 'บันทึกสิ่งที่พบจริงของจุดที่สำรวจ — ครบสามจุดแล้วไปเปิดกระดานวิเคราะห์',
-      tool: 'แถบสถานะ (มุมซ้ายบน) บอกพิกัดที่เรายืน — เดินจนพิกัดตรงกับจุดที่ต้องการ',
-      think: 'เลข E เพิ่มเมื่อเดินไปทางไหน และเลข N เพิ่มเมื่อเดินไปทางไหน?',
-      doneText: '✓ สำรวจครบสามจุดแล้ว!',
-      action: 'analysis',
-      actionLabel: '🔍 ดูพิกัดบนกระดาน',
-      done: { type: 'all', of: [{ type: 'flag', flag: 'surveyed-a' }, { type: 'flag', flag: 'surveyed-b' }, { type: 'flag', flag: 'surveyed-c' }] },
+      id: 'relearn',
+      phase: 'analyze',
+      goal: 'กลับไปเรียนเพิ่มตามหัวข้อที่ยังไม่เข้าใจ',
+      tools: ['ลูกศรนำทาง', 'ปุ่มคุย'],
+      steps: [
+        'ผลล่าสุดบอกว่าต้องทบทวน: {{try:weak}}',
+        'ดูลูกศรสีเหลืองที่ขอบจอ — ชี้ไปหาผู้สอนคนแรกที่ต้องไปหา',
+        '{walk} ไปใกล้ ๆ แล้ว{tap:talk}',
+        'ฟังบทเรียนเฉพาะหัวข้อที่ผิด แล้วตอบคำถามท้ายบท (ถ้ามีผู้สอนอีกคน ไปหาด้วย)',
+      ],
+      result: 'ทบทวนครบทุกหัวข้อที่ผิดแล้ว กลับไปวิเคราะห์ใหม่ได้',
+      tool: 'ลุงสอนสอน ความลาดชัน · ลักษณะพื้นที่ — ครูเนมสอน ความสูงเหนือน้ำ · ความใกล้แหล่งน้ำ',
+      think: 'ในผลล่าสุด ข้อไหนได้คะแนนน้อยที่สุด? ข้อนั้นคือหัวข้อที่ต้องเรียนก่อน',
+      doneText: '✓ ทบทวนครบแล้ว!',
+      target: { pendingTeacher: true },
+      done: { type: 'flag', flag: 'lessons-done' },
     },
-    openTool({
-      id: 'open-board',
-      goal: 'เปิดกระดานวิเคราะห์พิกัด',
-      button: 'analysis',
-      look: ['ดูหลักฐานของแต่ละจุด: พิกัด · ตำแหน่งสัมพัทธ์ · สิ่งที่พบจริง'],
-      result: 'เมื่อเปิดแล้ว ขั้นต่อไปคือเลือกจุดที่ตรงกับหลักฐาน',
-      tool: 'กระดานเปิดได้ตั้งแต่ขั้นนี้ ถ้าปุ่มยังกดไม่ได้ ให้ฟังเบาะแสจากป้าเรือนก่อน',
-      think: 'หลักฐานแต่ละชนิดชี้ไปที่จุดเดียวกันหรือไม่?',
-      done: { type: 'flag', flag: 'opened:gridcheck' },
-      doneText: '✓ เปิดกระดานวิเคราะห์แล้ว!',
-      impliedByLater: true,
-    }),
     {
-      id: 'choose-site',
-      goal: 'เลือกจุดที่ตรงกับหลักฐานทุกข้อ',
-      tools: ['กระดานวิเคราะห์'],
-      steps: ['{tap:guide}', 'เทียบแต่ละจุดกับพิกัดที่แก้แล้ว ตำแหน่งสัมพัทธ์ และสิ่งที่พบจริง', '{choose}จุด แล้ว{tap:confirm}'],
-      result: 'ถ้าตรงทุกข้อ ไปขั้นตรวจยืนยันในพื้นที่ · ถ้ายังไม่ตรง กระดานบอกว่าหลักฐานใดขัดแย้ง',
-      tool: 'ยังไม่ต้องรีบยืนยัน — เลือกจุดแล้วอ่านผลเทียบหลักฐานก่อน',
-      think: 'จุดไหนตรงทั้งพิกัดที่แก้แล้ว และสิ่งที่ชาวบ้านเล่า?',
-      doneText: '✓ วิเคราะห์พิกัดสำเร็จ!',
-      action: 'analysis',
-      actionLabel: '🔍 เลือกจุด',
-      done: { type: 'flag', flag: 'grid-checked' },
+      id: 'retry',
+      phase: 'analyze',
+      goal: 'วิเคราะห์พื้นที่ใหม่อีกครั้ง',
+      tools: ['แผนที่', 'วงกลมวิเคราะห์'],
+      steps: ['{tap:guide} — เปิดแผนที่ในโหมดวิเคราะห์', '{tapmap} เลือกพื้นที่ใหม่ โดยใช้สิ่งที่เพิ่งทบทวน (ดูวงสีแดงที่เคยไม่ผ่านบนแผนที่ แล้วเลี่ยงเหตุที่ผิด)', '{tap:pinHere} แล้วอ่านคะแนน'],
+      result: 'ถ้ามากกว่า {{cfg:pass}}% ผ่านและไปตรวจภาคสนาม — วิเคราะห์ซ้ำได้ไม่จำกัด',
+      tool: 'เทียบผลทีละเกณฑ์ในสมุด หน้า "หลักฐาน/ข้อความ" ว่าครั้งก่อนพลาดข้อใด',
+      think: 'ครั้งก่อนเสียคะแนนข้อไหน? พื้นที่ใหม่ควรต่างจากเดิมอย่างไร?',
+      doneText: '✓ วิเคราะห์ผ่านเกณฑ์แล้ว!',
+      action: 'settlement',
+      done: { type: 'flag', flag: 'settlement-passed' },
     },
   ],
   5: [
+    talkTo({
+      id: 'go-khiao',
+      phase: 'field',
+      npcId: 'explorer-khiao',
+      name: 'พี่เขียว (นักสำรวจ)',
+      goal: 'ไปพบพี่เขียว นักสำรวจภาคสนาม',
+      where: 'ที่ค่ายสำรวจข้างถนนขึ้นเขา ทางตะวันออก',
+      result: 'พี่เขียวอธิบายวิธีตรวจภาคสนามทั้ง 3 อย่าง',
+      think: 'การตรวจของจริงต่างจากการวิเคราะห์จากแผนที่อย่างไร?',
+      done: { type: 'flag', flag: 'explorer-briefed' },
+      doneText: '✓ รับคำแนะนำนักสำรวจแล้ว!',
+    }),
     {
-      id: 'verify',
-      goal: 'ไปตรวจยืนยันจุดที่เลือก',
-      tools: ['แผนที่', 'ปุ่มตรวจสอบ'],
-      steps: ['{tap:map} หาจุดที่เลือกบนกระดาน (ดูพิกัดในสมุด)', '{walk} ไปที่จุดนั้น', 'เมื่อปุ่ม "ตรวจสอบ" ขึ้น {tap:check}'],
-      result: 'ได้รายงานภาคสนาม — ต่อไปปักหมุด',
-      tool: 'ต้องยืนใกล้จุดที่เลือกไม่เกิน 3 ช่อง ปุ่มตรวจสอบจึงจะขึ้น',
-      think: 'สิ่งที่เห็นจริงตรงกับหลักฐานบนกระดานหรือไม่?',
-      doneText: '✓ ตรวจยืนยันแล้ว!',
+      id: 'field-check',
+      phase: 'field',
+      goal: 'ไปที่พื้นที่ที่เลือก แล้วตรวจสอบภาคสนาม',
+      tools: ['ลูกศรนำทาง', 'ปุ่มตรวจสอบ', 'แผนที่'],
+      steps: [
+        'พื้นที่ที่เลือกคือวงสีเขียวบนแผนที่ — ดูลูกศรสีเหลืองที่ขอบจอ',
+        '{walk} ไปให้ถึงในวง',
+        'เมื่อปุ่ม "ตรวจสอบ" ขึ้น {tap:check} แล้ว{next}',
+      ],
+      result: 'ได้บันทึกตรวจภาคสนาม 3 ข้อ: ความสูงเหนือน้ำ · ความลาด/พื้นผิว · ระยะถึงลำห้วย',
+      tool: '{tap:map} ดูวงสีเขียวและพิกัดของพื้นที่ที่เลือก',
+      think: 'ค่าที่วัดจริงตรงกับที่คำนวณจากแผนที่ไหม?',
+      doneText: '✓ ตรวจภาคสนามแล้ว!',
+      target: { area: 'chosen' },
       action: 'map',
-      done: { type: 'flag', flag: 'site-verified' },
+      done: { type: 'flag', flag: 'field-checked' },
     },
-    pinOnMap({
-      id: 'pin',
-      place: 'จุดที่ตรวจยืนยัน',
-      kind: 'ประเภทสถานที่',
-      think: 'สถานที่ที่ตรวจยืนยันแล้วเป็นภูมิปัญญาหรือแหล่งธรรมชาติประเภทใด?',
-      done: { type: 'flag', flag: 'pin-verified' },
+    talkTo({
+      id: 'review-khiao',
+      phase: 'field',
+      npcId: 'explorer-khiao',
+      name: 'พี่เขียว',
+      goal: 'กลับไปตรวจหลักฐานร่วมกับพี่เขียว',
+      where: 'ที่ค่ายสำรวจข้างถนนขึ้นเขา',
+      result: 'พี่เขียวยืนยันหลักฐาน แล้วครูเนมได้รับรายงาน',
+      think: 'หลักฐานภาคสนามยืนยันอะไรได้ และยังพิสูจน์อะไรไม่ได้?',
+      done: { type: 'flag', flag: 'evidence-verified' },
+      doneText: '✓ ยืนยันหลักฐานแล้ว!',
     }),
   ],
-  6: [hearReport({ id: 'report', code: 'รหัสลับชิ้นที่ 3', done: { type: 'flag', flag: 'mission-complete' } })],
+  6: [
+    hearReport({
+      id: 'report',
+      phase: 'field',
+      code: 'รหัสลับชิ้นที่ 3 "พิกัด"',
+      goal: 'ฟังครูเนมสรุปผล แล้วรับรหัส "พิกัด"',
+      done: { type: 'flag', flag: 'mission-complete' },
+    }),
+  ],
 };
 for (const st of pongStory) if (PONG_MICRO[st.order]) st.micro = PONG_MICRO[st.order];

@@ -23,6 +23,7 @@ import { currentMicro, hasMicroSteps } from '../core/guide/MicroQuest';
 import { edgeIndicator, guideTarget, type GuideTarget } from '../core/guide/Navigation';
 import type { GuideActionId } from '../content/types';
 import type { NotebookTab } from '../core/session/GameSession';
+import type { SettlementReport } from '../core/site/SettlementAnalysis';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
@@ -103,6 +104,9 @@ export class WorldScene extends Phaser.Scene {
   private touchUi = false;
   /** นำทาง: เส้นวัดระยะ + จุดเริ่มวัด (เหนือหมอก) · ลูกศรขอบจอ/ป้าย ! ของเป้าหมาย */
   private measureGfx!: Phaser.GameObjects.Graphics;
+  /** วงกลมพื้นที่ที่ผู้เล่นเลือก (บทที่ 3) */
+  private chosenGfx!: Phaser.GameObjects.Graphics;
+  private chosenKey = '';
   private measureLabel!: Phaser.GameObjects.Text;
   private guideArrow!: Phaser.GameObjects.Container;
   private guideArrowGfx!: Phaser.GameObjects.Graphics;
@@ -264,6 +268,8 @@ export class WorldScene extends Phaser.Scene {
 
     // ---- นำทาง: เส้นวัดระยะจากจุดอ้างอิง และลูกศรขอบจอชี้ไปเป้าหมาย (อยู่เหนือหมอก — ตำแหน่งที่รู้แล้วเท่านั้น) ----
     this.measureGfx = this.add.graphics().setDepth(DEPTH.guide);
+    this.chosenGfx = this.add.graphics().setDepth(DEPTH.guide - 1);
+    this.chosenKey = '';
     this.measureLabel = this.add
       .text(0, 0, '', { fontFamily: FONT_FAMILY, fontSize: '6px', color: '#2b2118', backgroundColor: '#ffd84d', padding: { x: 2, y: 1, top: 2 } })
       .setResolution(CAMERA_ZOOM * 2)
@@ -321,7 +327,16 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const snap = this.progress.loadInProgress(s.level.id) as SessionSnapshot | null;
-    if (!snap || !s.restore(snap)) return;
+    if (snap && !s.restore(snap)) {
+      // เนื้อหาด่านถูกปรับใหม่หลังบันทึก (contentVersion ต่างกัน) → เริ่มด่านนี้ใหม่อย่างชัดเจน ไม่ใช้สถานะเก่าที่ไม่สอดคล้องกับภารกิจใหม่
+      // ไม่กระทบบทอื่นและรหัสที่ได้รับแล้ว (บันทึกความคืบหน้ารวม/รหัสลับเก็บแยกจากบันทึกกลางด่าน)
+      if (snap.levelId === s.level.id && snap.contentVersion !== s.level.contentVersion) {
+        this.progress.clearInProgress(s.level.id);
+        s.toast('บทนี้ถูกปรับเนื้อหาใหม่ — ความคืบหน้ากลางบทเดิมถูกรีเซ็ตให้เริ่มบทใหม่ (บทอื่นและรหัสที่ได้รับแล้วไม่เปลี่ยน)');
+      }
+      return;
+    }
+    if (!snap) return;
     const x = (s.playerTile.x + 0.5) * S;
     const y = (s.playerTile.y + 0.5) * S - 4;
     this.player.setPosition(x, y);
@@ -389,6 +404,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.guideInMs <= 0) this.refreshGuide();
     this.updateGuideArrow();
     this.drawMeasure();
+    this.drawChosen();
     // เป้าหมายโต้ตอบ (เกณฑ์เดียวกับปุ่ม "คุย" และข้อความบนจอ) — คำนวณครั้งเดียวต่อเฟรม
     const target = s.mode === 'explore' ? pickInteraction(s, INTERACT_RADIUS_TILES) : null;
     this.fitLabels();
@@ -748,6 +764,11 @@ export class WorldScene extends Phaser.Scene {
 
   private openCompare(): void {
     const s = this.session;
+    // บทที่ 3: ปุ่มวิเคราะห์ = เปิดแผนที่ในโหมดวิเคราะห์พื้นที่ (เส้นชั้นความสูง + วงกลมวิเคราะห์)
+    if (s.level.settlementAnalysis) {
+      if (s.mode !== 'map') this.openMap();
+      return;
+    }
     // บทที่ 1: ปุ่มวิเคราะห์ (C) = กระดานวิเคราะห์เส้นทาง (หน้าในสมุด) — ไม่ต้องจำว่าอยู่หน้าไหน
     if (s.level.routeAnalysis && !s.level.mapComparison && !s.level.gridSiteAnalysis && !s.level.integratedSiteAnalysis) {
       this.openNotebook('routes');
@@ -878,7 +899,11 @@ export class WorldScene extends Phaser.Scene {
       if (point) this.withStepToasts(() => s.inspect(point));
       return;
     }
-    // ตรวจยืนยันภาคสนาม (บท 3 ด่านพิกัด / บท 4 หลักฐานรวม)
+    // ตรวจสอบพื้นที่ที่เลือก (บท 3 เมืองโบราณ) / ตรวจยืนยันภาคสนาม (บท 4 หลักฐานรวม)
+    if (target.id === 'field-check') {
+      this.withStepToasts(() => s.startFieldCheck());
+      return;
+    }
     this.withStepToasts(() => (s.level.gridSiteAnalysis ? s.startGridVerify(target.id) : s.startIntegratedVerify(target.id)));
   }
 
@@ -978,6 +1003,25 @@ export class WorldScene extends Phaser.Scene {
     this.guideDebug = { mode: 'edge', x: ind.x, y: ind.y, angle: a };
   }
 
+  /** วงกลมพื้นที่ที่เลือก (ผ่านการวิเคราะห์แล้ว): วงประสีเขียวบนพื้นโลกเกม — ขนาดเท่ารัศมีที่ใช้คำนวณคะแนน */
+  private drawChosen(): void {
+    const s = this.session;
+    const c = s.settlementChosen;
+    const d = s.level.settlementAnalysis;
+    const key = c && d ? `${c.x},${c.y},${d.radiusTiles}` : '';
+    if (key === this.chosenKey) return;
+    this.chosenKey = key;
+    const g = this.chosenGfx;
+    g.clear();
+    if (!c || !d) return;
+    const cx = (c.x + 0.5) * S;
+    const cy = (c.y + 0.5) * S;
+    const R = d.radiusTiles * S;
+    g.fillStyle(0x7ee07a, 0.12).fillCircle(cx, cy, R);
+    g.lineStyle(2, 0x1d3a1b, 1).strokeCircle(cx, cy, R);
+    g.lineStyle(1, 0x7ee07a, 1).strokeCircle(cx, cy, R);
+  }
+
   /** เส้นวัดระยะ: จากจุดเริ่มวัด (จุดอ้างอิงของภารกิจ) ถึงตำแหน่งจริงของผู้เล่น + ป้ายชื่อจุดเริ่มวัด */
   private drawMeasure(): void {
     const s = this.session;
@@ -1040,6 +1084,9 @@ export class WorldScene extends Phaser.Scene {
     this.cancelWalk();
     this.player.setVelocity(0, 0);
     switch (id) {
+      case 'settlement':
+        this.openMap();
+        return;
       case 'map':
         this.openMap();
         return;
@@ -1125,9 +1172,16 @@ export class WorldScene extends Phaser.Scene {
   private openMap(): void {
     const s = this.session;
     s.pinFeedback = null;
+    // บทที่ 3: จดว่าเปิดแผนที่ภูมิประเทศแล้ว (ขั้น "เปิดแผนที่ดูเส้นชั้นความสูง") — นับเฉพาะหลังได้รับแผนที่จากครูเนม
+    if (s.level.settlementAnalysis && (!s.level.topoMapFlag || s.flags.has(s.level.topoMapFlag))) s.noteOpened('map');
     if (s.isPinAvailable()) {
       s.pinStage = 'cursor';
       s.pinCursor = s.pinCursor ?? { ...s.playerTile };
+    } else if (s.isSettlementAvailable()) {
+      // โหมดวิเคราะห์พื้นที่: ใช้เคอร์เซอร์เดียวกับโหมดปักหมุด (แตะ/ลาก/ลูกศร) แต่วาดเป็นวงกลมวิเคราะห์
+      const last = s.settlementAttempts[s.settlementAttempts.length - 1];
+      s.pinStage = 'cursor';
+      s.pinCursor = s.pinCursor ?? (last ? { x: last.x, y: last.y } : { ...s.playerTile });
     } else {
       s.pinStage = 'none';
     }
@@ -1178,10 +1232,37 @@ export class WorldScene extends Phaser.Scene {
       };
       this.bumpUi();
     } else if (confirm) {
+      if (s.mapTool === 'settlement') {
+        this.analyzeHere();
+        return;
+      }
       s.pinStage = 'wisdom';
       s.pinFeedback = null;
       this.bumpUi();
     }
+  }
+
+  /** วิเคราะห์วงกลมที่เคอร์เซอร์ (บทที่ 3): คำนวณคะแนนจากแผนที่ แล้วบอกผล · ไม่ผ่าน → ต้องไปเรียนเสริมก่อนวิเคราะห์ใหม่ */
+  private analyzeHere(): void {
+    const s = this.session;
+    const d = s.level.settlementAnalysis;
+    if (!d || !s.pinCursor) return;
+    const box: { rep: SettlementReport | null } = { rep: null };
+    this.withStepToasts(() => {
+      box.rep = s.analyzeSettlementAt(s.pinCursor!);
+    });
+    const r = box.rep;
+    if (!r) return;
+    s.pinFeedback = null;
+    if (r.passed) {
+      s.toast(`วิเคราะห์ผ่าน! พื้นที่นี้ได้ ${r.percent}% (มากกว่า ${d.passPercent}%) — ปิดแผนที่แล้วเดินทางไปตรวจสอบพื้นที่`);
+    } else {
+      const who = [...new Set(r.weakTopics.map((t) => s.level.npcs.find((n) => n.id === d.topics[t].teacherId)?.name ?? ''))].filter(Boolean);
+      s.toast(`ยังไม่ผ่าน: ได้ ${r.percent}% (ต้องมากกว่า ${d.passPercent}%) — กลับไปเรียนเพิ่มกับ${who.join(' และ ')}`);
+    }
+    // ผ่านแล้วหรือต้องไปเรียนเสริม → ไม่เลื่อนวงต่อ (แผนที่แสดงผลและเหตุที่ต้องทำต่อ)
+    s.pinStage = 'none';
+    this.bumpUi();
   }
 
   private submitPin(choice: number): void {

@@ -1,56 +1,58 @@
+import type { ElevationDefinition } from '../../../core/world/Elevation';
 import type { MapDefinition, TileRect } from '../../../core/world/types';
 
 /**
  * แผนที่ต้นแบบ ตำบลโป่งน้ำร้อน — 80 × 60 ช่อง = 800 × 600 เมตร (1 ช่อง = 10 ม., แผนที่ 1:10,000)
- * ใช้ "พิกัดกริดจำลอง" (ดู GRID ใน index.ts): E เพิ่มไปทางตะวันออก · N เพิ่มไปทางเหนือ (ขึ้นด้านบนจอ)
- * จุดกำเนิดกริดอยู่มุมตะวันตกเฉียงใต้ (ล่างซ้ายของจอ) — ไม่ใช่ละติจูด/ลองจิจูดจริง
+ * บทที่ 3 "ปริศนาเมืองโบราณใต้ผืนดิน": ใช้เส้นชั้นความสูงวิเคราะห์ว่าพื้นที่ใดอาจเหมาะกับการตั้งถิ่นฐาน
+ * ใช้พิกัดกริดจำลอง (ดู grid ใน index.ts): E เพิ่มไปทางตะวันออก · N เพิ่มไปทางเหนือ — ไม่ใช่ละติจูด/ลองจิจูดจริง
  *
- * หมายเหตุ: ผังเป็นข้อมูลสมมติเพื่อการออกแบบเกม ยังไม่ใช่ตำแหน่งจริงของสถานที่ในตำบลโป่งน้ำร้อน
+ * หมายเหตุ: ภูมิประเทศและเรื่องเมืองโบราณเป็นสถานการณ์จำลองเพื่อการเรียนรู้ ไม่ใช่ข้อมูลหรือประวัติศาสตร์จริงของตำบลโป่งน้ำร้อน
  *
- * จุดเป้าหมาย 3 แห่ง (ดู mission.ts → gridSiteAnalysis):
- *   A สระน้ำหลังสวน (66,41)    อยู่ตรงพิกัดในบันทึก "ตามที่เขียน" — แต่บันทึกนับ N จากขอบบน
- *   B บ่อน้ำร้อนเชิงเขา (66,18)  ตรงพิกัดหลังแก้ + ทิศ/ระยะจาก RP-2 + ไอน้ำร้อนและหินปูนขาว
- *   C บ่อแช่เท้าชุมชน (73,28)   ทิศ/ระยะจาก RP-2 ใกล้เคียง และมีไอน้ำ แต่พิกัดไม่ตรงและไม่มีหินปูน
+ * ภูมิประเทศ (แบบจำลองความสูง): ที่ลาดเอียงสูงขึ้นไปทางเหนือ + หุบลำห้วยโป่งน้ำร้อน + เขาตะวันออกเฉียงเหนือและเนินตะวันตกเฉียงเหนือ
+ * และ "ชานเนิน" (ขั้นบันไดที่ลาดน้อย) ไม่กี่แห่ง — ค่าคะแนนของพื้นที่ใดก็ตามคำนวณจากแบบจำลองนี้โดยตรง (core/site/SettlementAnalysis.ts)
+ * ไม่มีตำแหน่งคำตอบเขียนไว้ในเนื้อหา — tests/settlement.test.ts ตรวจว่ามีพื้นที่ที่ผ่านเกณฑ์จริง และพื้นที่ลวงไม่ผ่านด้วยเหตุผลต่างกัน
  */
 export const SCHOOL_GROUNDS: TileRect = { x: 4, y: 47, w: 16, h: 11 };
 const HALL_PLAZA: TileRect = { x: 26, y: 46, w: 8, h: 3 };
-const SITE_AREAS: TileRect[] = [
-  { x: 62, y: 14, w: 9, h: 8 },
-  { x: 62, y: 37, w: 8, h: 7 },
-  { x: 70, y: 25, w: 7, h: 6 },
+
+/** ลำห้วยโป่งน้ำร้อน (ไหลจากเหนือลงใต้) — ใช้ทั้งวาดน้ำและขุดหุบในแบบจำลองความสูง */
+const STREAM = [
+  { x: 18, y: 0 },
+  { x: 22, y: 8 },
+  { x: 28, y: 16 },
+  { x: 34, y: 24 },
+  { x: 40, y: 32 },
+  { x: 46, y: 40 },
+  { x: 52, y: 48 },
+  { x: 56, y: 59 },
 ];
+
+/** แบบจำลองความสูง (เมตร จากระดับทะเลปานกลาง) */
+export const ELEVATION: ElevationDefinition = {
+  baseMeters: 135,
+  // ลาดเอียงสูงขึ้นไปทางเหนือ ~7% — พื้นที่ส่วนใหญ่จึงชันเกินไปสำหรับตั้งถิ่นฐาน
+  slope: { dx: 0, dy: -0.7 },
+  hills: [
+    // "ชานเนิน" ริมห้วย: เนินกว้างเตี้ยที่ยกให้ความลาดชันของเนินหักล้างกับความลาดเอียงของพื้น → ขั้นบันไดที่ลาดน้อยทางตะวันออกของลำห้วย
+    { at: { x: 46, y: 31.2 }, radiusTiles: 16, meters: 8 },
+    // ที่ราบต่ำทางตะวันตกเฉียงใต้ (ราบแต่ต่ำกว่าผิวน้ำและไกลลำห้วย)
+    { at: { x: 14, y: 57 }, radiusTiles: 16, meters: 8 },
+    // เนินป่าตะวันตกเฉียงเหนือ และเขาตะวันออกเฉียงเหนือ
+    { at: { x: 10, y: 12 }, radiusTiles: 10, meters: 20 },
+    { at: { x: 68, y: 10 }, radiusTiles: 14, meters: 45 },
+  ],
+  channels: [{ points: STREAM, widthTiles: 11, depthMeters: 8 }],
+};
 
 export const pongNamRonMap: MapDefinition = {
   widthTiles: 80,
   heightTiles: 60,
   seed: 4040,
   baseTerrain: 'grass',
-  // ภูมิประเทศสูงขึ้นไปทางเหนือ (0.4 ม./ช่อง) + เนินป่าตะวันตกเฉียงเหนือ + เขาตะวันออกเฉียงเหนือ
-  elevation: {
-    baseMeters: 130,
-    slope: { dx: 0, dy: -0.4 },
-    hills: [
-      { at: { x: 8, y: 12 }, radiusTiles: 10, meters: 20 },
-      { at: { x: 68, y: 10 }, radiusTiles: 14, meters: 45 },
-    ],
-  },
+  elevation: ELEVATION,
   features: [
-    // ลำห้วยโป่งน้ำร้อน (ไหลจากเหนือลงใต้)
-    {
-      kind: 'path',
-      terrain: 'water',
-      width: 2,
-      points: [
-        { x: 18, y: 0 },
-        { x: 22, y: 8 },
-        { x: 28, y: 16 },
-        { x: 34, y: 24 },
-        { x: 40, y: 32 },
-        { x: 46, y: 40 },
-        { x: 52, y: 48 },
-        { x: 56, y: 59 },
-      ],
-    },
+    // ลำห้วยโป่งน้ำร้อน
+    { kind: 'path', terrain: 'water', width: 2, points: STREAM },
     // นาทางใต้
     { kind: 'rect', terrain: 'rice', area: { x: 58, y: 48, w: 18, h: 9 } },
     { kind: 'rect', terrain: 'rice', area: { x: 24, y: 52, w: 20, h: 5 } },
@@ -74,12 +76,6 @@ export const pongNamRonMap: MapDefinition = {
     { kind: 'rect', terrain: 'paving', area: HALL_PLAZA },
     { kind: 'building', area: { x: 27, y: 49, w: 6, h: 3 }, roof: 'roofOrange', door: { x: 29, y: 49 } },
 
-    // จุดเป้าหมาย: A สระน้ำหลังสวน · B บ่อน้ำร้อนเชิงเขา (มีหินปูนขาว) · C บ่อแช่เท้าคอนกรีตของชุมชน
-    { kind: 'rect', terrain: 'water', area: { x: 64, y: 39, w: 3, h: 2 } },
-    { kind: 'rect', terrain: 'water', area: { x: 65, y: 16, w: 3, h: 2 } },
-    { kind: 'rect', terrain: 'paving', area: { x: 71, y: 26, w: 5, h: 4 } },
-    { kind: 'rect', terrain: 'water', area: { x: 72, y: 26, w: 3, h: 2 } },
-
     // ป่าบนเนินตะวันตกเฉียงเหนือ และต้นไม้ทั่วพื้นที่ / ป่าบนเขาตะวันออกเฉียงเหนือ
     { kind: 'scatter', object: 'tree', area: { x: 1, y: 1, w: 16, h: 30 }, density: 0.3 },
     { kind: 'scatter', object: 'tree', area: { x: 64, y: 1, w: 15, h: 12 }, density: 0.22 },
@@ -88,18 +84,13 @@ export const pongNamRonMap: MapDefinition = {
       object: 'tree',
       area: { x: 0, y: 0, w: 80, h: 60 },
       density: 0.04,
-      exclude: [SCHOOL_GROUNDS, HALL_PLAZA, ...SITE_AREAS],
+      exclude: [SCHOOL_GROUNDS, HALL_PLAZA],
     },
-    { kind: 'scatter', object: 'rock', area: { x: 0, y: 0, w: 80, h: 60 }, density: 0.006, exclude: [SCHOOL_GROUNDS, ...SITE_AREAS] },
+    { kind: 'scatter', object: 'rock', area: { x: 0, y: 0, w: 80, h: 60 }, density: 0.006, exclude: [SCHOOL_GROUNDS] },
     { kind: 'border', object: 'tree', thickness: 1 },
 
-    // หมุดอ้างอิง (RP) 3 หมุด — วางหลังโปรยต้นไม้ ตำแหน่งตรงเส้นกริด 100 ม.
-    { kind: 'object', object: 'rock', at: { x: 20, y: 39 } },
-    { kind: 'object', object: 'rock', at: { x: 40, y: 49 } },
-    { kind: 'object', object: 'rock', at: { x: 70, y: 39 } },
-    // หินปูนสีขาวรอบบ่อน้ำร้อน (B) และหินริมสระ (A)
-    { kind: 'object', object: 'rock', at: { x: 64, y: 17 } },
-    { kind: 'object', object: 'rock', at: { x: 68, y: 16 } },
-    { kind: 'object', object: 'rock', at: { x: 67, y: 39 } },
+    // ค่ายสำรวจของนักสำรวจภาคสนาม (ข้างถนนขึ้นเขา)
+    { kind: 'building', area: { x: 55, y: 27, w: 4, h: 3 }, roof: 'roofOrange', door: { x: 56, y: 29 } },
+    { kind: 'rect', terrain: 'paving', area: { x: 55, y: 30, w: 5, h: 2 } },
   ],
 };

@@ -63,11 +63,15 @@ export interface DialogueLine {
   text: string;
   /** ผลที่เกิดขึ้นเมื่อบรรทัดนี้แสดง เช่น บันทึกเบาะแสลงสมุด */
   effects?: Effect[];
+  /** (ไม่บังคับ) แสดงบรรทัดนี้เฉพาะเมื่อเงื่อนไขตรง ณ ตอนเริ่มคุย — ใช้กับบทเรียนเสริมเฉพาะหัวข้อ */
+  when?: Condition;
 }
 
 /** แทรกคำถามเลือกตอบในบทสนทนา */
 export interface QuizNode {
   quiz: string;
+  /** (ไม่บังคับ) ถามเฉพาะเมื่อเงื่อนไขตรง ณ ตอนเริ่มคุย */
+  when?: Condition;
 }
 
 export type DialogueNode = DialogueLine | QuizNode;
@@ -391,6 +395,7 @@ export type StepCondition =
 
 /** ปุ่มลัดบนแถบภารกิจ — แตะแล้วเปิดเครื่องมือที่ขั้นนั้นต้องใช้ทันที */
 export type GuideActionId =
+  | 'settlement'
   | 'map'
   | 'clues'
   | 'routes'
@@ -445,7 +450,7 @@ export interface MicroStep {
    * เป้าหมายนำทาง: NPC หรือสถานที่ "ที่รู้ตำแหน่งแล้ว" เท่านั้น (เครื่องหมาย ! · ลูกศรขอบจอ · จุดบนแผนที่)
    * ห้ามใช้กับสถานที่ลับ/คำตอบ — when = เงื่อนไขเพิ่มเติมก่อนแสดง (เช่น ค้นพบบ้านผ้าปักแล้ว)
    */
-  target?: { npcId?: string; landmarkId?: string; when?: ObjectiveCondition };
+  target?: { npcId?: string; landmarkId?: string; /** พื้นที่ที่ผู้เล่นเลือกเองจากการวิเคราะห์ (ไม่ใช่เฉลย) */ area?: 'chosen'; /** ผู้สอนคนแรกที่ยังมีบทเรียนเสริมรออยู่ (หลังวิเคราะห์ไม่ผ่าน) */ pendingTeacher?: boolean; when?: ObjectiveCondition };
   /** การวัดระยะของขั้นนี้: เริ่มวัดจากจุดอ้างอิงของภารกิจ (id สถานที่) · allowReset = ให้กด "เริ่มวัดใหม่จากตรงนี้" ได้ */
   measure?: { from: string; allowReset?: boolean };
 }
@@ -469,6 +474,83 @@ export interface DecorDefinition {
   at: TilePoint;
 }
 
+/* ---------------- วิเคราะห์ความเหมาะสมของพื้นที่ตั้งถิ่นฐาน (บทที่ 3: เมืองโบราณใต้ผืนดิน) ---------------- */
+
+/** หัวข้อที่ใช้ตัดสินคะแนน (และเป็นหัวข้อบทเรียนเสริมเมื่อคะแนนไม่ผ่าน) */
+export type SettlementTopic = 'slope' | 'height' | 'landform' | 'water';
+
+/**
+ * เกณฑ์ความเหมาะสมแบบ "จำลอง" — คำนวณจากแบบจำลองความสูงและน้ำในแผนที่จริงของด่าน (ไม่สุ่ม ไม่มีคำตอบตายตัว)
+ * คะแนนบอกความเหมาะสมตามเกณฑ์ในเกม ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง
+ *   ความลาดชัน (slope)       ลาดเอียงเล็กน้อยระบายน้ำดี · ชันมาก/ราบเป็นแอ่งไม่เหมาะ
+ *   ความสูงเหนือน้ำ (height)  สูงพ้นระดับน้ำท่วม แต่ไม่สูงจนใช้น้ำลำบาก
+ *   ลักษณะพื้นที่ (landform)  ชานเนิน/ลานราบเรียบ ไม่ใช่ยอดเขาโล่งหรือแอ่งรับน้ำ
+ *   ความใกล้น้ำ (water)       ใกล้พอใช้น้ำ แต่ไม่ติดลำห้วยจนน้ำท่วมถึง
+ */
+export interface SettlementAnalysisDefinition {
+  /** รัศมีวงกลมวิเคราะห์ (ช่อง) */
+  radiusTiles: number;
+  /** คะแนนเต็มของแต่ละเกณฑ์ (รวม 100) — ความลาดชัน 40 · ความสูง+ลักษณะพื้นที่ 35 (height + landform) · แหล่งน้ำ 25 */
+  weights: Record<SettlementTopic, number>;
+  /** ผ่านเมื่อคะแนนรวม "มากกว่า" ค่านี้ (เปอร์เซ็นต์) */
+  passPercent: number;
+  /** หัวข้อที่ได้สัดส่วนต่ำกว่าค่านี้นับเป็น "ยังไม่เข้าใจ" → ไปเรียนเสริม */
+  weakBelow: number;
+  slope: {
+    /** ช่วงลาดชัน (%) ที่ได้คะแนนเต็ม */
+    idealMinPct: number;
+    idealMaxPct: number;
+    /** ลาดชัน (%) ที่คะแนนเป็น 0 */
+    zeroAtPct: number;
+    /** สัดส่วนคะแนนเมื่อราบสนิท (0%) — ไต่ขึ้นเป็นเต็มที่ idealMinPct */
+    flatFactor: number;
+  };
+  height: {
+    /** ระดับน้ำท่วมสูงสุดเหนือผิวน้ำลำห้วย (ม.) — ข้อมูลจากผู้ดูแลแหล่งน้ำ */
+    floodLevelMeters: number;
+    /** สูงกว่าระดับน้ำท่วมอีกเท่านี้จึงได้คะแนนเต็ม */
+    safeMarginMeters: number;
+    /** สูงกว่าผิวน้ำเกินนี้ใช้น้ำลำบาก คะแนนลดลง */
+    tooHighMeters: number;
+    tooHighFactor: number;
+  };
+  landform: {
+    /** จุดศูนย์กลางสูงกว่าบริเวณรอบวงเกินนี้ = ยอดเนินโล่ง */
+    summitMarginMeters: number;
+    /** ต่ำกว่าบริเวณรอบวงเกินนี้ = แอ่งรับน้ำ */
+    basinMarginMeters: number;
+    summitFactor: number;
+    basinFactor: number;
+    /** ความต่างระดับในวง (ม.) ที่ยังราบเรียบเต็มที่ / ที่คะแนนเป็น 0 */
+    reliefFullMeters: number;
+    reliefZeroMeters: number;
+  };
+  water: {
+    /** ใกล้น้ำกว่านี้ (ม.) = ติดลำห้วยเกินไป */
+    tooCloseMeters: number;
+    tooCloseFactor: number;
+    /** ไกลไม่เกินนี้ (ม.) ยังได้คะแนนเต็ม — ไกลกว่านี้ลดลงเป็น 0 ที่ zeroAtMeters */
+    idealMaxMeters: number;
+    zeroAtMeters: number;
+  };
+  /** หัวข้อ → ชื่อเรียกและผู้ที่สอนเสริม (id ของ NPC) */
+  topics: Record<SettlementTopic, { label: string; teacherId: string }>;
+  /** เปิดให้วิเคราะห์เมื่อ */
+  availableWhen?: Condition;
+  /** flag เมื่อวิเคราะห์ครั้งแรก (ไม่ว่าผ่านหรือไม่) · flag เมื่อวิเคราะห์ผ่าน */
+  attemptFlag: string;
+  successFlag: string;
+  /** ตรวจสอบภาคสนามที่พื้นที่ที่เลือก (ต้องผ่านการวิเคราะห์ก่อน) */
+  fieldCheck: {
+    radiusTiles: number;
+    when?: Condition;
+    /** flag เมื่อตรวจครบ · หลักฐานที่ได้ */
+    flag: string;
+    evidenceId: string;
+    nodes: DialogueNode[];
+  };
+}
+
 export interface LevelDefinition {
   id: string;
   tambon: string;
@@ -490,6 +572,12 @@ export interface LevelDefinition {
   ending?: EndingDefinition;
   quests?: QuestDefinition[];
   inspectPoints?: InspectPoint[];
+  /** วิเคราะห์ความเหมาะสมของพื้นที่ตั้งถิ่นฐาน (บทที่ 3) */
+  settlementAnalysis?: SettlementAnalysisDefinition;
+  /** ระยะห่างเส้นชั้นความสูงบนแผนที่สำรวจ (ม.) — ไม่ระบุ = 10 */
+  contourIntervalMeters?: number;
+  /** แผนที่ภูมิประเทศที่ได้รับ: เมื่อมี flag นี้ แผนที่สำรวจแสดงเส้นชั้นความสูงทั้งแผ่น (ไม่ต้องเดินสำรวจก่อน) */
+  topoMapFlag?: string;
   /** ช่วงของภารกิจหลัก (ขั้นย่อยที่มี phase นับความคืบหน้าแยกตามช่วง) เช่น รับภารกิจ → ตามหาแหล่งผ้าปัก */
   guidePhases?: Array<{ id: string; title: string }>;
   /** ลำน้ำที่ใช้วิเคราะห์ทิศน้ำไหล (แนวเดียวกับ feature ในแผนที่) */

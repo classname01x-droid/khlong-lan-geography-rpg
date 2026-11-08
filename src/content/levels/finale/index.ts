@@ -3,7 +3,6 @@ import { defaultScale } from '../../../core/scale/ScaleSystem';
 import { GameSession } from '../../../core/session/GameSession';
 import { INTEGRATED_CHECKS } from '../../../core/site/IntegratedSiteAnalysis';
 import { ElevationModel } from '../../../core/world/Elevation';
-import { GridSystem } from '../../../core/world/GridSystem';
 import { buildWorld } from '../../../core/world/MapBuilder';
 import type {
   ClueDefinition,
@@ -58,10 +57,11 @@ const l2Sites = (['site-a', 'site-b', 'site-c'] as const).map((id) => ({
 const l2Highest = [...l2Sites].sort((a, b) => b.meters - a.meters)[0];
 const l2Topmost = [...l2Sites].sort((a, b) => a.y - b.y)[0];
 
-// บท 3: บันทึกที่นับ N จากขอบบน → พิกัดที่แก้แล้ว (GridSystem)
-const l3Grid = new GridSystem(L3.grid!, L3.map.widthTiles, L3.map.heightTiles, defaultScale);
-const l3Record = L3.gridSiteAnalysis!.record;
-const l3Corrected = l3Grid.tileToGrid(l3Grid.topCountedGridToTile(l3Record));
+// บท 3: น้ำหนักเกณฑ์วิเคราะห์ที่ตั้งชุมชน (อ่านจากข้อมูลด่านจริง ไม่เขียนตัวเลขซ้ำ)
+const l3A = L3.settlementAnalysis!;
+const l3Slope = l3A.weights.slope;
+const l3Elev = l3A.weights.height + l3A.weights.landform;
+const l3Water = l3A.weights.water;
 
 // บท 4: หลักฐานแต่ละชนิดชี้ได้กี่จุด (ใช้ตรรกะเดียวกับในเกม)
 const l4Rows = new GameSession(L4, buildWorld(L4.map), defaultScale).evaluateIntegratedSites();
@@ -107,14 +107,14 @@ const quizzes: QuizDefinition[] = [
   {
     id: 'board-3',
     speaker: `${BOARD}: ตำบลโป่งน้ำร้อน`,
-    question: `หลักฐานบท 3: บันทึกเก่าเขียน ${GridSystem.format(l3Record)} โดยผู้บันทึกนับค่า N จากขอบบนของแผนที่ พิกัดที่ถูกต้องคือข้อใด?`,
+    question: `หลักฐานบท 3: เกณฑ์วิเคราะห์ที่ตั้งชุมชน (เต็ม 100) = ความลาดชัน ${l3Slope} · ความสูงและลักษณะพื้นที่ ${l3Elev} · แหล่งน้ำ ${l3Water} ผ่านเมื่อมากกว่า ${l3A.passPercent}% ถ้าพื้นที่หนึ่งได้คะแนนผ่าน สรุปได้อย่างไร?`,
     choices: [
-      { id: 'literal', label: GridSystem.format(l3Record), hint: 'นี่คือการอ่านตามที่เขียนโดยไม่แก้การนับ N — ค่า N ต้องนับจากขอบล่างขึ้นไปทางเหนือ' },
-      { id: 'swap', label: GridSystem.format({ e: l3Corrected.n, n: l3Corrected.e }), hint: 'ข้อนี้สลับ E กับ N — อ่าน E (ตะวันออก) ก่อน แล้วจึงอ่าน N (เหนือ)' },
-      { id: 'ok', label: GridSystem.format(l3Corrected) },
+      { id: 'real', label: 'มีเมืองโบราณอยู่ที่นั่นจริงแน่นอน', hint: 'คะแนนคือความเหมาะสมตามเกณฑ์จำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองจริง — ต้องขุดค้นและมีหลักฐานจริง' },
+      { id: 'slope', label: `ดูแค่ความลาดชัน (${l3Slope} คะแนน) ก็พอ`, hint: `ความลาดชันสำคัญที่สุดก็จริง แต่ยังมีความสูง/ลักษณะพื้นที่ ${l3Elev} และแหล่งน้ำ ${l3Water} ที่ต้องดูร่วมกัน` },
+      { id: 'ok', label: 'เป็นพื้นที่ที่เหมาะกับการตั้งถิ่นฐานตามเกณฑ์จำลอง ต้องตรวจภาคสนามและขุดค้นก่อนสรุป' },
     ],
     correctChoiceId: 'ok',
-    fallbackHint: 'แปลง N ที่นับจากขอบบนให้เป็น N ที่นับจากขอบล่าง',
+    fallbackHint: 'คะแนนความเหมาะสม ≠ หลักฐานว่ามีเมืองโบราณจริง',
     correctFeedback: 'ถูกต้อง! ติดรหัส "{{code:level-3}}" ลงช่องตำบลโป่งน้ำร้อน',
     effects: [{ type: 'flag', flag: 'board-3' }],
   },
@@ -152,7 +152,7 @@ const LOCK_SLOTS = [
   { skill: 'ความสูงและทิศทางน้ำไหล', levelId: 'level-2', where: 'หาตาน้ำต้นลำห้วยที่ตำบลคลองน้ำไหล (บทที่ 2)' },
   { skill: 'บูรณาการหลักฐาน ระยะทาง–ภูมิประเทศ–พิกัด', levelId: 'level-4', where: 'หาแหล่งเรียนรู้ที่ตำบลคลองลานพัฒนา (บทที่ 4)' },
   { skill: 'มาตราส่วน ทิศ และระยะทาง', levelId: 'sakngam', where: 'วิเคราะห์เส้นทางไปแหล่งผ้าปักที่ตำบลสักงาม (บทที่ 1)' },
-  { skill: 'พิกัดกริด E/N', levelId: 'level-3', where: 'แก้บันทึกพิกัดบ่อน้ำร้อนที่ตำบลโป่งน้ำร้อน (บทที่ 3)' },
+  { skill: 'เส้นชั้นความสูง ความลาดชัน และความเหมาะสมของพื้นที่', levelId: 'level-3', where: 'วิเคราะห์พื้นที่ชุมชนโบราณจำลองที่ตำบลโป่งน้ำร้อน (บทที่ 3)' },
 ];
 LOCK_SLOTS.forEach((slot, i) =>
   quizzes.push({
@@ -243,7 +243,7 @@ const TAMBON_NAMES = ['ตำบลสักงาม', 'ตำบลคลอ�
 const BOARD_NOTES = [
   'ทักษะ: มาตราส่วน ทิศ ระยะเส้นตรง/ตามเส้นทาง · สถานที่: แหล่งผ้าปัก (ข้อมูลจำลอง)',
   'ทักษะ: สัญลักษณ์แผนที่ ความสูง ทิศทางน้ำไหล · สถานที่: ตาน้ำต้นลำห้วย (ข้อมูลจำลอง)',
-  'ทักษะ: พิกัดกริด E/N จุดกำเนิด ตำแหน่งสัมพัทธ์ · สถานที่: บ่อน้ำร้อนธรรมชาติ (ข้อมูลจำลอง)',
+  'ทักษะ: เส้นชั้นความสูง ความลาดชัน วิเคราะห์ความเหมาะสมของพื้นที่ · สถานที่: ชุมชนโบราณใต้ผืนดิน (สถานการณ์จำลอง)',
   'ทักษะ: บูรณาการหลักฐาน ระยะทาง–ภูมิประเทศ–พิกัด · สถานที่: ศูนย์เรียนรู้ชุมชน (ข้อมูลจำลอง)',
 ];
 

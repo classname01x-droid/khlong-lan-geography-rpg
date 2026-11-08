@@ -41,7 +41,7 @@ describe('ลำดับ 4 ตำบล และการกันเข้า
     expect(LEVEL_SEQUENCE.map((s) => `${s.tambon} — ${s.missionTitle}`)).toEqual([
       'ตำบลสักงาม — ปริศนาลวดลายแห่งสักงาม',
       'ตำบลคลองน้ำไหล — ปริศนาสายน้ำแห่งคลองน้ำไหล',
-      'ตำบลโป่งน้ำร้อน — ปริศนาพิกัดลับแห่งโป่งน้ำร้อน',
+      'ตำบลโป่งน้ำร้อน — ปริศนาเมืองโบราณใต้ผืนดิน',
       'ตำบลคลองลานพัฒนา — ปริศนาแผนที่ลับแห่งคลองลานพัฒนา',
     ]);
     expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
@@ -72,7 +72,7 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
     expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
     expect(c[1].evidenceText).toBe('หลักฐาน: 0/6');
-    expect(c[2].evidenceText).toBe('หลักฐาน: 0/7');
+    expect(c[2].evidenceText).toBe('หลักฐาน: 0/2');
     expect(c[3].evidenceText).toBe('หลักฐาน: 0/6');
   });
 

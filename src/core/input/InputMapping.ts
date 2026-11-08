@@ -107,7 +107,7 @@ export interface TouchContextInput {
   /** ด่านนี้มีหน้าวิเคราะห์ (กระดานวิเคราะห์ หรือ เปรียบเทียบแผนที่) */
   analysis: { available: boolean; label: string } | null;
   dialogue: { kind: 'line' | 'quiz'; choices: string[] } | null;
-  map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; wisdomChoices: string[] };
+  map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; wisdomChoices: string[]; /** เครื่องมือบนแผนที่ (ไม่ระบุ = ปักหมุด) */ tool?: 'pin' | 'settlement' | null };
   notebook: { routeChoices: string[] };
   compareChoices: string[];
   grid: { choices: string[]; selected: number | null; solved: boolean };
@@ -204,7 +204,9 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
           arrow('pinDown', 'ใต้', '▼', 'ArrowDown'),
           arrow('pinLeft', 'ตก', '◀', 'ArrowLeft'),
           arrow('pinRight', 'ออก', '▶', 'ArrowRight'),
-          act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true),
+          i.map.tool === 'settlement'
+            ? act('pinHere', 'วิเคราะห์พื้นที่นี้', '🔍', ACTION_KEY.pinHere, true, true)
+            : act('pinHere', 'ปักหมุดตรงนี้', '📍', ACTION_KEY.pinHere, true, true),
         );
       }
       // ปุ่มรองเป็นครึ่งความกว้าง (วางคู่กัน) ให้คอลัมน์ปุ่มพอดีจอเตี้ย

@@ -6,6 +6,8 @@ import {
   type QuestStatus,
 } from '../../core/session/GameSession';
 import { dirName, fmtMeters10 } from '../format';
+import { explainSettlementPart } from '../../core/site/SettlementAnalysis';
+import { GridSystem } from '../../core/world/GridSystem';
 import { hasMicroSteps, microStates, phaseProgress } from '../../core/guide/MicroQuest';
 import { guideText } from '../../core/guide/GuideText';
 import { guideActionOf } from '../../core/guide/QuestGuide';
@@ -171,6 +173,28 @@ export function buildNotebookView(s: GameSession, opts: { touch?: boolean } = {}
       20,
       8,
     );
+    // ผลวิเคราะห์พื้นที่ตั้งถิ่นฐาน (บทที่ 3): ประวัติทุกครั้ง + รายละเอียดครั้งล่าสุด
+    const sa = s.level.settlementAnalysis;
+    if (sa && s.settlementAttempts.length > 0) {
+      line(`ผลวิเคราะห์พื้นที่ (คะแนนเต็ม 100 · ผ่านเมื่อมากกว่า ${sa.passPercent}%)`, 17, '#5a3a1e', 0, 4);
+      const where = (a: { x: number; y: number }) => (s.coords ? GridSystem.format(s.coords.tileToGrid(a)) : `ช่อง ${a.x},${a.y}`);
+      s.settlementAttempts.forEach((a, i) =>
+        line(
+          `ครั้งที่ ${i + 1} · วงที่ ${where(a)}: ${a.percent}% ${a.passed ? 'ผ่าน ✓' : `ไม่ผ่าน ✗ — ต้องทบทวน: ${a.weak.map((t) => sa.topics[t].label).join(' · ') || '-'}`}`,
+          14,
+          a.passed ? '#1f6b2a' : '#7a2e1e',
+          20,
+          2,
+        ),
+      );
+      const rep = s.latestSettlementReport();
+      if (rep) {
+        space(2);
+        line('รายละเอียดครั้งล่าสุด (คำนวณจากแผนที่)', 15, '#5a3a1e', 20, 2);
+        for (const p of rep.parts) line(`• ${sa.topics[p.id].label} ${p.score}/${p.max} — ${explainSettlementPart(rep, sa, p.id)}`, 14, p.weak ? '#7a2e1e' : '#2b2118', 30, 2);
+        line('คะแนนนี้คือความเหมาะสมตามเกณฑ์จำลอง ไม่ใช่ความน่าจะเป็นที่จะพบเมืองโบราณจริง', 13, '#7a6448', 20, 8);
+      }
+    }
     line('หลักฐานการสำรวจ', 17, '#5a3a1e', 0, 4);
     if (s.evidence.length === 0) line('ยังไม่มี', 14, '#7a6448', 20, 8);
     for (const id of s.evidence) {

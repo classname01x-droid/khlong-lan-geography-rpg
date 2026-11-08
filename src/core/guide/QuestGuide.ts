@@ -54,6 +54,7 @@ export interface QuestTrackerView {
 
 /** ชื่อมาตรฐานของปุ่มลัดบนแถบภารกิจ */
 export const GUIDE_ACTION_LABEL: Record<GuideActionId, string> = {
+  settlement: '🔍 วิเคราะห์พื้นที่',
   map: '🗺️ เปิดแผนที่',
   clues: '📒 เปิดสมุด หน้าเบาะแส',
   routes: '🔍 เปิดกระดานวิเคราะห์เส้นทาง',
@@ -110,6 +111,8 @@ export function stepKind(level: LevelDefinition, step: StoryStep): StepKind {
   const f = c.flag;
   if (level.ending?.completeFlag === f) return 'ending';
   if (level.pinTask?.successFlag === f) return 'pin';
+  if (level.settlementAnalysis && (level.settlementAnalysis.successFlag === f || level.settlementAnalysis.attemptFlag === f)) return 'analysis';
+  if (level.settlementAnalysis?.fieldCheck.flag === f) return 'verify';
   if (level.routeAnalysis?.successFlag === f) return 'route';
   if (level.mapComparison?.successFlag === f) return 'compare';
   if (level.gridSiteAnalysis?.successFlag === f || level.integratedSiteAnalysis?.successFlag === f) return 'analysis';
