@@ -210,18 +210,15 @@ const check = (n, ok, extra = '') => {
   await ev(() => window.__SHOP__.buySelected());
   await ev(() => window.__SHOP__.selectById('guardian-armor'));
   await shot('11-shop-select');
+  const beforeG = (await sh()).coins;
   await ev(() => window.__SHOP__.buySelected());
   v = await sh();
-  check('ร้านค้า: ซื้อใหม่แทนที่ชิ้นที่สวม (ดาบวารี + เกราะผู้พิทักษ์) · โจมตี 40 · ป้องกัน 30', v.weapon === 'water-sword' && v.armor === 'guardian-armor' && v.atk === 40 && v.def === 30, JSON.stringify(v));
+  check('ร้านค้า: ซื้อดาบวารีแทนดาบไม้ที่สวม · โจมตี 40 · เกราะเหล็ก ป้องกัน 15', v.weapon === 'water-sword' && v.armor === 'iron-armor' && v.atk === 40 && v.def === 15, JSON.stringify(v));
+  check('ร้านค้า: เหรียญเหลือ 1300−300−100−600 = 300', beforeG === 300, beforeG);
+  check('ร้านค้า: เหรียญไม่พอซื้อเกราะผู้พิทักษ์ (600) → ซื้อไม่ได้ ไม่ติดลบ', v.coins === 300 && v.armor === 'iron-armor', JSON.stringify(v));
   const owned = await ev(() => JSON.parse(localStorage.getItem('khlonglan-geo-rpg:progress')).rpg);
-  check('ร้านค้า: ของเดิมยังเป็นของเรา (มีดาบไม้/เกราะเหล็ก)', owned.owned.includes('wood-sword') && owned.owned.includes('iron-armor'), JSON.stringify(owned));
-  check('ร้านค้า: เหรียญหักถูกต้อง 1300−300−100−600−600 = −300?', true);
+  check('ร้านค้า: ของเดิมยังเป็นของเรา (มีดาบไม้/เกราะเหล็ก/ดาบวารี) ซื้อซ้ำไม่ได้', owned.owned.includes('wood-sword') && owned.owned.includes('iron-armor') && owned.owned.includes('water-sword') && new Set(owned.owned).size === owned.owned.length, JSON.stringify(owned));
   await shot('12-shop-bought');
-  // เหรียญไม่พอ
-  await ev(() => window.__SHOP__.selectById('iron-sword'));
-  const before = (await sh()).coins;
-  await ev(() => window.__SHOP__.buySelected());
-  check('ร้านค้า: เหรียญไม่พอ → ซื้อไม่ได้ เหรียญไม่ติดลบ', (await sh()).coins === before && before >= 0, before);
   await shot('13-shop-poor');
   await ev(() => window.__SHOP__.proceed());
 
@@ -291,7 +288,7 @@ const check = (n, ok, extra = '') => {
   await page.reload();
   await waitScene('MainMenuScene');
   const saved = await coins();
-  check('บันทึก/โหลด: หลังรีโหลดยังจำเหรียญ ศรัทธา อุปกรณ์ และสถานะชนะบอส', saved.bossDone && saved.weapon === 'water-sword' && saved.armor === 'guardian-armor' && saved.faith === 5, JSON.stringify(saved));
+  check('บันทึก/โหลด: หลังรีโหลดยังจำเหรียญ ศรัทธา อุปกรณ์ และสถานะชนะบอส', saved.bossDone && saved.weapon === 'water-sword' && saved.armor === 'iron-armor' && saved.faith === 5, JSON.stringify(saved));
   check('ไม่มี error ใน console', errors.length === 0, errors.slice(0, 4).join(' | '));
   const bad = results.filter((x) => !x).length;
   console.log(bad ? `FAILED ${bad}/${results.length}` : `ALL PASS ${results.length}`);
