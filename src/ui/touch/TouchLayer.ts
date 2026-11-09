@@ -6,13 +6,13 @@ import { pickInteraction, type InteractionTarget } from '../../core/input/Intera
 import { buildTouchContext, joystickVector, TapGuard, type ActionId, type TouchAction, type TouchContext, type TouchContextInput } from '../../core/input/InputMapping';
 import type { GuideActionId } from '../../content/types';
 import { measureDetail, measureHeadline } from '../../core/measure/Measure';
-import type { CodePiece } from '../../core/progress/ProgressStore';
+import type { CodePiece, ProgressStore } from '../../core/progress/ProgressStore';
 import type { GameSession, NotebookTab } from '../../core/session/GameSession';
 import { MAP_ZOOMS, readableZoomIndex } from '../../core/ui/MapViewport';
 import { hudWidths, type MobileLayout } from '../../core/ui/MobileLayout';
 import { GridSystem } from '../../core/world/GridSystem';
 import { CAMERA_ZOOM, GAME_WIDTH, INTERACT_RADIUS_TILES } from '../../config/constants';
-import { EVENT_TOUCH_TOAST, REGISTRY_CODE_PIECES, REGISTRY_UNLOCKED } from '../../scenes/events';
+import { EVENT_TOUCH_TOAST, REGISTRY_CODE_PIECES, REGISTRY_PROGRESS, REGISTRY_UNLOCKED } from '../../scenes/events';
 import { PAUSE_ITEMS } from '../../scenes/WorldScene';
 import { FONT_FAMILY } from '../theme';
 import { boardTitle, buildBoardView } from '../views/boardView';
@@ -1055,9 +1055,11 @@ export class TouchLayer {
     // แถบมาตราส่วน 50 ม. — ความยาวบนจอคำนวณจากมาตราส่วนโลกเกม × การซูมกล้อง × ขนาดภาพเกมบนจอ
     const sbLen = Math.round(s.scale.metersToPx(50) * CAMERA_ZOOM * (cr.width / GAME_WIDTH));
     const tiles = s.scale.metersToTiles(50);
+    const rpg = (this.game.registry.get(REGISTRY_PROGRESS) as ProgressStore).rpg;
     const html =
       COMPASS_SVG +
       '<div class="tl-st-lines">' +
+      `<div class="tl-coins">🪙 ${rpg.coins} · ✨ ${rpg.faith}</div>` +
       // พิกัดแสดงเฉพาะบทที่ใช้พิกัดกริด (ต้องใช้ระหว่างเดิน) · ระยะเดินสะสม/พื้นที่สำรวจ/เวลา อยู่ในสมุด หน้าหลักฐาน (สถิติ)
       // ระยะวัดแสดงแยกในแถบวัดระยะ (เฉพาะตอนกำลังวัด)
       (s.coords ? `<div>📍 ${esc(pos)}</div>` : '') +

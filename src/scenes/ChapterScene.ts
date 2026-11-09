@@ -1,8 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH } from '../config/constants';
 import { CHAPTERS, getChapter, getChapterIntro, LEGEND_NOTE, type ChapterIntro } from '../content/story/chapters';
-import { LEVEL_SEQUENCE } from '../content/registry';
-import { chapterStates, currentChapter, IN_DEVELOPMENT_MESSAGE, resolveChapterText, type ChapterSlot } from '../core/campaign/Campaign';
+import { chapterStates, currentChapter, IN_DEVELOPMENT_MESSAGE, type ChapterSlot } from '../core/campaign/Campaign';
 import { drawWorldMapArt } from '../graphics/MenuArt';
 import { MenuNavigator } from '../ui/pixel/MenuNavigator';
 import { PixelButton } from '../ui/pixel/PixelButton';
@@ -97,15 +96,7 @@ export class ChapterScene extends Phaser.Scene {
       .setOrigin(0.5, 0);
     this.add.text(GAME_WIDTH / 2, 72, chapter.title, this.style(18, '#f3ead2')).setOrigin(0.5, 0);
 
-    // ---- คำพิทักษ์ 4 ช่อง (คำที่ได้แล้ว / ?) ----
-    if (intro.words) {
-      const slots = LEVEL_SEQUENCE.map((lv) => progress.codePieces[lv.id]?.value ?? '?');
-      const cg = this.add.graphics();
-      drawPixelFrame(cg, 790, 20, 156, 92, 'paper');
-      this.add.text(868, 34, '🐊 คำพิทักษ์', this.style(15, PIXEL.ink)).setOrigin(0.5, 0);
-      this.add.text(868, 66, slots.map((c) => `[${c}]`).join(' '), this.style(14, PIXEL.warn)).setOrigin(0.5, 0);
-      this.add.text(GAME_WIDTH / 2, 116, LEGEND_NOTE, this.style(14, '#f3ead2', true)).setOrigin(0.5, 0);
-    }
+    this.add.text(GAME_WIDTH / 2, 116, LEGEND_NOTE, this.style(14, '#f3ead2', true)).setOrigin(0.5, 0);
 
     // ---- กล่องบทสนทนา ----
     const box = this.add.graphics();
@@ -137,7 +128,7 @@ export class ChapterScene extends Phaser.Scene {
     this.lineShownAt = this.time.now;
     if (this.touchUi) return;
     const line = this.intro.lines[this.lineIndex];
-    const text = resolveChapterText(line.text, getProgress(this).data);
+    const text = line.text;
     this.speaker.setText(line.speaker);
     this.body.setText(wrapThaiText(text, PANEL.w - 56, `19px ${FONT_FAMILY}`));
     this.hint.setText(`${this.lineIndex + 1}/${this.intro.lines.length} · แตะหรือกด Space เพื่ออ่านต่อ`);
@@ -200,7 +191,7 @@ export class ChapterScene extends Phaser.Scene {
       wrapThaiText(
         playable
           ? `${this.intro.heading}: ${this.chapter.tambon} — ${this.chapter.title}`
-          : 'ความคืบหน้าและคำพิทักษ์ทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ',
+          : 'ความคืบหน้าทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ',
         PANEL.w - 56,
         `19px ${FONT_FAMILY}`,
       ),

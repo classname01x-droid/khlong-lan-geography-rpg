@@ -5,6 +5,10 @@ import { MainMenuScene } from './scenes/MainMenuScene';
 import { ChapterScene } from './scenes/ChapterScene';
 import { IntroScene } from './scenes/IntroScene';
 import { EndingScene } from './scenes/EndingScene';
+import { GoldenTimeScene } from './scenes/GoldenTimeScene';
+import { ShopScene } from './scenes/ShopScene';
+import { ApproachScene } from './scenes/ApproachScene';
+import { BossScene } from './scenes/BossScene';
 import { WorldMapScene } from './scenes/WorldMapScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
@@ -31,7 +35,7 @@ const config: Phaser.Types.Core.GameConfig = {
   // หลายนิ้วพร้อมกัน (ปุ่มสัมผัสเป็น DOM แต่การแตะบนแผนที่/ปุ่มในเกมยังใช้ Phaser)
   input: { activePointers: 3 },
   fps: GAME_FPS,
-  scene: [BootScene, MainMenuScene, IntroScene, WorldMapScene, ChapterScene, EndingScene, WorldScene, UIScene],
+  scene: [BootScene, MainMenuScene, IntroScene, WorldMapScene, ChapterScene, EndingScene, GoldenTimeScene, ShopScene, ApproachScene, BossScene, WorldScene, UIScene],
 };
 
 const game = new Phaser.Game(config);

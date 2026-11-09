@@ -80,9 +80,11 @@ export function parseTutorialSave(raw: unknown): TutorialSave | null {
  *   - ไม่มีบันทึกเลย = ผู้เล่นใหม่ → เริ่มบทแนะนำ
  */
 export function shouldRunTutorial(levelId: string, saved: TutorialSave | null, hasAnySave: boolean): boolean {
-  if (levelId !== TUTORIAL_LEVEL_ID) return false;
-  if (saved) return saved.status === 'active';
-  return !hasAnySave;
+  // v0.22: บทแนะนำเดิม (ผูกกับครูเนมและเครื่องมือวัดระยะ) ถูกแทนที่ด้วย Golden Time + ภารกิจแบบ 1 NPC = 1 คำถาม
+  void levelId;
+  void saved;
+  void hasAnySave;
+  return false;
 }
 
 function satisfied(step: TutorialStepId, i: TutorialInput, events: readonly TutorialEvent[]): boolean {

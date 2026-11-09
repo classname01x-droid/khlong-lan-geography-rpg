@@ -1,100 +1,117 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/constants';
-import { CHAPTERS } from '../content/story/chapters';
-import { isCampaignComplete } from '../core/campaign/Campaign';
-import { MenuNavigator } from '../ui/pixel/MenuNavigator';
-import { PixelButton } from '../ui/pixel/PixelButton';
-import { drawPixelFrame } from '../ui/pixel/PixelFrame';
-import { PIXEL } from '../ui/pixel/theme';
+import { characterTextureKey } from '../graphics/PlaceholderTextures';
 import { wrapThaiText } from '../ui/textWrap';
 import { FONT_FAMILY } from '../ui/theme';
-import { endingSummary, endingView } from '../ui/views/screens';
-import { REGISTRY_TOUCH_UI } from './events';
-import { getProgress, goToMainMenu, goToWorldMap, SCENE } from './navigation';
+import { getProgress, goToMainMenu, SCENE } from './navigation';
+import { Btn, gradientBg, PAL, panel, pauseWhenHidden, sparkle, txt } from './rpg/kit';
+
+const CROC_LINE = 'ขอบใจเจ้าที่ช่วยปลดปล่อยข้า ข้าจะกลับมาปกป้องผืนป่าและสายน้ำคลองลานอีกครั้ง';
+export const ENDING_TITLE = 'ภารกิจสำเร็จ — คลองลานกลับมาสงบสุข';
+export const ENDING_SUMMARY = 'เจ้าช่วยปลดปล่อยผู้พิทักษ์ได้สำเร็จ การดูแลป่าและสายน้ำเป็นหน้าที่ของทุกคน';
 
 /**
- * ฉากจบเกม: แผนที่ภูมิปัญญาครบ 4 ตำบล + สรุปผลการเรียนรู้ทั้งการเดินทาง
- * ตัวเลขทั้งหมดมาจากผลที่บันทึกไว้จริง (summarizeJourney) — ค่าที่บันทึกรุ่นเก่าไม่มีจะระบุว่าทราบจากกี่บท ไม่ประมาณ
- * เปิดได้เฉพาะเมื่อจบเกมแล้วจริง (ผ่านบท 1–5)
+ * ฉากจบ (หลังชนะพญาจระเข้) — เข้าได้เฉพาะเมื่อชนะบอสแล้ว
+ * ภาพพื้นหลังจากภาพที่ผู้ใช้เตรียมไว้ (ตัดส่วนกล่องข้อความที่ติดมากับภาพออก — public/rpg/ending.jpg)
+ * ภาพนิ่ง → ใช้ม่วงจางหาย · แสงทอง · ประกายระยิบ · ภาพ "หายใจ" ช้า ๆ (ศีรษะพญาจระเข้ขยับสงบ)
+ * ชาวบ้านเฮ = สไปรต์ placeholder ของเกม (กระโดดสลับ) เพราะภาพต้นฉบับไม่มีสไปรต์แยกตัว
  */
 export class EndingScene extends Phaser.Scene {
-  private nav: MenuNavigator | null = null;
+  private line!: Phaser.GameObjects.Text;
+  private typed = 0;
+  private revealed = false;
 
   constructor() {
     super(SCENE.ending);
   }
 
-  create(): void {
-    const progress = getProgress(this).data;
-    if (!isCampaignComplete(CHAPTERS, progress)) {
-      this.time.delayedCall(0, () => goToWorldMap(this));
-      return;
-    }
-    const sum = endingSummary(progress);
-    const view = endingView(progress, sum);
-
-    const g = this.add.graphics();
-    g.fillStyle(PIXEL.creamDark, 1).fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.nav?.handleKey(ev.code));
-    if (import.meta.env.DEV) (window as unknown as { __ENDING__: unknown }).__ENDING__ = sum;
-    // จอสัมผัส: เนื้อหาเป็น DOM ตัวอักษรใหญ่ แบ่งแท็บ เลื่อนอ่านได้ (TouchScreens) — canvas เป็นพื้นหลัง
-    if (this.registry.get(REGISTRY_TOUCH_UI) === true) {
-      this.nav = new MenuNavigator([], () => goToMainMenu(this));
-      return;
-    }
-    drawPixelFrame(g, 150, 12, 660, 70, 'wood');
-    this.add.text(GAME_WIDTH / 2, 20, view.title, this.style(26, PIXEL.light, true)).setOrigin(0.5, 0);
-    this.add.text(GAME_WIDTH / 2, 56, view.subtitle, this.style(15, '#f3ead2')).setOrigin(0.5, 0);
-
-    // ---- ซ้าย: แผนที่ภูมิปัญญา 4 ตำบล ----
-    drawPixelFrame(g, 16, 92, 470, 470, 'paper');
-    let y = 106;
-    const left = (text: string, size: number, color: string, gap = 4, width = 438) => {
-      const t = this.add.text(32, y, wrapThaiText(text, width, `${size}px ${FONT_FAMILY}`), this.style(size, color));
-      y += t.height + gap;
-    };
-    left('แผนที่ภูมิปัญญา 4 ตำบล', 19, PIXEL.ink, 8);
-    for (const w of view.wisdom) {
-      left(`${w.index}. ${w.tambon} — ${w.site}`, 15, PIXEL.ink, 2);
-      left(`   ทักษะ: ${w.learning}`, 13, PIXEL.inkSoft, 2);
-      left(`   คำพิทักษ์คำที่ ${w.index}: "${w.code}"${w.evidence ? ` · ${w.evidence}` : ''}`, 13, PIXEL.good, 10);
-    }
-    left(`คำพิทักษ์ครบ 4 คำ: ${view.codes.join(' · ')}`, 16, PIXEL.warn, 4);
-    left(view.note, 12, PIXEL.inkMuted, 0);
-
-    // ---- ขวา: ผลการเรียนรู้ ----
-    drawPixelFrame(g, 498, 92, 446, 470, 'paper');
-    y = 106;
-    const right = (text: string, size: number, color: string, gap = 4) => {
-      const t = this.add.text(514, y, wrapThaiText(text, 414, `${size}px ${FONT_FAMILY}`), this.style(size, color));
-      y += t.height + gap;
-    };
-    right('ผลการเรียนรู้ทั้งการเดินทาง', 19, PIXEL.ink, 8);
-    view.stats.forEach((line, i) => right(line, 15, PIXEL.ink, i === view.stats.length - 1 ? 10 : 4));
-    right('ทักษะภูมิศาสตร์ที่ได้ใช้', 16, PIXEL.ink, 4);
-    right(view.skills.length ? view.skills.map((l) => `• ${l}`).join('\n') : 'ไม่มีข้อมูลในบันทึก', 13, PIXEL.good, 4);
-
-    const map = new PixelButton(this, 230, 576, 'แผนที่การเดินทาง', { width: 240, height: 50, fontSize: 18, onClick: () => this.toJourney() });
-    const menu = new PixelButton(this, 490, 576, 'เมนูหลัก', { width: 240, height: 50, fontSize: 18, onClick: () => this.toMenu() });
-    this.nav = new MenuNavigator([map, menu], () => goToMainMenu(this));
+  preload(): void {
+    if (!this.textures.exists('ending-bg')) this.load.image('ending-bg', 'rpg/ending.jpg');
   }
 
-  toJourney(): void {
-    goToWorldMap(this);
+  create(): void {
+    if (!getProgress(this).rpg.bossDone) {
+      // ยังไม่ชนะบอส: ห้ามเข้าฉากจบ
+      this.time.delayedCall(0, () => goToMainMenu(this));
+      return;
+    }
+    this.typed = 0;
+    this.revealed = false;
+    gradientBg(this, 0x1a1030, 0x0a0a18);
+    const img = this.add.image(GAME_WIDTH / 2, 0, 'ending-bg');
+    img.setScale(GAME_WIDTH / img.width).setY((img.height * img.scaleY) / 2);
+    this.tweens.add({ targets: img, scale: img.scaleX * 1.015, duration: 4200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+    // มลพิษสีม่วงจางหายไป
+    const purple = this.add.rectangle(0, 0, GAME_WIDTH, 400, 0x7b3fb5, 0.5).setOrigin(0).setDepth(4);
+    this.tweens.add({ targets: purple, alpha: 0, duration: 3600, ease: 'Sine.easeOut' });
+    // แสงทองจากด้านบน (ลำแสง 5 แฉกหมุนช้า)
+    const rays = this.add.graphics({ x: 585, y: 0 }).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
+    for (let i = 0; i < 5; i++) {
+      const a = 0.9 + i * 0.35;
+      rays.fillStyle(0xffe9a0, 0.1).fillTriangle(0, 0, Math.cos(a - 0.09) * 520, Math.sin(a - 0.09) * 520, Math.cos(a + 0.09) * 520, Math.sin(a + 0.09) * 520);
+    }
+    rays.setAlpha(0);
+    this.tweens.add({ targets: rays, alpha: 1, duration: 2800 });
+    this.tweens.add({ targets: rays, angle: 8, duration: 5000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // ประกายระยิบ (10 ชิ้น วนซ้ำ)
+    for (let i = 0; i < 10; i++) {
+      const s = this.add.rectangle(430 + Math.random() * 480, 40 + Math.random() * 260, 7, 7, 0xfff3a8, 0).setDepth(6).setRotation(0.78);
+      this.tweens.add({ targets: s, alpha: { from: 0, to: 1 }, scale: { from: 0.4, to: 1.5 }, duration: 900, yoyo: true, repeat: -1, delay: Math.random() * 2500, repeatDelay: Math.random() * 1500 });
+    }
+    // ชาวบ้านเฮ (สไปรต์ placeholder กระโดดสลับกัน)
+    (['student', 'villager', 'teacher', 'headman', 'villager'] as const).forEach((who, i) => {
+      const c = this.add.image(60 + i * 62, 358, characterTextureKey(who), 'down-0').setScale(4).setDepth(7);
+      this.tweens.add({ targets: c, y: 340, duration: 260, yoyo: true, repeat: -1, delay: i * 120, repeatDelay: 220, ease: 'Sine.easeOut' });
+    });
+
+    // กล่องข้อความ
+    panel(this, 14, 372, GAME_WIDTH - 28, 254, 0.93).setDepth(10);
+    txt(this, 34, 380, 'พญาจระเข้ ผู้พิทักษ์คลองลาน', 22, PAL.gold).setDepth(11);
+    this.line = txt(this, 34, 412, '', 24, PAL.white, { lineSpacing: 6 }).setDepth(11);
+    this.input.on('pointerdown', () => this.revealNow());
+    this.input.keyboard?.on('keydown', (ev: KeyboardEvent) => {
+      if (ev.code === 'Space' || ev.code === 'Enter') this.revealed ? this.toMenu() : this.revealNow();
+    });
+    this.time.addEvent({ delay: 55, repeat: CROC_LINE.length, callback: () => this.typeStep() });
+    pauseWhenHidden(this);
+    sparkle(this, 640, 170, 0xffe9a0, 10, 140, 8);
+    (window as unknown as { __ENDING_SCENE__?: EndingScene }).__ENDING_SCENE__ = this;
+  }
+
+  private typeStep(): void {
+    if (this.revealed) return;
+    this.typed++;
+    this.line.setText(wrapThaiText(CROC_LINE.slice(0, this.typed), GAME_WIDTH - 80, `24px ${FONT_FAMILY}`));
+    if (this.typed >= CROC_LINE.length) this.showResult();
+  }
+
+  private revealNow(): void {
+    if (this.revealed) return;
+    this.typed = CROC_LINE.length;
+    this.line.setText(wrapThaiText(CROC_LINE, GAME_WIDTH - 80, `24px ${FONT_FAMILY}`));
+    this.showResult();
+  }
+
+  /** ข้อความภารกิจสำเร็จ + ปุ่มกลับหน้าหลัก */
+  private showResult(): void {
+    if (this.revealed) return;
+    this.revealed = true;
+    const t = txt(this, GAME_WIDTH / 2, 506, ENDING_TITLE, 32, PAL.gold).setOrigin(0.5).setDepth(11).setAlpha(0).setWordWrapWidth(GAME_WIDTH - 60, true);
+    const s = txt(this, GAME_WIDTH / 2, 532, wrapThaiText(ENDING_SUMMARY, GAME_WIDTH - 80, `20px ${FONT_FAMILY}`), 20, PAL.soft).setOrigin(0.5, 0).setDepth(11).setAlpha(0).setAlign('center');
+    this.tweens.add({ targets: [t, s], alpha: 1, duration: 500 });
+    const b = new Btn(this, GAME_WIDTH / 2 - 170, 568, 340, 54, 'กลับหน้าหลัก', () => this.toMenu(), { fill: PAL.good, size: 28 });
+    b.setDepth(12).setAlpha(0);
+    this.tweens.add({ targets: b, alpha: 1, duration: 500, delay: 400 });
+    sparkle(this, GAME_WIDTH / 2, 506, 0xffd84d, 12, 160, 12);
+    void GAME_HEIGHT;
   }
 
   toMenu(): void {
     goToMainMenu(this);
   }
 
-  private style(size: number, color: string, stroke = false): Phaser.Types.GameObjects.Text.TextStyle {
-    return {
-      fontFamily: FONT_FAMILY,
-      fontSize: `${size}px`,
-      color,
-      lineSpacing: 2,
-      padding: { top: 4 },
-      ...(stroke ? { stroke: '#2a1a0c', strokeThickness: 5 } : {}),
-    };
+  toJourney(): void {
+    goToMainMenu(this);
   }
 }

@@ -1,20 +1,16 @@
-import { finaleRows } from '../../content/finale';
 import { LEVEL_SEQUENCE, LEVELS, ALL_LEVELS } from '../../content/registry';
-import { CHAPTERS, FINALE_CHAPTER_ID, getChapter, getChapterIntro, LEGEND_NOTE } from '../../content/story/chapters';
+import { CHAPTERS, getChapter, getChapterIntro } from '../../content/story/chapters';
 import {
   chapterStates,
   continueTarget,
   IN_DEVELOPMENT_MESSAGE,
   isCampaignComplete,
-  resolveChapterText,
   type ChapterState,
   type ContinueTarget,
 } from '../../core/campaign/Campaign';
-import { summarizeJourney, type JourneySummary, type Known } from '../../core/campaign/JourneySummary';
-import { SKILL_LABEL, type SkillId } from '../../core/mission/skills';
 import { describeLevel } from '../../core/progress/LevelProgress';
 import type { ProgressData } from '../../core/progress/ProgressStore';
-import { fmtDuration, fmtMeters } from '../format';
+import { fmtMeters } from '../format';
 
 /**
  * ข้อมูลของหน้าจอนอกด่าน (เมนูหลัก · แผนที่การเดินทาง · ฉากเชื่อมบท · ฉากจบ) — ข้อมูลล้วน ไม่ผูกกับ Phaser
@@ -60,8 +56,8 @@ export function continueSummary(target: ContinueTarget): string {
       return `บทที่ ${target.chapter.order} · ${target.chapter.tambon} (มีบันทึกค้างอยู่)`;
     case 'begin':
       return `บทที่ ${target.chapter.order} · ${target.chapter.tambon} (เริ่มบทใหม่)`;
-    case 'blocked':
-      return `บทที่ ${target.chapter.order}: คำพิทักษ์ยังไม่ครบ`;
+    case 'stage':
+      return `บทที่ ${target.chapter.order} · ${target.chapter.tambon}`;
     case 'in-development':
       return `บทที่ ${target.chapter.order}: ${IN_DEVELOPMENT_MESSAGE}`;
   }
@@ -140,8 +136,6 @@ export interface JourneyView {
   complete: boolean;
   /** 4 ตำบล + บทที่ 5 ตามลำดับเรื่อง */
   nodes: JourneyNode[];
-  /** รหัสลับ 4 ชิ้น (ยังไม่ได้ = '?') */
-  codes: string[];
   notice: { text: string; tone: 'normal' | 'warn' | 'bad' };
   /** ปุ่มหลักปุ่มเดียว: พาไปภารกิจหลักปัจจุบันเท่านั้น */
   primary: { label: string; enabled: boolean };
@@ -159,13 +153,12 @@ export function journeyView(p: ProgressData): JourneyView {
     const details: string[] = [];
     if (m) {
       if (state === 'explored' || state === 'current') details.push(m.evidenceText);
-      details.push(`คำพิทักษ์: ${m.codePiece ? `คำที่ ${m.codePiece.index} "${m.codePiece.value}"` : 'ยังไม่พบ'}`);
       if (m.result) {
         const sec = Math.floor(m.result.elapsedMs / 1000);
         details.push(`ผลสำรวจ: ${fmtMeters(m.result.distanceMeters)} · ผิด ${m.result.mistakes} · ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} นาที`);
       }
     } else {
-      details.push(c.id === FINALE_CHAPTER_ID ? 'ต้องจบบท 1–4 และมีคำพิทักษ์ครบ 4 คำ' : '');
+      details.push(c.kind === 'shop' ? 'ใช้เหรียญซื้ออาวุธ เกราะ และยารักษา' : 'ชำระมลพิษพญาจระเข้ด้วยพลังศรัทธา');
     }
     return {
       id: c.id,
@@ -179,14 +172,8 @@ export function journeyView(p: ProgressData): JourneyView {
       inDevelopment: state === 'current' && !c.playable,
     };
   });
-  const codes = LEVEL_SEQUENCE.map((s) => p.codePieces[s.id]?.value ?? '?');
-  const finale = CHAPTERS.find((c) => c.id === FINALE_CHAPTER_ID)!;
   let notice: JourneyView['notice'] = {
-    text: complete
-      ? 'บทที่ 5 ปลดปล่อยพญาจระเข้: สำเร็จแล้ว — ลำน้ำคลองลานใสอีกครั้ง'
-      : states[finale.id] === 'current'
-        ? `บทที่ 5 พร้อมแล้ว: ${finale.tambon} (คำพิทักษ์ครบ 4 คำ)`
-        : 'บทที่ 5 ปลดปล่อยพญาจระเข้: ต้องจบบท 1–4 และมีคำพิทักษ์ครบ 4 คำ',
+    text: complete ? 'ชำระมลพิษสำเร็จ — คลองลานกลับมาสงบสุข' : `เหรียญ ${p.rpg?.coins ?? 0} · ศรัทธา ${p.rpg?.faith ?? 0}`,
     tone: 'normal',
   };
   const target = continueTarget(CHAPTERS, p);
@@ -197,22 +184,18 @@ export function journeyView(p: ProgressData): JourneyView {
         ? `เล่นต่อ: บทที่ ${target.chapter.order}`
         : target.kind === 'begin'
           ? `เดินทางต่อ: บทที่ ${target.chapter.order}`
-          : target.kind === 'blocked'
-            ? 'คำพิทักษ์ยังไม่ครบ'
+          : target.kind === 'stage'
+            ? `ไปต่อ: ${target.chapter.tambon}`
             : IN_DEVELOPMENT_MESSAGE;
   if (target.kind === 'in-development') {
     notice = { text: `บทที่ ${target.chapter.order}: ${IN_DEVELOPMENT_MESSAGE} — ความคืบหน้าถูกบันทึกไว้แล้ว`, tone: 'warn' };
   }
-  if (target.kind === 'blocked') {
-    notice = { text: `บทที่ ${target.chapter.order}: ต้องมีคำพิทักษ์ครบ 4 คำก่อน (ยังขาด ${target.missingCodes.length} คำ)`, tone: 'bad' };
-  }
   return {
-    title: complete ? 'แผนที่การเดินทาง — สำรวจครบทั้ง 4 ตำบล ✓' : 'แผนที่การเดินทาง — อำเภอคลองลาน',
+    title: complete ? 'แผนที่การเดินทาง — ภารกิจสำเร็จ ✓' : 'แผนที่การเดินทาง — อำเภอคลองลาน',
     complete,
     nodes,
-    codes,
     notice,
-    primary: { label, enabled: target.kind !== 'in-development' && target.kind !== 'blocked' },
+    primary: { label, enabled: target.kind !== 'in-development' },
   };
 }
 
@@ -226,11 +209,9 @@ export interface ChapterIntroView {
   goal: string;
   lines: Array<{ speaker: string; text: string }>;
   playable: boolean;
-  /** คำพิทักษ์ 4 ช่อง (ยังไม่ได้ = '?') */
-  words: { slots: string[]; note: string } | null;
 }
 
-export function chapterIntroView(chapterId: string, p: ProgressData): ChapterIntroView | null {
+export function chapterIntroView(chapterId: string, _p: ProgressData): ChapterIntroView | null {
   const chapter = getChapter(chapterId);
   const intro = getChapterIntro(chapterId);
   if (!chapter || !intro) return null;
@@ -241,61 +222,7 @@ export function chapterIntroView(chapterId: string, p: ProgressData): ChapterInt
     tambon: chapter.tambon,
     title: chapter.title,
     goal: main?.description ?? chapter.title,
-    lines: intro.lines.map((l) => ({ speaker: l.speaker, text: resolveChapterText(l.text, p) })),
+    lines: intro.lines.map((l) => ({ speaker: l.speaker, text: l.text })),
     playable: chapter.playable && !!chapter.levelId,
-    words: intro.words ? { slots: LEVEL_SEQUENCE.map((s) => p.codePieces[s.id]?.value ?? '?'), note: LEGEND_NOTE } : null,
-  };
-}
-
-/* ======================= ฉากจบ ======================= */
-
-export interface EndingView {
-  title: string;
-  subtitle: string;
-  wisdom: Array<{ index: number; tambon: string; site: string; learning: string; code: string; evidence: string | null }>;
-  codes: string[];
-  stats: string[];
-  skills: string[];
-  note: string;
-}
-
-const known = (k: Known<unknown>) => (k.from < k.of ? ` (ทราบจาก ${k.from}/${k.of} บท)` : '');
-
-export function endingSummary(p: ProgressData): JourneySummary {
-  return summarizeJourney(
-    CHAPTERS.map((c) => c.levelId ?? c.id),
-    LEVEL_SEQUENCE.map((s) => s.id),
-    p,
-  );
-}
-
-export function endingView(p: ProgressData, sum: JourneySummary = endingSummary(p)): EndingView {
-  const wisdom = finaleRows().map((row, i) => {
-    const r = sum.chapters[i].result;
-    return {
-      index: i + 1,
-      tambon: row.tambon,
-      site: row.site,
-      learning: row.learning,
-      code: sum.codes[i]?.value ?? '?',
-      evidence: r && typeof r.evidenceFound === 'number' && typeof r.evidenceTotal === 'number' ? `หลักฐาน ${r.evidenceFound}/${r.evidenceTotal}` : null,
-    };
-  });
-  const stats = [
-    `บทที่ผ่าน: ${sum.completedCount}/${CHAPTERS.length}`,
-    sum.quests ? `ภารกิจที่สำเร็จ: ${sum.quests.value.done}/${sum.quests.value.total}${known(sum.quests)}` : 'ภารกิจที่สำเร็จ: ไม่มีข้อมูลในบันทึก',
-    sum.evidence ? `หลักฐานที่ค้นพบ: ${sum.evidence.value.found}/${sum.evidence.value.total}${known(sum.evidence)}` : 'หลักฐานที่ค้นพบ: ไม่มีข้อมูลในบันทึก',
-    `ระยะทางเดินรวม: ${fmtMeters(sum.distanceMeters.value)}${known(sum.distanceMeters)}`,
-    `เวลาเล่นรวม: ${fmtDuration(sum.elapsedMs.value)}${known(sum.elapsedMs)}`,
-    `จำนวนครั้งที่ตอบผิด: ${sum.mistakes.value}${known(sum.mistakes)}`,
-  ];
-  return {
-    title: 'ชำระมลพิษสำเร็จ — ช่วยชาวบ้านครบทั้ง 4 ตำบล',
-    subtitle: 'คำพิทักษ์ทั้ง 4 คำปลดปล่อยพญาจระเข้ให้กลับมาปกป้องลำน้ำคลองลาน และแผนที่ภูมิปัญญาอำเภอคลองลานก็สมบูรณ์',
-    wisdom,
-    codes: sum.codes.map((c) => c?.value ?? '?'),
-    stats,
-    skills: sum.skills.map((k) => SKILL_LABEL[k as SkillId]).filter(Boolean),
-    note: `สถานที่และภูมิปัญญาในเกมเป็นข้อมูลจำลองเพื่อการเรียนรู้ · ${LEGEND_NOTE}`,
   };
 }

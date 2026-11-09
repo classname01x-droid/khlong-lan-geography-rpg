@@ -134,10 +134,6 @@ export class WorldScene extends Phaser.Scene {
     const level = getLevel(levelId);
     const grid = buildWorld(level.map);
     this.session = new GameSession(level, grid, defaultScale);
-    // รหัสลับที่เก็บได้จริงจากบันทึก (ใช้ในบทสรุป {{code:...}})
-    this.session.campaignCodes = Object.fromEntries(
-      Object.entries(getProgress(this).data.codePieces).map(([id, c]) => [id, c.value]),
-    );
     this.registry.set(REGISTRY_SESSION, this.session);
     this.registry.remove(REGISTRY_UNLOCKED);
     this.npcs = [];
@@ -290,6 +286,8 @@ export class WorldScene extends Phaser.Scene {
 
     // ---- ความคืบหน้า: เล่นต่อจากที่บันทึกไว้ (เพิ่ม ?new=1 ใน URL เพื่อเริ่มใหม่) ----
     this.progress = getProgress(this);
+    // รางวัลภารกิจ (เหรียญ + ศรัทธา) เก็บลงบันทึกผ่านระบบกระเป๋า — ได้ครั้งแรกเท่านั้น
+    this.session.wallet = this.progress;
     // บทแนะนำ: ผู้เล่นใหม่ (ไม่มีบันทึก) หรือบทแนะนำที่ยังเล่นค้าง — ตรวจก่อนบันทึกอัตโนมัติครั้งแรก
     const savedTutorial = this.progress.tutorialSave();
     if (shouldRunTutorial(level.id, savedTutorial, this.progress.hasAnySave())) {
@@ -860,12 +858,31 @@ export class WorldScene extends Phaser.Scene {
     this.session.uiVersion++;
   }
 
+  /** เหรียญ + ศรัทธาลอยขึ้นเหนือผู้เล่น (ข้อความเดียว ไม่บังจอ) */
+  private floatReward(coins: number, faith: number): void {
+    const t = this.add
+      .text(this.player.x, this.player.y - 26, `+${coins} 🪙  +${faith} ✨`, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '9px',
+        color: '#ffe27a',
+        stroke: '#2a1a0c',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH.guide + 3);
+    this.tweens.add({ targets: t, y: t.y - 28, alpha: 0, duration: 1500, ease: 'Sine.easeOut', onComplete: () => t.destroy() });
+  }
+
   /** ทำงานแล้วแจ้งเตือนฉากที่เพิ่งผ่าน */
   private withStepToasts(fn: () => void): void {
     const s = this.session;
     const before = s.currentStepOrder;
     fn();
     const after = s.currentStepOrder;
+    for (let r = s.rewardEvents.shift(); r; r = s.rewardEvents.shift()) {
+      s.toast(`+${r.coins} เหรียญ  +${r.faith} ศรัทธา`);
+      this.floatReward(r.coins, r.faith);
+    }
     for (const step of s.level.story) {
       if (step.order >= before && step.order < after) s.toast(`ผ่านฉากที่ ${step.order}: ${step.title}`);
     }
@@ -1294,7 +1311,6 @@ export class WorldScene extends Phaser.Scene {
   private onMissionComplete(): void {
     const s = this.session;
     const sum = s.summary();
-    const ending = s.level.ending;
     this.progress.completeLevel(
       {
         levelId: s.level.id,
@@ -1308,7 +1324,7 @@ export class WorldScene extends Phaser.Scene {
         quests: sum.quests,
         evidenceFound: s.evidence.length,
         evidenceTotal: s.level.evidence?.length ?? 0,
-        codePiece: ending?.codePiece ?? null,
+        codePiece: null,
       },
       s.level.unlocks,
     );

@@ -2,7 +2,6 @@ import { khlongNamLaiLevel } from './levels/khlongnamlai';
 import { pongNamRonLevel } from './levels/pongnamron';
 import { khlongLanPattanaLevel } from './levels/khlonglanpattana';
 import { sakNgamLevel } from './levels/sakngam';
-import { finaleLevel } from './levels/finale';
 import type { ProgressData } from '../core/progress/ProgressStore';
 import type { LevelDefinition } from './types';
 
@@ -14,10 +13,8 @@ export const LEVELS: readonly LevelDefinition[] = [sakNgamLevel, khlongNamLaiLev
 
 export const DEFAULT_LEVEL_ID = sakNgamLevel.id;
 
-/** บทที่ 5 (บทสรุป) — ไม่ใช่ตำบลใหม่ จึงไม่อยู่ใน LEVELS / LEVEL_SEQUENCE แต่เล่นด้วยระบบด่านเดิม */
-export const FINALE_LEVEL: LevelDefinition = finaleLevel;
-/** ทุกฉากที่เล่นได้ (4 ตำบล + บทสรุป) */
-export const ALL_LEVELS: readonly LevelDefinition[] = [...LEVELS, finaleLevel];
+/** ทุกด่านที่เล่นได้ (4 ตำบล) */
+export const ALL_LEVELS: readonly LevelDefinition[] = LEVELS;
 
 /**
  * ลำดับด่านทั้งเกม (รวมด่านที่ยังไม่สร้าง) — ใช้กับระบบปลดล็อก

@@ -1,70 +1,82 @@
+import { ElevationModel } from '../../../core/world/Elevation';
+import { analyzeWaterway } from '../../../core/world/Waterway';
 import type { LevelDefinition } from '../../types';
-import { pongNamRonMap } from './map';
-import {
-  PONG_PHASES,
-  pongClues,
-  pongEnding,
-  pongEvidence,
-  pongQuests,
-  pongQuizzes,
-  pongSettlement,
-  pongStory,
-} from './mission';
-import { pongNamRonNpcs } from './npcs';
+import { buildMissions, extremeOf, flowChoices, type MissionSpec } from '../simple';
+import { pongNamRonMap, STREAM } from './map';
 
 /**
- * ด่านที่ 3: ปริศนาเมืองโบราณใต้ผืนดิน (ตำบลโป่งน้ำร้อน · 6 ฉาก · รหัสลับชิ้นที่ 3 = "พิกัด")
- * ใช้ id 'level-3' ที่จองไว้ใน LEVEL_SEQUENCE → ปลดล็อกเมื่อจบด่าน 2 และปลดล็อกบทที่ 4 เมื่อจบ
- * โฟลเดอร์นี้มีแต่เนื้อหา — ระบบวิเคราะห์พื้นที่อยู่ที่ core/site/SettlementAnalysis.ts
- *
- * contentVersion 3: กิจกรรมวิเคราะห์ใช้ 2 เกณฑ์ (ระดับความสูง · ระยะจากแหล่งน้ำ) — บันทึกกลางบทรุ่นก่อน
- * (รุ่น 1: ปริศนาพิกัด RP/A-B-C · รุ่น 2: เกณฑ์ 4 ข้อรวมความลาดชัน) ใช้ต่อไม่ได้
- * ระบบจะรีเซ็ตเฉพาะการเล่นกลางบทที่ 3 พร้อมแจ้งผู้เล่น · บทที่ 1–2 · รหัสที่ได้รับ · การปลดล็อกบท ไม่ถูกแตะต้อง
- *
- * เรื่องเมืองโบราณเป็นสถานการณ์จำลองเพื่อการเรียนรู้ ไม่ใช่ประวัติศาสตร์จริงของตำบลโป่งน้ำร้อน
+ * ด่านที่ 3: ตำบลโป่งน้ำร้อน — ช่วยชาวบ้าน 3 คน (ที่ตั้งหมู่บ้าน · ทิศน้ำไหล · น้ำฝนจากเนินไปรวมที่ใด)
  */
+const camp = { id: 'camp', at: { x: 57, y: 29 } };
+const hall = { id: 'hall', at: { x: 30, y: 47 } };
+const bridge = { id: 'bridge', at: { x: 49, y: 44 } };
+const low = extremeOf(pongNamRonMap, [camp, hall, bridge], 'lowest');
+const label: Record<string, string> = { camp: 'ค่ายสำรวจ', hall: 'ศาลาประชาคม', bridge: 'สะพานข้ามลำห้วย' };
+const flow = analyzeWaterway(STREAM, new ElevationModel(pongNamRonMap.elevation!)).flowDirection;
+
+const specs: MissionSpec[] = [
+  {
+    id: 'site',
+    npc: { id: 'villager-son', name: 'ลุงสอน', appearance: 'villager', at: { x: 35, y: 43 } },
+    problem: 'ชุมชนจะขยายบ้านเรือน เราควรเลือกที่ตั้งที่ปลอดภัยและใช้น้ำสะดวก',
+    question: 'ควรสร้างบ้านที่ใด?',
+    correct: 'สูงกว่าลำห้วยพอสมควร และอยู่ไม่ไกลจากน้ำ',
+    wrong: ['ที่ลุ่มติดลำห้วย', 'บนเขาสูงที่ไกลจากน้ำมาก'],
+    hint: 'ต้องพ้นน้ำท่วม แต่ก็ต้องใช้น้ำได้สะดวก',
+    feedback: 'ถูกต้อง! ที่สูงกว่าลำห้วยแต่ไม่ไกลน้ำ ทั้งปลอดภัยและสะดวก',
+    thanks: 'เราจะสร้างบ้านตามนี้ ขอบใจนะผู้นำ',
+    landmark: 'village',
+    goal: 'ช่วยลุงสอนเลือกที่ตั้งหมู่บ้าน',
+  },
+  {
+    id: 'flow',
+    npc: { id: 'water-keeper', name: 'ป้าจันทร์', appearance: 'headman', at: { x: 31, y: 47 } },
+    problem: 'ลำห้วยโป่งน้ำร้อนไหลไปทางไหน ป้าจะได้รู้ว่าน้ำเสียจะไปถึงใคร',
+    question: 'น้ำในลำห้วยไหลไปทางทิศใด?',
+    ...flowChoices(flow),
+    hint: 'ดูตัวเลขความสูงบนแผนที่ ทางเหนือสูง ทางใต้ต่ำ น้ำไหลจากสูงไปต่ำ',
+    feedback: 'ถูกต้อง! น้ำไหลจากที่สูงไปที่ต่ำ',
+    thanks: 'ป้าจะบอกคนปลายน้ำให้ระวัง',
+    landmark: 'hall',
+    goal: 'ช่วยป้าจันทร์หาทิศน้ำไหล',
+  },
+  {
+    id: 'gather',
+    npc: { id: 'explorer-khiao', name: 'พี่เขียว', appearance: 'villager', at: { x: 58, y: 31 } },
+    problem: 'ฝนตกหนักบนเนิน น้ำจะไหลลงมาท่วมที่ไหนก่อน',
+    question: 'น้ำฝนจะไปรวมที่จุดใดมากที่สุด?',
+    correct: label[low.id],
+    wrong: [label[low.others[0]], label[low.others[1]]],
+    hint: 'น้ำไหลไปที่ต่ำที่สุด ดูตัวเลขความสูงบนแผนที่',
+    feedback: `ถูกต้อง! ${label[low.id]} ต่ำที่สุด (${low.meters[low.id]} ม.)`,
+    thanks: 'ไว้พี่จะเตือนคนแถบนั้นให้ระวังน้ำหลาก',
+    landmark: 'camp',
+    goal: 'ช่วยพี่เขียวหาจุดที่น้ำไปรวมกัน',
+  },
+];
+
+const known = { showLabel: true, knownWhen: {} } as const;
+
 export const pongNamRonLevel: LevelDefinition = {
   id: 'level-3',
-  contentVersion: 3,
+  contentVersion: 10,
   tambon: 'ตำบลโป่งน้ำร้อน',
-  title: 'ปริศนาเมืองโบราณใต้ผืนดิน',
+  title: 'ช่วยชาวบ้านโป่งน้ำร้อน',
   map: pongNamRonMap,
   spawn: { x: 11, y: 51 },
   fog: { revealRadiusTiles: 5 },
-  // พิกัดกริดจำลอง: มุมตะวันตกเฉียงใต้ของแผนที่ = E 4,000 · N 1,000 (ใช้บอกที่ตั้งพื้นที่ที่เลือกในรายงาน)
-  grid: { falseEasting: 4000, falseNorthing: 1000 },
-  // แผนที่ภูมิประเทศ: เส้นชั้นความสูงทุก 2 ม. (เส้นหนาทุก 10 ม.) แสดงทั้งตำบลเมื่อได้รับจากครูเนม — ใช้อ่านระดับความสูง
   contourIntervalMeters: 2,
-  topoMapFlag: 'got-topo-map',
-
   landmarks: [
-    { id: 'school', name: 'โรงเรียนบ้านโป่งน้ำร้อน (เสาธง)', at: { x: 14, y: 50 }, showLabel: true, symbol: 'school' },
-    { id: 'hall', name: 'ศาลาประชาคม', at: { x: 30, y: 47 }, showLabel: true, symbol: 'office' },
-    { id: 'village', name: 'ชุมชนโป่งน้ำร้อน', at: { x: 31, y: 42 }, showLabel: true, symbol: 'village' },
-    { id: 'bridge', name: 'สะพานข้ามลำห้วย', at: { x: 49, y: 44 }, showLabel: true, symbol: 'bridge' },
-    { id: 'camp', name: 'ค่ายสำรวจภาคสนาม', at: { x: 57, y: 29 }, showLabel: true, symbol: 'office', mapLabelAt: 'right' },
-    { id: 'viewpoint', name: 'จุดชมวิว', at: { x: 30, y: 6 }, showLabel: true },
+    { id: 'school', name: 'โรงเรียนบ้านโป่งน้ำร้อน', at: { x: 14, y: 50 }, symbol: 'school', ...known },
+    { id: 'hall', name: 'ศาลาประชาคม', at: hall.at, symbol: 'office', ...known },
+    { id: 'village', name: 'ชุมชนโป่งน้ำร้อน', at: { x: 31, y: 42 }, symbol: 'village', ...known },
+    { id: 'bridge', name: 'สะพานข้ามลำห้วย', at: bridge.at, symbol: 'bridge', ...known },
+    { id: 'camp', name: 'ค่ายสำรวจ', at: camp.at, symbol: 'office', mapLabelAt: 'right', ...known },
   ],
-
-  npcs: pongNamRonNpcs,
-  story: pongStory,
-  guidePhases: PONG_PHASES,
-  quizzes: pongQuizzes,
-  clues: pongClues,
-  evidence: pongEvidence,
-  quests: pongQuests,
-  // จุดระดับความสูงบนแผนที่ (ค่าคำนวณจากแบบจำลองความสูง) — ไม่ชี้พื้นที่ที่ผ่านเกณฑ์
-  spotHeights: [
-    { x: 68, y: 10 },
-    { x: 10, y: 12 },
-    { x: 30, y: 6 },
-    { x: 14, y: 50 },
-    { x: 31, y: 47 },
-    { x: 57, y: 29 },
-    { x: 55, y: 56 },
-  ],
-  settlementAnalysis: pongSettlement,
-  ending: pongEnding,
+  ...buildMissions('level-3', specs, { startFlag: 'got-topo-map' }),
+  // แผนที่แสดงเส้นชั้นความสูงตั้งแต่เริ่มด่าน (ได้รับเมื่อคุยกับ NPC แรก)
+  topoMapFlag: 'got-topo-map',
+  spotHeights: [camp.at, hall.at, bridge.at, { x: 30, y: 6 }],
   unlocks: 'level-4',
-  skills: ['contour-reading', 'site-suitability', 'grid-reference', 'scale', 'direction'],
+  skills: ['direction', 'elevation', 'contour-reading'],
 };

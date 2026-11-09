@@ -8,7 +8,7 @@ import { NotebookOverlay } from '../ui/NotebookOverlay';
 import { SummaryOverlay } from '../ui/SummaryOverlay';
 import { COLORS, textStyle } from '../ui/theme';
 import { EVENT_TOUCH_TOAST, REGISTRY_CODE_PIECES, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
-import { getSettings, SCENE } from './navigation';
+import { getProgress, getSettings, SCENE } from './navigation';
 import { GridSystem } from '../core/world/GridSystem';
 import { PAUSE_ITEMS, type WorldScene } from './WorldScene';
 import { PauseOverlay } from '../ui/PauseOverlay';
@@ -89,7 +89,7 @@ export class UIScene extends Phaser.Scene {
     // ระหว่างเล่นแสดงเฉพาะที่ต้องใช้: ทิศที่หัน (+ พิกัดในบทที่ใช้พิกัดกริด)
     // ระยะเดินสะสม/พื้นที่สำรวจ/เวลา อยู่ในสมุด หน้าหลักฐาน (สถิติ) · ระยะวัดอยู่ในแถบวัดระยะ (เฉพาะตอนวัด)
     this.hudText.setText(
-      [s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : null, `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`]
+      [`🪙 ${getProgress(this).rpg.coins}   ✨ ${getProgress(this).rpg.faith}`, s.coords ? `พิกัดกริด: ${GridSystem.format(s.coords.tileToGrid(t))}` : null, `หันหน้าไป: ${THAI_DIRECTION[s.facing]}`]
         .filter(Boolean)
         .join('\n'),
     );

@@ -7,6 +7,7 @@
  * รับ storage แบบ localStorage — ถ้าใช้ไม่ได้ (โหมดส่วนตัว/ถูกบล็อก) จะเก็บในหน่วยความจำแทน
  */
 import { parseTutorialSave, type TutorialSave } from '../tutorial/Tutorial';
+import { buy as buyItem, canBuy, earnReward, emptyRpg, sanitizeRpg, type BuyResult, type RpgState } from '../rpg/Economy';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -46,12 +47,19 @@ export interface ProgressData {
   lastLevelId?: string;
   /** สถานะบทแนะนำผู้เล่นใหม่ (เพิ่มใน v0.15 — ข้อมูลเก่าไม่มีช่องนี้ ยังเป็น version 2 เหมือนเดิม) */
   tutorial?: TutorialSave;
+  /** รุ่นเนื้อเรื่อง (v0.22 = 3: ตำนานพญาจระเข้) — บันทึกรุ่นก่อนหน้าถูกสำรองไว้แล้วเริ่มใหม่อย่างปลอดภัย */
+  storyVersion?: number;
+  /** เหรียญ พลังศรัทธา อุปกรณ์ Golden Time (ข้อมูลเก่าไม่มี = ค่าเริ่มต้น) */
+  rpg?: RpgState;
 }
 
 export const PROGRESS_KEY = 'khlonglan-geo-rpg:progress';
+/** สำรองบันทึกรุ่นเก่าไว้ที่นี่เมื่อเนื้อเรื่องเปลี่ยน (ไม่ลบข้อมูลผู้เล่น) */
+export const LEGACY_PROGRESS_KEY = `${PROGRESS_KEY}:legacy-story-2`;
+export const STORY_VERSION = 3;
 
 function emptyProgress(firstLevelId: string): ProgressData {
-  return { version: 2, completed: {}, unlocked: [firstLevelId], codePieces: {}, inProgress: {} };
+  return { version: 2, completed: {}, unlocked: [firstLevelId], codePieces: {}, inProgress: {}, storyVersion: STORY_VERSION, rpg: emptyRpg() };
 }
 
 /** แปลงข้อมูลรุ่นเก่า (v1: completed + unlocked) เป็นรุ่นปัจจุบัน */
@@ -72,6 +80,8 @@ function migrate(raw: unknown, firstLevelId: string): ProgressData | null {
       ...data,
       codePieces: data.codePieces ?? {},
       inProgress: data.inProgress ?? {},
+      // ไม่รับค่าเริ่มต้นของรุ่นปัจจุบันแทนบันทึกเก่า: ไม่มี storyVersion = เนื้อเรื่องเก่า
+      storyVersion: data.storyVersion,
     };
   }
   return null;
@@ -79,6 +89,8 @@ function migrate(raw: unknown, firstLevelId: string): ProgressData | null {
 
 export class ProgressStore {
   private memory: ProgressData;
+  /** true = เพิ่งพบบันทึกเนื้อเรื่องเก่าและเริ่มใหม่ (เมนูแจ้งผู้เล่นหนึ่งครั้ง) */
+  legacyReset = false;
 
   constructor(
     private readonly storage: StorageLike | null,
@@ -92,7 +104,22 @@ export class ProgressStore {
       const raw = this.storage?.getItem(PROGRESS_KEY);
       if (raw) {
         const data = migrate(JSON.parse(raw), this.firstLevelId);
-        if (data) return data;
+        if (data) {
+          if (data.storyVersion === STORY_VERSION) return { ...data, rpg: sanitizeRpg(data.rpg) };
+          // เนื้อเรื่องเก่า (หีบสมบัติ): สำรองไว้ แล้วเริ่มใหม่ — คงสถานะบทแนะนำเดิม ไม่ให้เกมค้างหรือข้ามด่านด้วยข้อมูลที่ไม่ตรงกับเนื้อเรื่องใหม่
+          const had = Object.keys(data.completed).length > 0 || Object.keys(data.inProgress ?? {}).length > 0;
+          if (had) {
+            try {
+              if (!this.storage?.getItem(LEGACY_PROGRESS_KEY)) this.storage?.setItem(LEGACY_PROGRESS_KEY, raw);
+            } catch {
+              /* สำรองไม่ได้ก็ไปต่อ */
+            }
+            this.legacyReset = true;
+          }
+          const fresh = emptyProgress(this.firstLevelId);
+          if (data.tutorial) fresh.tutorial = data.tutorial;
+          return fresh;
+        }
       }
     } catch {
       /* ข้อมูลเสีย/อ่านไม่ได้ → เริ่มใหม่ */
@@ -148,7 +175,60 @@ export class ProgressStore {
 
   /** มีข้อมูลบันทึกจริงหรือไม่ (ด่านที่ผ่านแล้ว หรือการเล่นกลางด่าน) */
   hasAnySave(): boolean {
-    return Object.keys(this.memory.completed).length > 0 || Object.keys(this.memory.inProgress).length > 0;
+    return Object.keys(this.memory.completed).length > 0 || Object.keys(this.memory.inProgress).length > 0 || this.rpg.goldenDone;
+  }
+
+  /** เหรียญ/ศรัทธา/อุปกรณ์ (อ่านอย่างเดียว — แก้ผ่านเมธอดด้านล่างเพื่อบันทึกทุกครั้ง) */
+  get rpg(): RpgState {
+    return (this.memory.rpg ??= emptyRpg());
+  }
+
+  /** รางวัลภารกิจ: ครั้งแรกต่อรหัสเท่านั้น — true = ได้รางวัลครั้งนี้ */
+  earn(id: string, coins: number, faith: number): boolean {
+    const ok = earnReward(this.rpg, id, coins, faith);
+    if (ok) this.write();
+    return ok;
+  }
+
+  buy(id: string): BuyResult {
+    const r = buyItem(this.rpg, id);
+    if (r === 'ok') this.write();
+    return r;
+  }
+
+  canBuy(id: string): BuyResult {
+    return canBuy(this.rpg, id);
+  }
+
+  /** จบ Golden Time: เก็บเหรียญที่ได้ และจดว่าเล่นแล้ว (เข้าได้ครั้งเดียวต่อเกมใหม่) */
+  finishGolden(coins: number): void {
+    const r = this.rpg;
+    if (r.goldenDone) return;
+    r.goldenDone = true;
+    r.goldenCoins = coins;
+    r.coins += Math.max(0, coins);
+    this.write();
+  }
+
+  finishShop(): void {
+    this.rpg.shopDone = true;
+    this.write();
+  }
+
+  /** แพ้พญาจระเข้ (นับเพื่อผ่อนแรงบอสเล็กน้อย) */
+  bossLost(): void {
+    this.rpg.bossLosses = Math.min(5, this.rpg.bossLosses + 1);
+    this.write();
+  }
+
+  finishBoss(): void {
+    this.rpg.bossDone = true;
+    this.write();
+  }
+
+  /** บันทึกค่า rpg ที่ถูกแก้โดยตรง (เช่น ยา/ศรัทธาที่เหลือหลังชนะบอส) */
+  saveRpg(): void {
+    this.write();
   }
 
   /** ด่านที่ควร "เล่นต่อ": ด่านล่าสุดที่ยังเล่นค้าง หรือด่านค้างด่านแรกที่พบ (ข้อมูลเก่าไม่มี lastLevelId) */
@@ -161,6 +241,7 @@ export class ProgressStore {
   /** ลบความคืบหน้าทั้งหมด (ใช้กับ "เริ่มเกมใหม่" หลังผู้เล่นยืนยันแล้ว) */
   resetAll(): void {
     this.memory = emptyProgress(this.firstLevelId);
+    this.legacyReset = false;
     this.write();
   }
 

@@ -234,6 +234,10 @@ export class GameSession {
   readonly messages: Array<{ speaker: string; text: string }> = [];
   /** ข้อความแจ้งเตือนที่รอให้ UI แสดง */
   readonly pendingToasts: string[] = [];
+  /** กระเป๋า RPG (เหรียญ/ศรัทธา) — WorldScene ต่อกับ ProgressStore · ไม่มี = ไม่แจกรางวัล (เทสต์ระบบเดิม) */
+  wallet: { earn(id: string, coins: number, faith: number): boolean } | null = null;
+  /** รางวัลที่เพิ่งได้ (ให้ฉากแสดงเหรียญ/ศรัทธาลอยขึ้น แล้วเคลียร์) */
+  readonly rewardEvents: Array<{ coins: number; faith: number }> = [];
 
   readonly questStatus = new Map<string, QuestStatus>();
   readonly routeMetrics = new Map<string, RouteMetrics>();
@@ -555,6 +559,12 @@ export class GameSession {
         if (!ev || this.evidence.includes(ev.id)) return;
         this.evidence.push(ev.id);
         this.pendingToasts.push(`ได้รับหลักฐาน: ${ev.name}`);
+        return;
+      }
+      case 'reward': {
+        if (!this.wallet?.earn(effect.id, effect.coins, effect.faith)) return;
+        this.rewardEvents.push({ coins: effect.coins, faith: effect.faith });
+        this.pendingToasts.push(`+${effect.coins} เหรียญ · +${effect.faith} พลังศรัทธา`);
         return;
       }
     }

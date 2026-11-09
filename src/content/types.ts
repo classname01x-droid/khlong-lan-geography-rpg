@@ -56,7 +56,9 @@ export interface Condition {
 export type Effect =
   | { type: 'clue'; clueId: string }
   | { type: 'evidence'; evidenceId: string }
-  | { type: 'flag'; flag: string };
+  | { type: 'flag'; flag: string }
+  /** รางวัลภารกิจ (เหรียญ + พลังศรัทธา) — ได้ครั้งเดียวต่อ id (ทำซ้ำไม่ได้เพิ่ม) */
+  | { type: 'reward'; id: string; coins: number; faith: number };
 
 export interface DialogueLine {
   speaker: string;

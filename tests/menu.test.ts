@@ -39,10 +39,10 @@ const cards = (p: ProgressStore) =>
 describe('ลำดับ 4 ตำบล และการกันเข้าด่านที่ยังไม่สร้าง', () => {
   it('มี 4 ตำบลตามลำดับ พร้อมชื่อภารกิจ', () => {
     expect(LEVEL_SEQUENCE.map((s) => `${s.tambon} — ${s.missionTitle}`)).toEqual([
-      'ตำบลสักงาม — ปริศนาลวดลายแห่งสักงาม',
-      'ตำบลคลองน้ำไหล — ปริศนาสายน้ำแห่งคลองน้ำไหล',
-      'ตำบลโป่งน้ำร้อน — ปริศนาเมืองโบราณใต้ผืนดิน',
-      'ตำบลคลองลานพัฒนา — ปริศนาแผนที่ลับแห่งคลองลานพัฒนา',
+      'ตำบลสักงาม — ช่วยชาวบ้านสักงาม',
+      'ตำบลคลองน้ำไหล — ช่วยชาวบ้านคลองน้ำไหล',
+      'ตำบลโป่งน้ำร้อน — ช่วยชาวบ้านโป่งน้ำร้อน',
+      'ตำบลคลองลานพัฒนา — ช่วยชาวบ้านคลองลานพัฒนา',
     ]);
     expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
   });
@@ -70,10 +70,6 @@ describe('สถานะด่านในหน้าเลือกด่า�
     const c = cards(new ProgressStore(new MemoryStorage(), 'sakngam'));
     expect(c.map((x) => x.state)).toEqual(['unlocked', 'locked', 'locked', 'locked']);
     expect(c.map((x) => x.canEnter)).toEqual([true, false, false, false]);
-    expect(c[0].evidenceText).toBe('หลักฐาน: 0/2');
-    expect(c[1].evidenceText).toBe('หลักฐาน: 0/6');
-    expect(c[2].evidenceText).toBe('หลักฐาน: 0/2');
-    expect(c[3].evidenceText).toBe('หลักฐาน: 0/6');
   });
 
   it('ด่าน 1 เข้าได้เสมอ แม้ข้อมูลบันทึกไม่มีในรายการปลดล็อก', () => {
@@ -85,12 +81,12 @@ describe('สถานะด่านในหน้าเลือกด่า�
   it('มีบันทึกค้างกลางด่าน → ต้องถามเล่นต่อ/เริ่มใหม่ และแสดงหลักฐานที่พบแล้ว', () => {
     const p = new ProgressStore(new MemoryStorage(), 'sakngam');
     const s = newSession();
-    talk(s, 'teacher-nem');
+    const q = s.level.quizzes![0];
+    talk(s, 'teacher-nem', [q.choices.findIndex((x) => x.id === q.correctChoiceId)]);
     p.saveInProgress('sakngam', s.toSnapshot());
     const c = cards(p)[0];
     expect(c.hasInProgress).toBe(true);
     expect(c.stateLabel).toBe('ปลดล็อกแล้ว · มีบันทึกค้างอยู่');
-    expect(c.evidenceText).toBe('หลักฐาน: 0/2');
   });
 
   it('จบด่าน 1: ผ่านแล้ว + รหัสลับ, ด่าน 2 ปลดล็อกและเข้าได้, ด่าน 3–4 ยังล็อก', () => {
@@ -101,24 +97,20 @@ describe('สถานะด่านในหน้าเลือกด่า�
     expect(c[1].stateLabel).toBe('ปลดล็อกแล้ว');
     expect(c.map((x) => x.canEnter)).toEqual([true, true, false, false]);
     expect(c[0].codePiece?.value).toBe('ลาย');
-    expect(c[0].evidenceText).toBe('หลักฐาน: 2/2');
     expect(c[0].hasInProgress).toBe(false);
   });
 
-  it('ข้อมูลบันทึก v1 (รุ่นแรก) ยังแสดงผลได้ แม้ไม่มีจำนวนหลักฐาน', () => {
+  it('ข้อมูลบันทึกรุ่นเก่า (เนื้อเรื่องหีบสมบัติ v1/v2) → เริ่มใหม่อย่างปลอดภัย ไม่ค้าง และสำรองข้อมูลเดิมไว้', () => {
     const storage = new MemoryStorage();
-    const old = result();
-    delete old.evidenceFound;
-    delete old.evidenceTotal;
-    storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 1, completed: { sakngam: old }, unlocked: ['sakngam', 'level-2'] }));
+    storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 1, completed: { sakngam: result() }, unlocked: ['sakngam', 'level-2'] }));
     const p = new ProgressStore(storage, 'sakngam');
     const c = cards(p);
-    expect(c[0].state).toBe('completed');
-    expect(c[0].evidenceText).toBe('หลักฐาน: ?/2');
-    expect(c[0].codePiece?.value).toBe('ลาย');
-    expect(c[1].state).toBe('unlocked'); // ข้อมูลเก่าที่ปลดล็อก level-2 ไว้ → เข้าด่าน 2 ได้ทันที
-    expect(p.hasAnySave()).toBe(true);
-    expect(p.continueLevelId()).toBeNull(); // ไม่มีด่านค้าง → "เล่นต่อ" พาไปหน้าเลือกด่าน
+    expect(c[0].state).toBe('unlocked');
+    expect(c[1].state).toBe('locked');
+    expect(p.legacyReset).toBe(true);
+    expect(p.hasAnySave()).toBe(false);
+    expect(p.continueLevelId()).toBeNull();
+    expect(storage.getItem(`${PROGRESS_KEY}:legacy-story-2`)).not.toBeNull();
   });
 });
 
@@ -133,7 +125,7 @@ describe('ปุ่ม "เล่นต่อ" และ "เริ่มเก�
     const storage = new MemoryStorage();
     storage.setItem(
       PROGRESS_KEY,
-      JSON.stringify({ version: 2, completed: {}, unlocked: ['sakngam'], codePieces: {}, inProgress: { sakngam: {} } }),
+      JSON.stringify({ version: 2, completed: {}, unlocked: ['sakngam'], codePieces: {}, inProgress: { sakngam: {} }, storyVersion: 3 }),
     );
     const p = new ProgressStore(storage, 'sakngam');
     expect(p.hasAnySave()).toBe(true);

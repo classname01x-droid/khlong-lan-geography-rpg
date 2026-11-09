@@ -76,22 +76,20 @@ describe('ProgressStore', () => {
     expect(LEVEL_SEQUENCE[0].id).toBe(sakNgamLevel.id);
   });
 
-  it('ลำดับด่านรองรับ 4 ตำบล = รหัสลับ 4 ชิ้น และด่าน 1 มอบชิ้นที่ 1', () => {
+  it('ลำดับด่าน 4 ตำบล · เนื้อเรื่องใหม่ไม่มีรหัสลับในตอนจบด่าน', () => {
     expect(LEVEL_SEQUENCE.map((s) => s.codePieceIndex)).toEqual([1, 2, 3, 4]);
-    expect(sakNgamLevel.ending!.codePiece).toMatchObject({ index: 1, total: 4 });
+    expect(sakNgamLevel.ending!.codePiece).toBeUndefined();
   });
 
-  it('ย้ายข้อมูลบันทึกรุ่น v1 เป็น v2 โดยไม่สูญหาย', () => {
+  it('ข้อมูลบันทึกรุ่นเก่า (v1 เนื้อเรื่องหีบสมบัติ) → เริ่มใหม่ ไม่พัง และสำรองข้อมูลเดิมไว้', () => {
     const storage = new MemoryStorage();
-    storage.setItem(
-      PROGRESS_KEY,
-      JSON.stringify({ version: 1, completed: { sakngam: result() }, unlocked: ['sakngam', 'level-2'] }),
-    );
+    storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 1, completed: { sakngam: result() }, unlocked: ['sakngam', 'level-2'] }));
     const p = new ProgressStore(storage, 'sakngam');
-    expect(p.data.version).toBe(2);
-    expect(p.isCompleted('sakngam')).toBe(true);
-    expect(p.isUnlocked('level-2')).toBe(true);
-    expect(p.collectedCodePieces()).toEqual([{ index: 1, total: 4, value: 'ลาย' }]);
+    expect(p.legacyReset).toBe(true);
+    expect(p.isCompleted('sakngam')).toBe(false);
+    expect(p.isUnlocked('level-2')).toBe(false);
+    expect(p.rpg.coins).toBe(0);
+    expect(storage.getItem(`${PROGRESS_KEY}:legacy-story-2`)).toContain('"version":1');
   });
 
   it('บันทึก/โหลด/ล้าง การเล่นกลางด่าน และล้างอัตโนมัติเมื่อผ่านด่าน', () => {

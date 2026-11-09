@@ -29,6 +29,10 @@ export const SCENE = {
   worldMap: 'WorldMapScene',
   chapter: 'ChapterScene',
   ending: 'EndingScene',
+  golden: 'GoldenTimeScene',
+  shop: 'ShopScene',
+  approach: 'ApproachScene',
+  boss: 'BossScene',
   level: 'WorldScene',
   ui: 'UIScene',
 } as const;
@@ -73,6 +77,12 @@ export function goToWorldMap(scene: Phaser.Scene): void {
   scene.scene.start(SCENE.worldMap);
 }
 
+/** ร้านค้า (บทที่ 5) · ทางเข้าน้ำตก → ต่อสู้ (บทที่ 6) */
+export function goToStage(scene: Phaser.Scene, stage: 'shop' | 'boss'): void {
+  stopGameplayUi(scene);
+  scene.scene.start(stage === 'shop' ? SCENE.shop : SCENE.approach);
+}
+
 /** สรุปการเดินทาง (จบเกม) — EndingScene ตรวจเองว่าจบเกมแล้วจริง */
 export function goToEnding(scene: Phaser.Scene): void {
   stopGameplayUi(scene);
@@ -81,9 +91,16 @@ export function goToEnding(scene: Phaser.Scene): void {
 
 /** ฉากเชื่อมเรื่องก่อนเริ่มบท — เปิดได้เฉพาะบทปัจจุบัน (คืน false ถ้าไม่ใช่) */
 export function beginChapter(scene: Phaser.Scene, chapterId: string): boolean {
-  const target = continueTarget(CHAPTERS, getProgress(scene).data);
+  const progress = getProgress(scene);
+  // เกมใหม่: Golden Time ก่อนด่านแรก (เล่นครั้งเดียวต่อเกมใหม่) แล้วกลับมาที่นี่
+  if (chapterId === CHAPTERS[0].id && !progress.rpg.goldenDone && !progress.data.completed[chapterId] && !progress.data.inProgress[chapterId]) {
+    stopGameplayUi(scene);
+    scene.scene.start(SCENE.golden);
+    return true;
+  }
+  const target = continueTarget(CHAPTERS, progress.data);
   // เปิดได้เฉพาะบทปัจจุบันที่ยังไม่เริ่ม และเงื่อนไขครบ (จบเกมแล้ว/รหัสไม่ครบ/ยังไม่มีเนื้อหา → ไม่เปิด)
-  if (!getChapter(chapterId) || target.kind === 'complete' || target.kind === 'blocked') return false;
+  if (!getChapter(chapterId) || target.kind === 'complete') return false;
   if (currentChapter(CHAPTERS, getProgress(scene).data).id !== chapterId) return false;
   stopGameplayUi(scene);
   const data: ChapterStartData = { chapterId };
@@ -99,6 +116,10 @@ export function continueStory(scene: Phaser.Scene): void {
   const target = continueTarget(CHAPTERS, getProgress(scene).data);
   if (target.kind === 'complete') {
     goToEnding(scene);
+    return;
+  }
+  if (target.kind === 'stage') {
+    goToStage(scene, target.chapter.kind === 'boss' ? 'boss' : 'shop');
     return;
   }
   if (target.kind === 'resume' && startLevel(scene, target.levelId, 'resume')) return;

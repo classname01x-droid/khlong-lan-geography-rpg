@@ -17,7 +17,7 @@ export const SCHOOL_GROUNDS: TileRect = { x: 4, y: 47, w: 16, h: 11 };
 const HALL_PLAZA: TileRect = { x: 26, y: 46, w: 8, h: 3 };
 
 /** ลำห้วยโป่งน้ำร้อน (ไหลจากเหนือลงใต้) — ใช้ทั้งวาดน้ำและขุดหุบในแบบจำลองความสูง */
-const STREAM = [
+export const STREAM = [
   { x: 18, y: 0 },
   { x: 22, y: 8 },
   { x: 28, y: 16 },

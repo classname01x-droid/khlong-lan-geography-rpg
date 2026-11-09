@@ -10,7 +10,6 @@ import { SCENE } from '../../scenes/navigation';
 import { FONT_FAMILY } from '../theme';
 import {
   chapterIntroView,
-  endingView,
   GAME_TITLE,
   HOW_TO_GOAL,
   HOW_TO_SCALE,
@@ -46,12 +45,8 @@ interface ChapterHost {
   toJourney(): void;
   readonly touchState: { chapterId: string; lineIndex: number; total: number; stage: 'dialogue' | 'ready' | 'in-development' };
 }
-interface EndingHost {
-  toJourney(): void;
-  toMenu(): void;
-}
 
-type ScreenKind = 'menu' | 'journey' | 'chapter' | 'ending';
+type ScreenKind = 'menu' | 'journey' | 'chapter';
 type MenuPanel = null | 'howto' | 'settings' | 'confirm';
 type HowToTab = 'goal' | 'touch' | 'scale' | 'keys';
 
@@ -72,7 +67,6 @@ export class TouchScreens {
   private menuPanel: MenuPanel = null;
   private howTab: HowToTab = 'goal';
   private journeySel: string | null = null;
-  private endTab: 'wisdom' | 'learning' = 'wisdom';
   private chapterKey = '';
   private readySince = 0;
   /** สำหรับการทดสอบอัตโนมัติ */
@@ -127,7 +121,6 @@ export class TouchScreens {
     if (sm.isActive(SCENE.menu)) return 'menu';
     if (sm.isActive(SCENE.worldMap)) return 'journey';
     if (sm.isActive(SCENE.chapter)) return 'chapter';
-    if (sm.isActive(SCENE.ending)) return 'ending';
     return null;
   }
 
@@ -174,11 +167,6 @@ export class TouchScreens {
       else if (cmd === 'back') c.back();
       else if (cmd === 'depart' && performance.now() - this.readySince >= DEPART_ARM_MS) c.depart();
       else if (cmd === 'journey') c.toJourney();
-    } else if (screen === 'ending') {
-      const e = this.host<EndingHost>(SCENE.ending);
-      if (cmd === 'journey') e.toJourney();
-      else if (cmd === 'menu') e.toMenu();
-      else if (cmd === 'tab') this.endTab = arg as 'wisdom' | 'learning';
     }
   }
 
@@ -192,7 +180,6 @@ export class TouchScreens {
       this.menuPanel = null;
       this.howTab = 'goal';
       this.journeySel = null;
-      this.endTab = 'wisdom';
       this.chapterKey = '';
     }
     this.lastScreen = kind;
@@ -209,7 +196,7 @@ export class TouchScreens {
     const h = this.root.clientHeight - ins.top - ins.bottom;
     // จอเตี้ย (แนวนอนบนโทรศัพท์เล็ก): จัดวางให้ปุ่มหลักเห็นครบโดยไม่ลดตัวอักษรเนื้อหา
     this.root.classList.toggle('ts-short', h < 380);
-    const html = kind === 'menu' ? this.menuHtml(w) : kind === 'journey' ? this.journeyHtml(w) : kind === 'chapter' ? this.chapterHtml(w) : this.endingHtml(w, h);
+    const html = kind === 'menu' ? this.menuHtml(w) : kind === 'journey' ? this.journeyHtml(w) : this.chapterHtml(w);
     if (html === this.lastHtml) return;
     // คงตำแหน่งที่เลื่อนอ่านอยู่ เมื่อเนื้อหาเดิมอัปเดต
     const scrolls = new Map<string, number>();
@@ -309,9 +296,9 @@ export class TouchScreens {
 
   private journeyHtml(w: number): string {
     const v = journeyView(this.progress().data);
+    const rpg = this.progress().rpg;
     const sel = v.nodes.find((n) => n.id === this.journeySel) ?? v.nodes.find((n) => n.state === 'current') ?? v.nodes[v.nodes.length - 1];
     const icon = { explored: '✓', current: '▶', next: '⭐', locked: '🔒' } as const;
-    const codes = v.codes.map((c) => `<span class="ts-chip${c === '?' ? ' ts-missing' : ''}">${esc(c)}</span>`).join('');
     // ลำดับเรื่องจากบนลงล่าง (สักงาม → … → ปริศนาสุดท้าย) — แตะเพื่อดูข้อมูลเท่านั้น ไม่เข้าเล่นบทนั้น
     const nodes = v.nodes
       .map(
@@ -336,7 +323,7 @@ export class TouchScreens {
     const title = w < 700 ? '🧭 แผนที่การเดินทาง' : `🧭 ${v.title}`;
     return (
       '<div class="ts-screen ts-journey">' +
-      `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(title)}${v.complete && w < 700 ? ' ✓' : ''}</h1><div class="ts-codes">🐊 คำพิทักษ์ ${codes}</div></header>` +
+      `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(title)}${v.complete && w < 700 ? ' ✓' : ''}</h1><div class="ts-codes">🪙 ${rpg.coins} · ✨ ${rpg.faith}</div></header>` +
       '<div class="ts-jmain">' +
       `<nav class="ts-route ts-scroll" data-scroll="route">${nodes}</nav>` +
       '<div class="ts-jside">' +
@@ -396,56 +383,10 @@ export class TouchScreens {
       `<header class="ts-bar ts-wood"><h1 class="ts-h2">${esc(v.heading)} · ${esc(v.tambon)}</h1><div class="ts-sub">${esc(v.title)}</div></header>` +
       '<div class="ts-chap-main">' +
       `<aside class="ts-goal ts-paper ts-scroll" data-scroll="goal"><div class="ts-goal-k">🎯 ภารกิจใหม่</div><p class="ts-p">${esc(v.goal)}</p>` +
-      (v.words
-        ? `<div class="ts-words"><div class="ts-words-k">🐊 คำพิทักษ์ 4 คำ</div><div class="ts-words-slots">${v.words.slots
-            .map((c, i) => `<span class="ts-slot${c === '?' ? '' : ' ts-slot-on'}" title="คำที่ ${i + 1}">${esc(c)}</span>`)
-            .join('')}</div></div><p class="ts-small">${esc(v.words.note)}</p>`
-        : '') +
       '</aside>' +
       `<section class="ts-dlg ts-paper"><div class="ts-speaker"><span>${esc(speaker)}</span><small>${esc(counter)}</small></div>` +
       `<div class="ts-dlg-text ts-scroll" data-scroll="dlg-${st.lineIndex}-${st.stage}">${esc(text)}</div></section>` +
       `</div><footer class="ts-foot">${foot}</footer></div>`
-    );
-  }
-
-  /* ----- ฉากจบ ----- */
-
-  private endingHtml(w: number, h: number): string {
-    const v = endingView(this.progress().data);
-    const wide = w >= 760 && h >= 380;
-    const codes = `<div class="ts-codes-row">🐊 คำพิทักษ์ครบ 4 คำ: ${v.codes.map((c) => `<span class="ts-chip">${esc(c)}</span>`).join('')}</div>`;
-    const wisdom =
-      `<section>${wide ? '' : `<p class="ts-p ts-ok"><b>✓ ${esc(v.title)}</b> · ${esc(v.subtitle)}</p>${codes}`}<h3 class="ts-h3">🗺️ แผนที่ภูมิปัญญา 4 ตำบล</h3><div class="ts-wisdom">` +
-      v.wisdom
-        .map(
-          (x) =>
-            `<div class="ts-wcard"><b>📍 ${x.index}. ${esc(x.tambon)}</b><p class="ts-p">${esc(x.site)}</p>` +
-            `<p class="ts-small">ทักษะ: ${esc(x.learning)}</p><p class="ts-small ts-ok">คำพิทักษ์คำที่ ${x.index}: "${esc(x.code)}"${x.evidence ? ` · ${esc(x.evidence)}` : ''}</p></div>`,
-        )
-        .join('') +
-      `</div><p class="ts-small">${esc(v.note)}</p></section>`;
-    const learning =
-      '<section><h3 class="ts-h3">📊 ผลการเรียนรู้ทั้งการเดินทาง</h3>' +
-      v.stats.map((s2) => `<p class="ts-p">${esc(s2)}</p>`).join('') +
-      '<h3 class="ts-h3">🧠 ทักษะภูมิศาสตร์ที่ได้ใช้</h3>' +
-      (v.skills.length ? `<div class="ts-skills">${v.skills.map((k) => `<span class="ts-skill">${esc(k)}</span>`).join('')}</div>` : '<p class="ts-p">ไม่มีข้อมูลในบันทึก</p>') +
-      '</section>';
-    // จอเล็ก: แบ่งแท็บ (แผนที่ภูมิปัญญา + รหัสลับ / ผลการเรียนรู้) และเลื่อนอ่าน · จอใหญ่: วางคู่กัน
-    const tabs = wide
-      ? ''
-      : `<div class="ts-tabs">${[
-          ['wisdom', '🗺️ แผนที่ภูมิปัญญา'],
-          ['learning', '📊 ผลการเรียนรู้'],
-        ]
-          .map(([id, label]) => `<button class="ts-tab${this.endTab === id ? ' ts-on' : ''}" data-act="ending:tab:${id}">${esc(label)}</button>`)
-          .join('')}</div>`;
-    const body = wide ? `${codes}<div class="ts-end-cols">${wisdom}${learning}</div>` : this.endTab === 'wisdom' ? wisdom : learning;
-    return (
-      '<div class="ts-screen ts-ending">' +
-      // จอเล็ก: หัวเรื่องสั้นให้แท็บอยู่แถวเดียวกัน (ชื่อเต็มอยู่บรรทัดแรกของเนื้อหา)
-      `<header class="ts-bar ts-wood"><div><h1 class="ts-h2">🏆 ${esc(wide ? v.title : 'จบการเดินทาง')}</h1>${wide ? `<div class="ts-sub">${esc(v.subtitle)}</div>` : ''}</div>${tabs}</header>` +
-      `<div class="ts-end-body ts-paper ts-scroll" data-scroll="end-${wide ? 'w' : this.endTab}">${body}</div>` +
-      `<footer class="ts-foot">${this.btn('ending:journey', 'แผนที่การเดินทาง', { icon: '🧭' })}${this.btn('ending:menu', 'เมนูหลัก', { icon: '🏠', primary: true })}</footer></div>`
     );
   }
 }
