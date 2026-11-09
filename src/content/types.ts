@@ -579,4 +579,21 @@ export interface LevelDefinition {
    * (บันทึกรุ่นไม่ตรงจะไม่ถูกโหลด และเริ่มด่านใหม่แทน · ไม่กระทบผลการผ่านด่าน)
    */
   contentVersion?: number;
+  /**
+   * โหมดสำรวจด้วยตนเอง: ไม่มีลูกศร/หมุด/เส้นนำทาง/วงแหวนไฮไลต์ NPC/เครื่องหมาย ✓ — ผู้เล่นหาทางจากคำบอกทิศ+ระยะ (มาตราส่วน) เอง
+   * (ด่านที่ไม่ระบุ = ทำงานเหมือนเดิม)
+   */
+  exploreMode?: boolean;
+  /** จุดที่ "เดินไปถึงเอง" แล้วจดเหตุการณ์ (flag + ข้อความสั้น) — ไม่มีหมุด/ป้ายบอกตำแหน่งล่วงหน้า */
+  arrivals?: ArrivalDefinition[];
+}
+
+/** จุดที่ผู้เล่นเดินไปถึงเอง (เช่น จุดที่ต้องไปตรวจสอบ) — เปิดใช้เมื่อเงื่อนไข when เป็นจริง */
+export interface ArrivalDefinition {
+  id: string;
+  at: TilePoint;
+  radiusTiles: number;
+  when?: Condition;
+  flag: string;
+  toast: string;
 }

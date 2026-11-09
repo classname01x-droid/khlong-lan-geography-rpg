@@ -235,18 +235,16 @@ function sessionAtStep(level: LevelDefinition, order: number): GameSession {
 }
 
 describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () => {
-  it('บท 1 เริ่มเกม: ชื่อบท ภารกิจ เป้าหมาย ความคืบหน้า (ภารกิจปัจจุบันเห็นชัดบนจอ)', () => {
+  it('บท 1 เริ่มเกม (ด่านสำรวจ): ชื่อบท ภารกิจ เป้าหมาย ความคืบหน้า — ไม่มีเป้าหมายนำทาง', () => {
     const s = newSession(L1);
     const t = buildQuestTracker(s, { chapterOrder: 1 });
-    expect(t.chapterLabel).toBe('บทที่ 1: ช่วยชาวบ้าน');
-    expect(t.questTitle).toBe('ช่วยชาวบ้าน');
-    expect(t.objective).toBe('ช่วยครูเนมบอกทิศไปศาลาชุมชน');
-    expect(t.progress).toEqual({ done: 0, total: 3, label: 'ขั้น' });
+    expect(t.chapterLabel).toBe('บทที่ 1: ตามหาป้าเจียว');
+    expect(t.objective).toBe('พบครูเนมที่โรงเรียน');
+    expect(t.progress).toEqual({ done: 0, total: 6, label: 'ขั้น' });
     expect(t.micro).toBe(true);
-    expect(t.steps.join(' ')).toContain('ครูเนม');
+    expect(t.steps.join(' ')).toContain('มาตราส่วน 1:10,000');
     expect(t.tools.length).toBeGreaterThan(0);
-    expect(t.result).toContain('100 เหรียญ');
-    expect(t.target?.id).toBe('teacher-nem');
+    expect(t.target).toBeNull();
     expect(t.hint).toBeNull();
     expect(t.hintTier).toBe(0);
   });
@@ -273,7 +271,7 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
         expect(t.questTitle, `${L.id}#${st.order}`).toBe(micro ? L.quests!.find((q) => q.kind === 'main')!.title : st.title);
         expect(t.objective.length, `${L.id}#${st.order}`).toBeGreaterThan(3);
         expect(t.hint?.length ?? 0, `${L.id}#${st.order}`).toBeGreaterThan(5);
-        expect(stepKind(L, st)).not.toBe('other');
+        if (!L.exploreMode) expect(stepKind(L, st)).not.toBe('other');
       }
     }
   });

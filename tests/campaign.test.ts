@@ -58,17 +58,15 @@ describe('ลำดับภารกิจหลัก 6 บท: 4 ตำบล
     expect(continueTarget(CHAPTERS, s.data).kind).toBe('complete');
   });
 
-  it('มีบันทึกกลางด่านปัจจุบัน → เล่นต่อจากบันทึก', () => {
+  it('มีบันทึกกลางด่านปัจจุบัน → เล่นต่อจากบันทึก (flag/ตำแหน่งเดิม)', () => {
     const store = fresh();
     const session = newSession();
-    session.wallet = store;
-    talk(session, 'teacher-nem', [session.level.quizzes![0].choices.findIndex((c) => c.id === session.level.quizzes![0].correctChoiceId)]);
+    const q = session.level.quizzes![0];
+    talk(session, 'teacher-nem', [q.choices.findIndex((c) => c.id === q.correctChoiceId)]);
     store.saveInProgress(L1.id, session.toSnapshot());
-    const t = continueTarget(CHAPTERS, store.data);
-    expect(t.kind).toBe('resume');
+    expect(continueTarget(CHAPTERS, store.data).kind).toBe('resume');
     const snap = store.loadInProgress(L1.id) as SessionSnapshot;
-    expect(snap.flags).toContain('m-direction');
-    expect(store.rpg.coins).toBe(100);
+    expect(snap.flags).toContain('q-school');
   });
 
   it('ยังไม่เริ่มบทถัดไป (เพิ่งจบบทก่อน) → ฉากเชื่อมเรื่อง', () => {

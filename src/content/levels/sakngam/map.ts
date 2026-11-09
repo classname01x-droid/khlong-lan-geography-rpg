@@ -103,8 +103,14 @@ export const sakNgamMap: MapDefinition = {
     { kind: 'rect', terrain: 'paving', area: { x: 43, y: 45, w: 8, h: 3 } },
     { kind: 'building', area: { x: 44, y: 41, w: 6, h: 4 }, roof: 'roofOrange', door: { x: 46, y: 44 } },
     // บ้านผู้ใหญ่บ้าน
-    { kind: 'building', area: { x: 53, y: 40, w: 4, h: 3 }, roof: 'roofBlue', door: { x: 54, y: 42 } },
-    { kind: 'path', terrain: 'paving', width: 1, points: [{ x: 54, y: 43 }, { x: 54, y: 47 }] },
+    { kind: 'building', area: { x: 54, y: 40, w: 4, h: 3 }, roof: 'roofBlue', door: { x: 55, y: 42 } },
+    { kind: 'path', terrain: 'paving', width: 1, points: [{ x: 55, y: 43 }, { x: 55, y: 47 }] },
+
+    // v0.23 ด่านสำรวจด้วยทิศ+มาตราส่วน: ทางเดินดินขึ้นเหนือจากถนนหลักที่ x=25 (โรงเรียน→ตะวันออก→บ้านผู้ใหญ่ฯ→ตะวันตก 3 ซม.→คุณยาย→เหนือ 2 ซม.→บ้านผ้าปักป้าเจียว)
+    // ระยะทุกช่วงตรงกับตัวเลขในโจทย์: โรงเรียน (15,40) → บ้านผู้ใหญ่ฯ (55,43) = 40 ช่อง = 4 ซม. · (55,43) → คุณยาย (25,47) = 30 ช่อง = 3 ซม. ตะวันตก · (25,47) → ป้าเจียว (25,27) = 20 ช่อง = 2 ซม. เหนือ
+    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 25, y: 47 }, { x: 25, y: 29 }] },
+    { kind: 'rect', terrain: 'paving', area: { x: 22, y: 27, w: 7, h: 2 } },
+    { kind: 'building', area: { x: 23, y: 23, w: 5, h: 4 }, roof: 'roofRed', door: { x: 25, y: 26 } },
 
     // เตาปั้นดินเผา (ปลายเส้นทาง ก)
     { kind: 'building', area: { x: 36, y: 21, w: 3, h: 2 }, roof: 'roofOrange', door: { x: 38, y: 22 } },

@@ -1522,6 +1522,24 @@ export class GameSession {
     return changed;
   }
 
+  /**
+   * เดินถึงจุดที่กำหนด (arrivals) → จด flag + แจ้งข้อความ — ไม่มีหมุด/ป้ายบอกตำแหน่งล่วงหน้า
+   * คืน true เมื่อมีจุดใหม่ที่ถึงแล้ว
+   */
+  checkArrivals(tile: TilePoint): boolean {
+    let changed = false;
+    for (const a of this.level.arrivals ?? []) {
+      if (this.flags.has(a.flag) || !this.matches(a.when)) continue;
+      if (Math.hypot(a.at.x - tile.x, a.at.y - tile.y) <= a.radiusTiles) {
+        this.flags.add(a.flag);
+        this.toast(a.toast);
+        changed = true;
+      }
+    }
+    if (changed) this.updateQuests();
+    return changed;
+  }
+
   /* ---------------- วัดระยะจากจุดอ้างอิง ---------------- */
 
   /** จุดอ้างอิงการวัดของขั้นปัจจุบัน (ข้อมูลภารกิจ) — null = วัดจากจุดที่ผู้เล่นกดเอง */

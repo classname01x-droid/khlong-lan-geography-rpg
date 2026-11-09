@@ -124,7 +124,7 @@ const check = (n, ok, extra = '') => {
   const nextLine = async () => { if (DESK) await page.keyboard.press('Space'); else { const c = await page.evaluate(() => { const e = document.querySelector('.tl-sheet .tl-dlg'); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }); await tapAt(c.x, c.y); } await wait(250); };
   const pick = async (i) => {
     if (DESK) { await page.keyboard.press(`Digit${i + 1}`); await wait(300); return; }
-    const c = await page.evaluate((i) => { const els = [...document.querySelectorAll('.tl-sheet .tl-opt, .tl-sheet button.tl-choice, .tl-sheet .tl-choices button')]; const el = els[i]; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, i);
+    const c = await page.evaluate((i) => { const els = [...document.querySelectorAll('.tl-sheet .tl-option')]; const el = els[i]; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, i);
     if (!c) throw new Error('no choice button');
     await tapAt(c.x, c.y);
   };
@@ -159,7 +159,7 @@ const check = (n, ok, extra = '') => {
       got += 100;
       await wait(300);
       const c2 = await coins();
-      check(`${info.id}/${npc.id}: ตอบถูก +100 เหรียญ +10 ศรัทธา`, c2.coins === before + got && c2.faith === (n * 3 + got / 100) * 10, JSON.stringify(c2));
+      check(`${info.id}/${npc.id}: ตอบถูก +100 เหรียญ +10 ศรัทธา`, c2.coins === before + got && c2.faith === (n * 3 - 2 + got / 100) * 10, JSON.stringify(c2));
       for (let k = 0; k < 6; k++) { const d = await sess(); if (!d.dlg) break; await nextLine(); }
     }
     for (let k = 0; k < 8; k++) { const d = await sess(); if (!d.dlg) break; await nextLine(); }
@@ -179,6 +179,26 @@ const check = (n, ok, extra = '') => {
     else await tapDom('.tl-actions .tl-btn', 'รับภารกิจถัดไป');
     await wait(1000);
   };
+  /** ด่านสักงาม (สำรวจด้วยทิศ+มาตราส่วน): เดินไปตามพิกัดที่คำนวณจากคำบอก แล้วตอบโจทย์ */
+  const doSakngam = async () => {
+    const walkTo = async (x, y) => { await page.evaluate(([x, y]) => window.__TEST__.walkTo(x, y), [x, y]); await wait(400); };
+    const quizThrough = async (answers) => {
+      for (let g = 0; g < 14; g++) {
+        const d = await sess();
+        if (!d.dlg) break;
+        const k = await ev(() => window.__TEST__.session.dialogueView.kind);
+        if (k === 'quiz' && answers.length) await pick(answers.shift());
+        else await nextLine();
+      }
+    };
+    await walkTo(13, 41); await talkKey(); await quizThrough([1]);
+    await walkTo(55, 45); await talkKey(); await quizThrough([1, 1]);
+    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await quizThrough([2]);
+    await walkTo(72, 49);
+    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await quizThrough([]);
+    const c = await coins();
+    check('sakngam: จบภารกิจสักงาม ได้ +100 เหรียญ +10 ศรัทธา (รวม Golden Time 100 → 200 เหรียญ)', c.coins === 200 && c.faith === 10, JSON.stringify(c));
+  };
   for (let n = 0; n < 4; n++) {
     await departChapter();
     if (n === 0) {
@@ -186,7 +206,7 @@ const check = (n, ok, extra = '') => {
       const hud = await ev(() => ({ coins: document.querySelector('.tl-coins')?.innerText || null, tracker: document.querySelector('.tl-tracker')?.innerText || null }));
       check('HUD ด่าน: เหรียญ/ศรัทธา + ภารกิจปัจจุบัน แสดงบนจอ', !DESK ? !!hud.coins && !!hud.tracker : true, JSON.stringify(hud));
     }
-    await doLevel(n);
+    if (n === 0) await doSakngam(); else await doLevel(n);
     await shot(`08-level-${n + 1}-done`);
     await finishSummary();
     const cur = await ev(() => ['ChapterScene', 'ShopScene'].find((k) => window.__GAME__.scene.isActive(k)));
@@ -194,7 +214,7 @@ const check = (n, ok, extra = '') => {
     else check('หลังจบด่าน 4 → ร้านค้า', cur === 'ShopScene', cur);
   }
   const r1 = await coins();
-  check('รวมเหรียญหลังเล่น 4 ด่าน = 100 (Golden) + 1200 · ศรัทธา 120', r1.coins === 1300 && r1.faith === 120, JSON.stringify(r1));
+  check('รวมเหรียญหลังเล่น 4 ด่าน = 100 (Golden) + 100 + 900 · ศรัทธา 100', r1.coins === 1100 && r1.faith === 100, JSON.stringify(r1));
 
   // ---------------- ร้านค้า ----------------
   await waitScene('ShopScene');
@@ -203,7 +223,7 @@ const check = (n, ok, extra = '') => {
   await wait(300);
   await ev(() => window.__SHOP__.buySelected());
   let v = await sh();
-  check('ร้านค้า: ซื้อเกราะเหล็ก (300) → สวมอยู่ · ป้องกัน +15', v.armor === 'iron-armor' && v.def === 15 && v.coins === 1000, JSON.stringify(v));
+  check('ร้านค้า: ซื้อเกราะเหล็ก (300) → สวมอยู่ · ป้องกัน +15', v.armor === 'iron-armor' && v.def === 15 && v.coins === 800, JSON.stringify(v));
   await ev(() => window.__SHOP__.selectById('wood-sword'));
   await ev(() => window.__SHOP__.buySelected());
   await ev(() => window.__SHOP__.selectById('water-sword'));
@@ -214,8 +234,8 @@ const check = (n, ok, extra = '') => {
   await ev(() => window.__SHOP__.buySelected());
   v = await sh();
   check('ร้านค้า: ซื้อดาบวารีแทนดาบไม้ที่สวม · โจมตี 40 · เกราะเหล็ก ป้องกัน 15', v.weapon === 'water-sword' && v.armor === 'iron-armor' && v.atk === 40 && v.def === 15, JSON.stringify(v));
-  check('ร้านค้า: เหรียญเหลือ 1300−300−100−600 = 300', beforeG === 300, beforeG);
-  check('ร้านค้า: เหรียญไม่พอซื้อเกราะผู้พิทักษ์ (600) → ซื้อไม่ได้ ไม่ติดลบ', v.coins === 300 && v.armor === 'iron-armor', JSON.stringify(v));
+  check('ร้านค้า: เหรียญเหลือ 1100−300−100−600 = 100', beforeG === 100, beforeG);
+  check('ร้านค้า: เหรียญไม่พอซื้อเกราะผู้พิทักษ์ (600) → ซื้อไม่ได้ ไม่ติดลบ', v.coins === 100 && v.armor === 'iron-armor', JSON.stringify(v));
   const owned = await ev(() => JSON.parse(localStorage.getItem('khlonglan-geo-rpg:progress')).rpg);
   check('ร้านค้า: ของเดิมยังเป็นของเรา (มีดาบไม้/เกราะเหล็ก/ดาบวารี) ซื้อซ้ำไม่ได้', owned.owned.includes('wood-sword') && owned.owned.includes('iron-armor') && owned.owned.includes('water-sword') && new Set(owned.owned).size === owned.owned.length, JSON.stringify(owned));
   await shot('12-shop-bought');
@@ -236,20 +256,13 @@ const check = (n, ok, extra = '') => {
   const waitIdle = async () => { for (let i = 0; i < 60; i++) { const s = await bs(); if (!s.busy) return s; await wait(200); } return bs(); };
   await shot('16-boss-start');
   const b0 = await bs();
-  check('ต่อสู้: เริ่ม HP 100 · บอส 320 · ศรัทธา 120', b0.hp === 100 && b0.bossHp === 320 && b0.faith === 120, JSON.stringify(b0));
+  check('ต่อสู้: เริ่ม HP 100 · บอส 320 · ศรัทธา 100', b0.hp === 100 && b0.bossHp === 320 && b0.faith === 100, JSON.stringify(b0));
   await tapGame(162, 556); // โจมตี
   await wait(300);
   await shot('17-boss-attack-fx');
   let s1 = await waitIdle();
   check('ต่อสู้: โจมตี → HP บอสลด (40+10=50 → ?) และบอสโต้ตอบ', s1.bossHp === 320 - 40 - 0 || s1.bossHp < 320, JSON.stringify(s1));
   check('ต่อสู้: ผู้เล่นถูกโจมตีกลับ HP ลด', s1.hp < 100, JSON.stringify(s1));
-  await tapGame(470, 556); // สกิล
-  await wait(300);
-  await tapGame(130 + 0, 556); // คมดาบ 20
-  await wait(250);
-  await shot('18-boss-skill-slash');
-  s1 = await waitIdle();
-  check('สกิลคมดาบบารมี: หักศรัทธา 20', s1.faith === 100, JSON.stringify(s1));
   await tapGame(470, 556);
   await wait(300);
   await tapGame(130 + 240, 556); // โล่วารี 35

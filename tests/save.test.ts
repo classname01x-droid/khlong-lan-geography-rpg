@@ -25,7 +25,7 @@ describe('บันทึกการเล่นกลางด่าน (snaps
   function midGame() {
     const s = newSession();
     // ผิด 1 ครั้งก่อนตอบถูก (ลองใหม่ได้ ไม่เสียอะไร)
-    const right = rightOf('q-direction', s);
+    const right = rightOf('q-school', s);
     talk(s, 'teacher-nem', [right === 0 ? 1 : 0, right]);
     explore(s, 'sala');
     s.odometer.sample(0, 0);
@@ -52,10 +52,11 @@ describe('บันทึกการเล่นกลางด่าน (snaps
     expect(b.playerTile).toEqual({ x: 35, y: 46 });
     expect(b.drainToasts()).toEqual([]); // ไม่แจ้งเตือนซ้ำตอนโหลด
 
-    // เล่นต่อ: NPC ที่ช่วยแล้วไม่แสดง "!" ซ้ำ และจบด่านได้
-    expect(b.hasNewDialogue(b.level.npcs.find((n) => n.id === 'teacher-nem')!)).toBe(false);
-    talk(b, 'fisher-kham', [rightOf('q-route', b)]);
-    talk(b, 'headman', [rightOf('q-site', b)]);
+    // เล่นต่อ: ครูเนมที่ถามแล้วไม่ถามซ้ำ · จบด่านได้ (จุด C ต้องเดินถึงเอง)
+    talk(b, 'headman', [rightOf('q-west', b), rightOf('q-north', b)]);
+    talk(b, 'jiao', [rightOf('q-site', b)]);
+    expect(b.checkArrivals({ x: 72, y: 50 })).toBe(true);
+    talk(b, 'jiao');
     while (b.inDialogue) b.advanceDialogue();
     expect(b.completed || b.flags.has('sakngam-complete')).toBe(true);
   });

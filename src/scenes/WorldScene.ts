@@ -646,7 +646,7 @@ export class WorldScene extends Phaser.Scene {
     this.cueSide = place.side;
     this.cueRect = { x: cx - w / 2, y: cy - h / 2, w, h };
     this.cue.setPosition(cx, cy).setVisible(true);
-    this.cueRing.setPosition(x, feetY).setVisible(true);
+    this.cueRing.setPosition(x, feetY).setVisible(!this.session.level.exploreMode);
   }
 
   /* =========================================================
@@ -964,12 +964,12 @@ export class WorldScene extends Phaser.Scene {
       // ช่วยแล้ว → "!" เปลี่ยนเป็น ✓ สีเขียว
       const quizId = n.def.dialogue[0]?.nodes.find((x) => 'quiz' in x);
       const done = !!quizId && 'quiz' in quizId && s.flags.has(`m-${quizId.quiz.replace(/^q-/, '')}`);
-      if (done && !n.check.visible) {
+      if (done && !n.check.visible && !s.level.exploreMode) {
         n.check.setVisible(true).setScale(0.4);
         this.tweens.add({ targets: n.check, scale: 1.3, duration: 220, ease: 'Back.easeOut', yoyo: true, hold: 0 });
         this.tweens.add({ targets: n.check, scale: 1, delay: 480, duration: 120 });
       }
-      n.check.setVisible(done);
+      n.check.setVisible(done && !s.level.exploreMode);
       n.check.setPosition(n.sprite.x, n.sprite.y - 13);
       n.label.setColor(isTarget ? '#ffd84d' : '#ffffff');
     }
@@ -1378,7 +1378,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastTileKey = key;
     s.playerTile = { x: tx, y: ty };
     // เดินถึงใกล้ NPC ที่ภารกิจให้ "ไปพบ" → นับขั้นนั้นสำเร็จ (ทำก่อนลำดับก็นับ)
-    if (!force && s.notePlayerNear(s.playerTile)) this.withStepToasts(() => undefined);
+    if (!force && (s.notePlayerNear(s.playerTile) || s.checkArrivals(s.playerTile))) this.withStepToasts(() => undefined);
 
     const revealed = s.fog.reveal(tx, ty, s.level.fog.revealRadiusTiles);
     for (const t of revealed) this.fogLayer.removeTileAt(t.x, t.y);

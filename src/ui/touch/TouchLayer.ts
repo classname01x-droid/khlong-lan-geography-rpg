@@ -650,6 +650,7 @@ export class TouchLayer {
     // จอเตี้ยมาก: เริ่มแบบย่อ (ยังเห็นเป้าหมายบรรทัดเดียว) — ผู้เล่นแตะขยายได้
     // v0.17: ไม่ย่อแถบภารกิจเองแล้ว (จอเตี้ยก็ต้องเห็น "ตอนนี้ · วิธีทำ · ขอคำแนะนำ") — ผู้เล่นแตะย่อเองได้
     // ป้าย "คุย" และป้ายชื่อในโลกเกมหลบแถบนี้เอง (v0.16)
+    this.exploreMode = s.level.exploreMode === true;
     this.renderTracker(s.mode === 'explore' ? tr : null, cr, w, this.touch ? widths.tracker : Math.min(340, cr.width * 0.42), hudInset);
 
     // ---- แถบสถานะ (จอสัมผัส) และข้อความโต้ตอบ ----
@@ -1099,6 +1100,7 @@ export class TouchLayer {
     this.measureEl.style.maxWidth = `${maxW}px`;
   }
 
+  private exploreMode = false;
   private renderTracker(t: QuestTrackerView | null, cr: DOMRect, wd: (t: string) => string, width: number, inset = 0): void {
     if (!t) {
       this.setHtml('tracker', this.tracker, '');
@@ -1127,7 +1129,8 @@ export class TouchLayer {
           : null;
     let html = '';
     // จอเตี้ยและอยู่ในระยะคุย/สำรวจเป้าหมายแล้ว: แถบเหลือแถวเดียว "เป้าหมาย + ✋ ปุ่มลัด" (ไม่บัง NPC ที่ยืนข้างผู้เล่น)
-    const nearAct = compact && t.micro && act?.ui === 'guide-action:talk' && !this.trackerCollapsed;
+    // ด่านสำรวจ (exploreMode): แสดงโจทย์/คำบอกทางครบเสมอ ไม่ย่อเหลือแถวเดียว
+    const nearAct = compact && t.micro && act?.ui === 'guide-action:talk' && !this.trackerCollapsed && !this.exploreMode;
     if (nearAct) {
       html =
         `<div class="tl-tr-near"><span class="tl-tr-near-o">🎯 ${esc(objective)}</span>` +

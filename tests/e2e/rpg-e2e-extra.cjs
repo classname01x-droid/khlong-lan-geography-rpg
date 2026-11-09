@@ -101,6 +101,18 @@ const base = (rpg) => ({
   await page.evaluate(() => window.__SHOP__.proceed());
   await waitScene('ApproachScene');
 
+  // ---- ต่อสู้: สกิลคมดาบบารมีหักศรัทธา 20 ----
+  await go('BossScene', { coins: 0, faith: 40, potions: 0, shopDone: true });
+  {
+    const bs0 = () => page.evaluate(() => window.__BOSS__.view);
+    await tapGame(470, 556);
+    await wait(250);
+    await tapGame(130, 556);
+    for (let i = 0; i < 60; i++) { const v = await bs0(); if (!v.busy) break; await wait(150); }
+    const v = await bs0();
+    check('สกิลคมดาบบารมี: หักศรัทธา 20 (40 → 20) และบอสเสียหาย 25', v.faith === 20 && v.bossHp === 320 - 25, JSON.stringify(v));
+  }
+
   // ---- ต่อสู้: แพ้ → ลองใหม่ ----
   await go('BossScene', { coins: 0, faith: 0, potions: 0, shopDone: true });
   const bs = () => page.evaluate(() => window.__BOSS__.view);

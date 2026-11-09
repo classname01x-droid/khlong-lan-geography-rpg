@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { LEVELS } from '../src/content/registry';
+import { LEVELS as ALL } from '../src/content/registry';
 import { missionFlag, rewardId } from '../src/content/levels/simple';
 import type { LevelDefinition } from '../src/content/types';
-import { directionFromVector, THAI_DIRECTION } from '../src/core/direction/Compass';
 import { ProgressStore } from '../src/core/progress/ProgressStore';
 import { ElevationModel } from '../src/core/world/Elevation';
 import { newSession, talk } from './helpers';
 
+// ด่าน 2–4 ใช้ตัวสร้างภารกิจแบบ 1 NPC = 1 คำถาม · ด่าน 1 (สักงาม) เป็นด่านสำรวจด้วยทิศ+มาตราส่วน — ทดสอบใน tests/sakngam.test.ts
+const LEVELS = ALL.filter((l) => l.id !== 'sakngam');
 const store = () => new ProgressStore(null, 'sakngam');
 
 /** ตอบถูกทุกข้อของด่าน (รู้คำตอบจากข้อมูลด่าน) */
@@ -96,7 +97,7 @@ describe('ภารกิจแบบเรียบง่าย: 1 NPC = 1 ป�
 });
 
 describe('รางวัลทั้งเกม: รหัสรางวัลไม่ซ้ำข้ามด่าน (ทุกภารกิจได้ 100 เหรียญ + 10 ศรัทธา ครบ)', () => {
-  it('เล่นครบ 4 ด่านด้วยบันทึกเดียวกัน: 12 ภารกิจ = 1200 เหรียญ + 120 ศรัทธา', () => {
+  it('เล่นด่าน 2–4 ด้วยบันทึกเดียวกัน: 9 ภารกิจ = 900 เหรียญ + 90 ศรัทธา', () => {
     const p = store();
     const ids = new Set<string>();
     for (const level of LEVELS) {
@@ -105,9 +106,9 @@ describe('รางวัลทั้งเกม: รหัสรางวั�
       for (const q of level.quizzes!) for (const e of q.effects) if (e.type === 'reward') ids.add(e.id);
       solve(level, s);
     }
-    expect(ids.size).toBe(12);
-    expect(p.rpg.coins).toBe(1200);
-    expect(p.rpg.faith).toBe(120);
+    expect(ids.size).toBe(9);
+    expect(p.rpg.coins).toBe(900);
+    expect(p.rpg.faith).toBe(90);
   });
 });
 
@@ -117,13 +118,6 @@ describe('คำตอบมาจากแผนที่จริง (แก�
     const quiz = l.quizzes!.find((x) => x.id === q)!;
     return quiz.choices.find((c) => c.id === quiz.correctChoiceId)!.label;
   };
-
-  it('สักงาม: ศาลาชุมชนอยู่ทิศตะวันออกของโรงเรียน (คำนวณจากพิกัดจุดสังเกต)', () => {
-    const l = byId['sakngam'];
-    const at = (id: string) => l.landmarks.find((x) => x.id === id)!.at;
-    const d = directionFromVector(at('sala').x - at('school').x, at('sala').y - at('school').y)!;
-    expect(correct(l, 'q-direction')).toBe(THAI_DIRECTION[d]);
-  });
 
   it('จุดที่ถามว่า "สูงที่สุด/ต่ำที่สุด" ตรงกับแบบจำลองความสูง และห่างจากอันดับสอง ≥ 3 ม.', () => {
     const check = (levelId: string, quizId: string, ids: string[], which: 'max' | 'min', names: Record<string, string>) => {
