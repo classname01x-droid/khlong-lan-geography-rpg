@@ -53,7 +53,7 @@ export class MapOverlay {
   constructor(
     scene: Phaser.Scene,
     private readonly s: GameSession,
-    touch = false,
+    touch = true,
   ) {
     const { width, height } = s.grid;
     // ด่านที่มีการวิเคราะห์พื้นที่ (บท 3) ต้องมีที่ใต้แผนที่ให้ผลรายเกณฑ์ 4 ข้อ + ข้อความล็อก/วิธีใช้ → ย่อแผนที่ลงเล็กน้อยบนคอมพิวเตอร์

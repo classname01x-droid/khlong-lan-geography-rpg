@@ -40,21 +40,13 @@ export const GAME_ASPECT = 960 / 640;
 /** ความกว้างขั้นต่ำของคอลัมน์ปุ่มข้างภาพเกม — พอวางปุ่ม 2 ปุ่มต่อแถว (ปุ่มละ ≥ 52 px) */
 export const MIN_COLUMN = 116;
 
-export function computeMobileLayout(vw: number, vh: number, insets: Insets, touch: boolean): MobileLayout {
+export function computeMobileLayout(vw: number, vh: number, insets: Insets): MobileLayout {
   const portrait = vh > vw;
   const availW = Math.max(0, vw - insets.left - insets.right);
   const availH = Math.max(0, vh - insets.top - insets.bottom);
   const compact = vh < 520;
   // ปุ่มอย่างน้อย 44 px (ขนาดสัมผัสที่แนะนำ) และโตตามความสูงจอแต่ไม่เกิน 64
   const button = Math.round(Math.max(44, Math.min(64, availH / 7.5)));
-
-  if (!touch) {
-    const w = Math.min(availW, availH * GAME_ASPECT);
-    const h = w / GAME_ASPECT;
-    const game = { x: insets.left + (availW - w) / 2, y: insets.top + (availH - h) / 2, w, h };
-    const empty = { x: 0, y: 0, w: 0, h: 0 };
-    return { portrait, game, sideColumns: false, left: empty, right: empty, compact, button, insets };
-  }
 
   // ลองให้ภาพเกมสูงเต็มจอ แล้วดูว่าเหลือที่ว่างข้างละเท่าไร
   const fullW = availH * GAME_ASPECT;

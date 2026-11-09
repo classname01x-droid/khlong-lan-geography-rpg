@@ -42,14 +42,6 @@ const game = new Phaser.Game(config);
 
 /* ---------------- มือถือ: ปุ่มสัมผัส + จัดวางจอ ---------------- */
 
-/** เล่นบนจอสัมผัสหรือไม่ — ?touch=1 บังคับเปิด (ทดสอบ), ?touch=0 บังคับปิด */
-function detectTouch(): boolean {
-  const q = new URLSearchParams(window.location.search).get('touch');
-  if (q === '1') return true;
-  if (q === '0') return false;
-  return window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-}
-
 /** ขอบปลอดภัย (รอยบาก/มุมโค้ง) จาก CSS env(safe-area-inset-*) */
 function readInsets(): Insets {
   const probe = document.createElement('div');
@@ -63,23 +55,23 @@ function readInsets(): Insets {
   return insets;
 }
 
-const touch = detectTouch();
-game.registry.set(REGISTRY_TOUCH_UI, touch);
-const touchLayer = new TouchLayer(game, touch);
+// UI เดียวทุกอุปกรณ์ (แบบมือถือ): จอยสติก/ปุ่มสัมผัสเป็น DOM · คอมพิวเตอร์ใช้เมาส์คลิกปุ่มเดียวกัน · คีย์บอร์ดยังใช้ได้ (ไม่มี UI แยก)
+game.registry.set(REGISTRY_TOUCH_UI, true);
+const touchLayer = new TouchLayer(game);
 // จอสัมผัส: เมนูหลัก แผนที่การเดินทาง ฉากเชื่อมบท และฉากจบ เป็นหน้าจอ DOM ตัวอักษรใหญ่ (คอมพิวเตอร์ใช้หน้าจอบน canvas เดิม)
-const touchScreens = touch ? new TouchScreens(game) : null;
+const touchScreens = new TouchScreens(game);
 const host = document.getElementById('game')!;
 
 function applyLayout(): void {
   const vw = window.visualViewport?.width ?? window.innerWidth;
   const vh = window.visualViewport?.height ?? window.innerHeight;
-  const layout = computeMobileLayout(vw, vh, readInsets(), touch);
-  // จอสัมผัส: วางภาพเกมไว้ระหว่างคอลัมน์ปุ่ม (ไม่ทับฉาก) · คอมพิวเตอร์: เต็มหน้าต่างเหมือนเดิม
-  const r = touch ? layout.game : { x: 0, y: 0, w: vw, h: vh };
+  const layout = computeMobileLayout(vw, vh, readInsets());
+  // วางภาพเกม (สัดส่วน 3:2 ไม่ยืดภาพ) ไว้กลางจอระหว่างคอลัมน์ปุ่ม — คอมพิวเตอร์และมือถือใช้เหมือนกัน
+  const r = layout.game;
   Object.assign(host.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
   game.scale.refresh();
   touchLayer.setLayout(layout);
-  touchScreens?.setLayout(layout);
+  touchScreens.setLayout(layout);
 }
 applyLayout();
 window.addEventListener('resize', applyLayout);
@@ -93,5 +85,5 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 if (import.meta.env.DEV) {
   (window as unknown as { __GAME__: Phaser.Game }).__GAME__ = game;
   (window as unknown as { __TOUCH__: TouchLayer }).__TOUCH__ = touchLayer;
-  (window as unknown as { __SCREENS__: TouchScreens | null }).__SCREENS__ = touchScreens;
+  (window as unknown as { __SCREENS__: TouchScreens }).__SCREENS__ = touchScreens;
 }

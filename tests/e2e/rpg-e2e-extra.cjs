@@ -39,7 +39,7 @@ const base = (rpg) => ({
   const canvasRect = () => page.evaluate(() => { const c = window.__GAME__.canvas.getBoundingClientRect(); return { x: c.left, y: c.top, s: c.width / 960 }; });
   const tapGame = async (gx, gy) => { const c = await canvasRect(); const x = c.x + gx * c.s; const y = c.y + gy * c.s; if (DESK) await page.mouse.click(x, y); else await page.touchscreen.tap(x, y); await wait(300); };
   const go = async (scene, rpg) => {
-    await page.goto(BASE + (DESK ? '?touch=0' : '?touch=1'));
+    await page.goto(BASE);
     await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, base(rpg)]);
     await page.reload();
     await page.waitForFunction(() => window.__GAME__ && window.__GAME__.scene.isActive('MainMenuScene'));
@@ -49,7 +49,7 @@ const base = (rpg) => ({
   const rpg = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)).rpg, KEY);
 
   // ---- Golden Time: ตอบผิดทุกข้อ ----
-  await page.goto(BASE + (DESK ? '?touch=0' : '?touch=1'));
+  await page.goto(BASE);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => window.__GAME__ && window.__GAME__.scene.isActive('MainMenuScene'));

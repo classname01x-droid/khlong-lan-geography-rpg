@@ -33,18 +33,17 @@ const KEY = 'khlonglan-geo-rpg:progress';
     if (!c) throw new Error(`not found ${sel} ${text}`);
     await tapAt(c.x, c.y);
   };
-  await page.goto(BASE + (DESK ? '?touch=0' : '?touch=1'));
+  await page.goto(BASE);
   await page.evaluate((k) => localStorage.setItem(k, JSON.stringify({ version: 2, storyVersion: 3, completed: {}, unlocked: ['sakngam'], codePieces: {}, inProgress: {}, rpg: { coins: 0, faith: 0, potions: 0, owned: [], weapon: null, armor: null, rewarded: [], goldenDone: true, goldenCoins: 0, shopDone: false, bossDone: false, bossLosses: 0 } })), KEY);
-  await page.goto(BASE + (DESK ? '?touch=0' : '?touch=1') + '&level=sakngam&new=1');
+  await page.goto(BASE + '?level=sakngam&new=1');
   await page.waitForFunction(() => window.__TEST__ && window.__TEST__.session && window.__GAME__.scene.isActive('WorldScene'), null, { timeout: 15000 });
   await wait(800);
   const sess = () => ev(() => { const s = window.__TEST__.session; return { step: s.currentStepOrder, mode: s.mode, flags: [...s.flags], dlg: s.dialogueView && s.dialogueView.kind, done: s.completed }; });
   const walk = async (x, y) => { const ok = await ev(([x, y]) => window.__TEST__.walkTo(x, y), [x, y]); await wait(400); return ok; };
   const pos = () => ev(() => { const s = window.__TEST__.session; return { ...s.playerTile }; });
-  const talkKey = async () => { if (DESK) await page.keyboard.press('KeyE'); else await tapDom('.tl-actions .tl-btn', 'คุย'); await wait(350); };
-  const nextLine = async () => { if (DESK) await page.keyboard.press('Space'); else { const c = await page.evaluate(() => { const e = document.querySelector('.tl-sheet .tl-dlg'); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }); await tapAt(c.x, c.y); } await wait(250); };
+  const talkKey = async () => { await tapDom('.tl-actions .tl-btn', 'คุย'); await wait(350); };
+  const nextLine = async () => { const c = await page.evaluate(() => { const e = document.querySelector('.tl-sheet .tl-dlg'); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }); await tapAt(c.x, c.y); await wait(250); };
   const pick = async (i) => {
-    if (DESK) { await page.keyboard.press(`Digit${i + 1}`); await wait(300); return; }
     const c = await page.evaluate((i) => { const els = [...document.querySelectorAll('.tl-sheet .tl-option')]; const el = els[i]; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, i);
     if (!c) throw new Error('no choice button');
     await tapAt(c.x, c.y);
@@ -60,8 +59,8 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await noGuide('เริ่มด่าน');
   const labels0 = await ev(() => { const w = window.__GAME__.scene.getScene('WorldScene'); return [...w.labels.entries()].filter(([, t]) => t.visible && t.alpha > 0).map(([id]) => id); });
   check('เริ่มด่าน: ยังไม่แสดงป้ายสถานที่ไกลตัว (บ้านผู้ใหญ่ ศาลา สะพาน บ้านป้าเจียว) จนกว่าจะเดินเข้าใกล้', !labels0.some((id) => ['headman-house', 'sala', 'bridge', 'jiao-house'].includes(id)), JSON.stringify(labels0));
-  const t0 = DESK ? '' : await trackerText();
-  if (!DESK) check('แถบภารกิจ: บอกภารกิจปัจจุบัน + มาตราส่วน (ยังไม่เฉลยคำตอบ)', t0.includes('พบครูเนม') && t0.includes('1:10,000') && !t0.includes('400'), t0);
+  const t0 = await trackerText();
+  check('แถบภารกิจ: บอกภารกิจปัจจุบัน + มาตราส่วน (ยังไม่เฉลยคำตอบ)', t0.includes('พบครูเนม') && t0.includes('1:10,000') && !t0.includes('400'), t0);
 
   // 1) ครูเนม
   await walk(13, 41); await talkKey();
@@ -94,7 +93,7 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await pick(1); // 2 ซม. = 200 เมตร
   for (let i = 0; i < 6; i++) { s = await sess(); if (!s.dlg) break; await nextLine(); }
   check('โจทย์ 2 ซม. ถูก → รู้เส้นทางแล้ว ผ่านขั้น 2', s.flags.includes('route-known') && s.step === 3, JSON.stringify(s));
-  if (!DESK) { const t = await trackerText(); check('แถบภารกิจ: แสดงคำบอกเส้นทางที่ได้รับ (ตะวันตก 300 / เหนือ 200 เมตร) อ่านซ้ำได้', t.includes('300') && t.includes('200'), t); }
+  { const t = await trackerText(); check('แถบภารกิจ: แสดงคำบอกเส้นทางที่ได้รับ (ตะวันตก 300 / เหนือ 200 เมตร) อ่านซ้ำได้', t.includes('300') && t.includes('200'), t); }
   await shot('04-route-known');
 
   // 3) ตะวันตก 3 ซม. = 30 ช่อง → คุณยายริมทาง (25,47) แล้วเหนือ 2 ซม. = 20 ช่อง

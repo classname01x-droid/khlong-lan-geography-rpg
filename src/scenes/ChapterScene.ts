@@ -1,41 +1,25 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH } from '../config/constants';
-import { CHAPTERS, getChapter, getChapterIntro, LEGEND_NOTE, type ChapterIntro } from '../content/story/chapters';
-import { chapterStates, currentChapter, IN_DEVELOPMENT_MESSAGE, type ChapterSlot } from '../core/campaign/Campaign';
+import { CHAPTERS, getChapter, getChapterIntro, type ChapterIntro } from '../content/story/chapters';
+import { chapterStates, currentChapter, type ChapterSlot } from '../core/campaign/Campaign';
 import { drawWorldMapArt } from '../graphics/MenuArt';
-import { MenuNavigator } from '../ui/pixel/MenuNavigator';
-import { PixelButton } from '../ui/pixel/PixelButton';
-import { drawPixelFrame } from '../ui/pixel/PixelFrame';
-import { PIXEL } from '../ui/pixel/theme';
-import { wrapThaiText } from '../ui/textWrap';
-import { FONT_FAMILY } from '../ui/theme';
 import { FINALE_POINT, JOURNEY_LAYOUT } from './journeyLayout';
-import { REGISTRY_TOUCH_UI } from './events';
 import { getProgress, goToWorldMap, SCENE, startLevel, type ChapterStartData } from './navigation';
 
-/** เวลาขั้นต่ำระหว่างบรรทัด (มิลลิวินาที) — แตะรัวจะไม่ข้ามบทสนทนา */
+/** เวลาขั้นต่ำระหว่างบรรทัด (มิลลิวินาที) — แตะรัวจนข้ามบทไม่ได้ */
 export const MIN_LINE_MS = 350;
-
-// อยู่ระหว่างพื้นที่ตำบลซ้าย–ขวา (x 184–776) เพื่อไม่บังเส้นทางเดินทาง
-const PANEL = { x: 196, y: 330, w: 568, h: 280 } as const;
 
 /**
  * ฉากเชื่อมเรื่องระหว่างตำบล (Chapter Transition) — บทสนทนามาจากข้อมูล (content/story/chapters.ts)
- * แสดงการเดินทางบนแผนที่การเดินทาง แล้วพาเข้าสู่พื้นที่ของบทใหม่
- * เปิดได้เฉพาะบทปัจจุบันของภารกิจหลัก · บทที่ยังไม่มีเนื้อหาจะไม่ถูกเปิด (แสดง "ภารกิจถัดไปอยู่ระหว่างพัฒนา")
+ * ฉากนี้วาดเฉพาะแผนที่การเดินทางและเส้นทางที่เดินทางไป · ชื่อบท เป้าหมาย บทสนทนา ปุ่ม เป็น DOM (ui/touch/TouchScreens.ts) ใช้ร่วมทุกอุปกรณ์
+ * เปิดได้เฉพาะบทปัจจุบันของภารกิจหลัก · บทที่ยังไม่มีเนื้อหา → "ภารกิจถัดไปอยู่ระหว่างพัฒนา"
  */
 export class ChapterScene extends Phaser.Scene {
   private chapter!: ChapterSlot;
   private intro!: ChapterIntro;
   private lineIndex = 0;
-  private speaker!: Phaser.GameObjects.Text;
-  private body!: Phaser.GameObjects.Text;
-  private hint!: Phaser.GameObjects.Text;
-  private nav: MenuNavigator | null = null;
-  private touchUi = false;
-  /** เวลาที่เปลี่ยนบรรทัดล่าสุด — กันแตะรัวจนข้ามบทสนทนาโดยไม่ตั้งใจ */
+  /** เวลาที่เปลี่ยนบรรทัดล่าสุด — กันแตะรัวจนข้ามบท */
   private lineShownAt = 0;
-  /** สถานะ (ใช้โดยหน้าจอสัมผัสและการทดสอบ) */
+  /** สถานะ (ใช้โดยหน้าจอ DOM และการทดสอบ) */
   stage: 'dialogue' | 'ready' | 'in-development' = 'dialogue';
 
   constructor() {
@@ -54,9 +38,7 @@ export class ChapterScene extends Phaser.Scene {
     this.chapter = chapter;
     this.intro = intro;
     this.lineIndex = 0;
-    this.nav = null;
     this.stage = 'dialogue';
-    this.touchUi = this.registry.get(REGISTRY_TOUCH_UI) === true;
     this.lineShownAt = this.time.now;
 
     // ---- แผนที่การเดินทาง + เส้นทางจากตำบลเดิมไปตำบลใหม่ ----
@@ -85,62 +67,11 @@ export class ChapterScene extends Phaser.Scene {
     this.tweens.add({ targets: marker, x: to.x, y: to.y, duration: 1600, ease: 'Sine.easeInOut' });
     this.input.keyboard!.on('keydown', (ev: KeyboardEvent) => this.onKey(ev.code));
     this.installTestHooks();
-    // จอสัมผัส: ชื่อบท เป้าหมายภารกิจใหม่ บทสนทนา และปุ่ม เป็น DOM ตัวอักษรใหญ่ (TouchScreens) — canvas แสดงเส้นทางเดินทาง
-    if (this.touchUi) return;
-
-    // ---- ป้ายบท ----
-    const banner = this.add.graphics();
-    drawPixelFrame(banner, 180, 20, 600, 92, 'wood');
-    this.add
-      .text(GAME_WIDTH / 2, 30, `${intro.heading} · ${chapter.tambon}`, this.style(28, PIXEL.light, true))
-      .setOrigin(0.5, 0);
-    this.add.text(GAME_WIDTH / 2, 72, chapter.title, this.style(18, '#f3ead2')).setOrigin(0.5, 0);
-
-    this.add.text(GAME_WIDTH / 2, 116, LEGEND_NOTE, this.style(14, '#f3ead2', true)).setOrigin(0.5, 0);
-
-    // ---- กล่องบทสนทนา ----
-    const box = this.add.graphics();
-    drawPixelFrame(box, PANEL.x, PANEL.y, PANEL.w, PANEL.h, 'paper');
-    this.speaker = this.add.text(PANEL.x + 28, PANEL.y + 20, '', this.style(19, PIXEL.warn));
-    this.body = this.add.text(PANEL.x + 28, PANEL.y + 54, '', { ...this.style(19, PIXEL.ink), lineSpacing: 6 });
-    this.hint = this.add
-      .text(PANEL.x + PANEL.w - 24, PANEL.y + PANEL.h - 16, '', this.style(14, PIXEL.inkMuted))
-      .setOrigin(1, 1);
-    this.showLine();
-
-    // เมาส์: คลิกที่ใดก็ได้เพื่ออ่านบรรทัดถัดไป (หลังอ่านจบใช้ปุ่ม "ออกเดินทาง")
-    this.input.on('pointerdown', () => {
-      if (this.stage === 'dialogue' && !this.nav) this.advance(true);
-    });
-  }
-
-  private style(size: number, color: string, stroke = false): Phaser.Types.GameObjects.Text.TextStyle {
-    return {
-      fontFamily: FONT_FAMILY,
-      fontSize: `${size}px`,
-      color,
-      padding: { top: 6 },
-      ...(stroke ? { stroke: '#2a1a0c', strokeThickness: 5 } : {}),
-    };
-  }
-
-  private showLine(): void {
-    this.lineShownAt = this.time.now;
-    if (this.touchUi) return;
-    const line = this.intro.lines[this.lineIndex];
-    const text = line.text;
-    this.speaker.setText(line.speaker);
-    this.body.setText(wrapThaiText(text, PANEL.w - 56, `19px ${FONT_FAMILY}`));
-    this.hint.setText(`${this.lineIndex + 1}/${this.intro.lines.length} · แตะหรือกด Space เพื่ออ่านต่อ`);
   }
 
   private onKey(code: string): void {
     if (code === 'Escape') {
       goToWorldMap(this);
-      return;
-    }
-    if (this.nav) {
-      this.nav.handleKey(code);
       return;
     }
     if (code !== 'Space' && code !== 'Enter' && code !== 'NumpadEnter' && code !== 'KeyE') return;
@@ -157,7 +88,7 @@ export class ChapterScene extends Phaser.Scene {
     if (this.stage !== 'dialogue' || (guard && this.time.now - this.lineShownAt < MIN_LINE_MS)) return false;
     if (this.lineIndex < this.intro.lines.length - 1) {
       this.lineIndex++;
-      this.showLine();
+      this.lineShownAt = this.time.now;
       return true;
     }
     this.finishDialogue();
@@ -168,7 +99,7 @@ export class ChapterScene extends Phaser.Scene {
   back(): void {
     if (this.stage !== 'dialogue' || this.lineIndex === 0) return;
     this.lineIndex--;
-    this.showLine();
+    this.lineShownAt = this.time.now;
   }
 
   /** ข้อมูลสำหรับหน้าจอสัมผัส */
@@ -180,31 +111,11 @@ export class ChapterScene extends Phaser.Scene {
     goToWorldMap(this);
   }
 
-  /** จบบทสนทนา: บทที่มีเนื้อหา → ปุ่มออกเดินทาง · ยังไม่มีเนื้อหา → แจ้งและกลับแผนที่การเดินทาง (ความคืบหน้าคงอยู่) */
+  /** จบบทสนทนา: บทที่มีเนื้อหา → พร้อมออกเดินทาง · ยังไม่มีเนื้อหา → อยู่ระหว่างพัฒนา */
   private finishDialogue(): void {
     const playable = this.chapter.playable && !!this.chapter.levelId;
     this.stage = playable ? 'ready' : 'in-development';
     this.lineShownAt = this.time.now;
-    if (this.touchUi) return;
-    this.speaker.setText(playable ? 'พร้อมออกเดินทาง' : IN_DEVELOPMENT_MESSAGE);
-    this.body.setText(
-      wrapThaiText(
-        playable
-          ? `${this.intro.heading}: ${this.chapter.tambon} — ${this.chapter.title}`
-          : 'ความคืบหน้าทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ',
-        PANEL.w - 56,
-        `19px ${FONT_FAMILY}`,
-      ),
-    );
-    this.hint.setText('');
-    const label = playable ? `ออกเดินทางไป${this.chapter.tambon}` : 'กลับแผนที่การเดินทาง';
-    const button = new PixelButton(this, GAME_WIDTH / 2 - 190, PANEL.y + PANEL.h - 72, label, {
-      width: 380,
-      height: 50,
-      fontSize: 18,
-      onClick: () => this.depart(),
-    });
-    this.nav = new MenuNavigator([button], () => goToWorldMap(this));
   }
 
   depart(): void {

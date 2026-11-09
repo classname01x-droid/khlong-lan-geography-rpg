@@ -174,10 +174,10 @@ export class TouchLayer {
   lastReader: ReaderContent | null = null;
   lastTutorial: TutorialView | null = null;
 
-  constructor(
-    private readonly game: Phaser.Game,
-    readonly touch: boolean,
-  ) {
+  /** UI เดียวทุกอุปกรณ์ (แบบมือถือ) — คงชื่อไว้ให้โค้ดที่ส่งต่อค่า touch ใช้ได้ */
+  readonly touch = true;
+
+  constructor(private readonly game: Phaser.Game) {
     const style = document.createElement('style');
     style.textContent = TOUCH_CSS.replaceAll('__FONT__', FONT_FAMILY);
     document.head.appendChild(style);
@@ -188,7 +188,7 @@ export class TouchLayer {
       return d;
     };
     this.root = div('tl-root', document.body);
-    this.root.classList.toggle('tl-touch', touch);
+    this.root.classList.toggle('tl-touch', true);
     // ลูกแรกของชั้น → อยู่ใต้แถบแผนที่/ปุ่ม/แผ่นตัวเลือก (ที่สร้างทีหลัง) แต่อยู่เหนือ canvas
     this.pinpad = div('tl-pinpad', this.root);
     this.pinBadge = div('tl-pinbadge', this.root);
@@ -267,7 +267,7 @@ export class TouchLayer {
     this.root.classList.toggle('tl-compact', l.compact);
     // คอลัมน์ปุ่มแคบ: ไอคอนอยู่เหนือชื่อปุ่ม (ชื่อปุ่มไม่ถูกตัดกลางคำ)
     this.root.classList.toggle('tl-narrowcol', l.right.w < 132);
-    const showRotate = this.touch && l.portrait;
+    const showRotate = l.portrait;
     this.rotate.style.display = showRotate ? 'flex' : 'none';
     // แนวตั้ง: หยุดเกมชั่วคราว (สถานะไม่หาย) · กลับแนวนอน: เล่นต่อ
     if (showRotate && !this.paused) {
@@ -617,7 +617,7 @@ export class TouchLayer {
     this.joyZone.classList.toggle('tl-coach', this.coachHi === 'joystick');
     this.status.classList.toggle('tl-coach', this.coachHi === 'status');
     this.tracker.classList.toggle('tl-coach', this.coachHi === 'tracker');
-    this.root.classList.toggle('tl-walk', this.touch && ctx.joystick);
+    this.root.classList.toggle('tl-walk', ctx.joystick);
     if (!ctx.joystick && this.joyPointer !== null) this.resetJoystick();
 
     // ---- ปุ่มคำสั่ง (จอสัมผัส) ----
@@ -654,7 +654,7 @@ export class TouchLayer {
     this.renderTracker(s.mode === 'explore' ? tr : null, cr, w, this.touch ? widths.tracker : Math.min(340, cr.width * 0.42), hudInset);
 
     // ---- แถบสถานะ (จอสัมผัส) และข้อความโต้ตอบ ----
-    if (this.touch && s.mode === 'explore') this.renderStatus(s, cr, widths);
+    if (s.mode === 'explore') this.renderStatus(s, cr, widths);
     else this.setHtml('status', this.status, '');
     this.renderMeasure(s, cr, widths);
     const coachTop = this.renderCoach(tv, s, cr);
@@ -683,7 +683,7 @@ export class TouchLayer {
     this.compareSig = '';
     if (s.mode === 'compare') setTouchView({ compareTab: 0 });
     // เปิดแผนที่: เริ่มที่ระดับขยายที่อ่านชื่อสถานที่ได้บนจอนี้ (ชื่อสถานที่บนแผนที่จอสัมผัส = 14 px ที่ 1×)
-    if (this.touch && (s.mode === 'map' || s.mode === 'compare')) {
+    if ((s.mode === 'map' || s.mode === 'compare')) {
       setTouchView({ mapZoomIndex: readableZoomIndex(14, this.canvasRect().width / GAME_WIDTH) });
     }
     if (s.mode !== 'map' && s.mode !== 'compare') setTouchView({ legend: false });
@@ -691,7 +691,7 @@ export class TouchLayer {
 
   /** ความกว้างของคอลัมน์ปุ่มที่ซ้อนบนภาพเกม (จอแคบ) — 0 เมื่อปุ่มอยู่ข้างภาพเกม */
   private overlayInset(cr: DOMRect): number {
-    if (!this.touch || this.layout?.sideColumns || !this.actions.childElementCount) return 0;
+    if (this.layout?.sideColumns || !this.actions.childElementCount) return 0;
     return Math.max(0, cr.right - this.actions.getBoundingClientRect().left);
   }
 
@@ -814,8 +814,8 @@ export class TouchLayer {
 
   /** แถบหัวแผนที่และแถบสถานะหมุด — คืนความสูงแถบหัว (CSS px) และแจ้งพื้นที่ที่ถูกบังให้ canvas วางแผนที่ */
   private renderMapBars(s: GameSession, cr: DOMRect, w: (t: string) => string): number {
-    const isMap = this.touch && s.mode === 'map';
-    const isCompare = this.touch && s.mode === 'compare';
+    const isMap = s.mode === 'map';
+    const isCompare = s.mode === 'compare';
     if (!isMap && !isCompare) {
       this.setHtml('mapbar', this.mapbar, '');
       this.setHtml('mapinfo', this.mapinfo, '');
@@ -890,7 +890,7 @@ export class TouchLayer {
   /* ---------------- บทสนทนา / ตัวเลือก ---------------- */
 
   private renderSheet(s: GameSession, ctx: TouchContext | null, cr: DOMRect, w: (t: string) => string): void {
-    if (!this.touch || !ctx) {
+    if (!ctx) {
       this.setHtml('sheet', this.sheet, '');
       return;
     }
@@ -950,8 +950,8 @@ export class TouchLayer {
     this.setHtml('coach', this.coach, html);
     this.coach.classList.toggle('tl-co-compact', !explore);
     // ไม่ทับคอลัมน์ปุ่ม/จอยสติกที่ซ้อนบนภาพเกม (จอแคบ)
-    const leftIn = this.touch && this.layout && !this.layout.sideColumns ? Math.max(0, this.layout.left.x + this.layout.left.w - cr.left) : 0;
-    const rightIn = this.touch && this.layout && !this.layout.sideColumns ? Math.max(0, cr.right - this.layout.right.x) : 0;
+    const leftIn = this.layout && !this.layout.sideColumns ? Math.max(0, this.layout.left.x + this.layout.left.w - cr.left) : 0;
+    const rightIn = this.layout && !this.layout.sideColumns ? Math.max(0, cr.right - this.layout.right.x) : 0;
     const avail = cr.width - leftIn - rightIn - 16;
     const width = Math.max(220, Math.min(520, avail));
     this.coach.style.width = `${width}px`;
@@ -997,7 +997,7 @@ export class TouchLayer {
     this.coach.classList.remove('tl-co-compact');
     this.coach.classList.add('tl-co-strip');
     const l = this.layout;
-    if (this.touch && l) {
+    if (l) {
       this.coach.classList.add('tl-co-col');
       this.coach.classList.remove('tl-co-bar');
       const btnTops = [...this.actions.querySelectorAll<HTMLElement>('.tl-btn')].map((b) => b.getBoundingClientRect().top).filter((t) => t > 0);
@@ -1092,7 +1092,7 @@ export class TouchLayer {
       '<button class="tl-tr-mini" data-ui="measure-stop" aria-label="หยุดวัด">✕ หยุด</button></div></div>';
     this.setHtml('measure', this.measureEl, html);
     // ใต้แถบสถานะ (มุมซ้ายบน) · คอมพิวเตอร์: ใต้กรอบทิศในภาพเกม — ไม่ทับแถบภารกิจ และไม่เกินครึ่งซ้ายของภาพ (ไม่บังตัวผู้เล่น)
-    const top = this.touch && this.status.style.display !== 'none' ? this.status.getBoundingClientRect().bottom + 6 : cr.top + 124 * (cr.width / GAME_WIDTH);
+    const top = this.status.style.display !== 'none' ? this.status.getBoundingClientRect().bottom + 6 : cr.top + 124 * (cr.width / GAME_WIDTH);
     const trLeft = this.tracker.style.display !== 'none' ? this.tracker.getBoundingClientRect().left : cr.right;
     const maxW = Math.max(200, Math.min(cr.width / 2 - 16, trLeft - cr.left - 16, this.touch ? widths.status + 60 : 420));
     this.measureEl.style.left = `${cr.left + 8}px`;

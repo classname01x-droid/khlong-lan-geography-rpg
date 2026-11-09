@@ -32,7 +32,7 @@ export class CompareOverlay {
 
   constructor(
     private readonly scene: Phaser.Scene,
-    touch = false,
+    touch = true,
   ) {
     const dim = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.93).setOrigin(0);
     const title = scene.add

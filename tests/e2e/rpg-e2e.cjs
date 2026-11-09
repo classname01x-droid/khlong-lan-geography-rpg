@@ -49,13 +49,12 @@ const check = (n, ok, extra = '') => {
   const ev = (fn, arg) => page.evaluate(fn, arg);
 
   // ---------------- เริ่มเกมใหม่ ----------------
-  await page.goto(BASE + (DESK ? '?touch=0' : '?touch=1'));
+  await page.goto(BASE);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await waitScene('MainMenuScene');
   await shot('01-menu');
-  if (DESK) await page.keyboard.press('Enter');
-  else await tapDom('.ts-btn', 'เริ่มเกมใหม่');
+  await tapDom('.ts-btn', 'เริ่มเกมใหม่');
   await waitScene('IntroScene');
 
   // ---------------- Intro 3 ฉาก ----------------
@@ -120,10 +119,9 @@ const check = (n, ok, extra = '') => {
   };
   const sess = () => ev(() => { const s = window.__TEST__.session; return { step: s.currentStepOrder, mode: s.mode, flags: [...s.flags], done: s.completed, id: s.level.id, dlg: s.dialogueView && { kind: s.dialogueView.kind } }; });
   const coins = () => ev(() => JSON.parse(localStorage.getItem('khlonglan-geo-rpg:progress')).rpg);
-  const talkKey = async () => { if (DESK) await page.keyboard.press('KeyE'); else await tapDom('.tl-actions .tl-btn', 'คุย'); await wait(350); };
-  const nextLine = async () => { if (DESK) await page.keyboard.press('Space'); else { const c = await page.evaluate(() => { const e = document.querySelector('.tl-sheet .tl-dlg'); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }); await tapAt(c.x, c.y); } await wait(250); };
+  const talkKey = async () => { await tapDom('.tl-actions .tl-btn', 'คุย'); await wait(350); };
+  const nextLine = async () => { const c = await page.evaluate(() => { const e = document.querySelector('.tl-sheet .tl-dlg'); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }); await tapAt(c.x, c.y); await wait(250); };
   const pick = async (i) => {
-    if (DESK) { await page.keyboard.press(`Digit${i + 1}`); await wait(300); return; }
     const c = await page.evaluate((i) => { const els = [...document.querySelectorAll('.tl-sheet .tl-option')]; const el = els[i]; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, i);
     if (!c) throw new Error('no choice button');
     await tapAt(c.x, c.y);
@@ -175,8 +173,7 @@ const check = (n, ok, extra = '') => {
     const m = await sess();
     check(`${m.id}: จบด่าน → หน้าสรุป`, m.mode === 'summary', JSON.stringify(m));
     await shot(`10-summary-${m.id}`);
-    if (DESK) await page.keyboard.press('Space');
-    else await tapDom('.tl-actions .tl-btn', 'รับภารกิจถัดไป');
+    await tapDom('.tl-actions .tl-btn', 'รับภารกิจถัดไป');
     await wait(1000);
   };
   /** ด่านสักงาม (สำรวจด้วยทิศ+มาตราส่วน): เดินไปตามพิกัดที่คำนวณจากคำบอก แล้วตอบโจทย์ */
@@ -204,7 +201,7 @@ const check = (n, ok, extra = '') => {
     if (n === 0) {
       await shot('07-world-start');
       const hud = await ev(() => ({ coins: document.querySelector('.tl-coins')?.innerText || null, tracker: document.querySelector('.tl-tracker')?.innerText || null }));
-      check('HUD ด่าน: เหรียญ/ศรัทธา + ภารกิจปัจจุบัน แสดงบนจอ', !DESK ? !!hud.coins && !!hud.tracker : true, JSON.stringify(hud));
+      check('HUD ด่าน: เหรียญ/ศรัทธา + ภารกิจปัจจุบัน แสดงบนจอ', !!hud.coins && !!hud.tracker, JSON.stringify(hud));
     }
     if (n === 0) await doSakngam(); else await doLevel(n);
     await shot(`08-level-${n + 1}-done`);

@@ -349,7 +349,7 @@ describe('Mobile layout (แนวนอน/แนวตั้ง/รอยบ�
   const none = { top: 0, right: 0, bottom: 0, left: 0 };
 
   it('มือถือแนวนอน 844×390: ภาพเกมสูงเต็มจอ คงสัดส่วน 3:2 ปุ่มอยู่ข้างภาพ ไม่ทับฉาก', () => {
-    const l = computeMobileLayout(844, 390, none, true);
+    const l = computeMobileLayout(844, 390, none);
     expect(l.portrait).toBe(false);
     expect(l.sideColumns).toBe(true);
     expect(l.game.h).toBe(390);
@@ -361,7 +361,7 @@ describe('Mobile layout (แนวนอน/แนวตั้ง/รอยบ�
   });
 
   it('เครื่องมีรอยบาก (safe-area ซ้าย–ขวา 47): ย่อภาพเกมเล็กน้อยเพื่อให้ปุ่มไม่ทับ และไม่วางอะไรในรอยบาก', () => {
-    const l = computeMobileLayout(844, 390, { top: 0, right: 47, bottom: 21, left: 47 }, true);
+    const l = computeMobileLayout(844, 390, { top: 0, right: 47, bottom: 21, left: 47 });
     expect(l.sideColumns).toBe(true);
     expect(l.left.x).toBe(47);
     expect(l.right.x + l.right.w).toBeCloseTo(844 - 47, 6);
@@ -370,20 +370,22 @@ describe('Mobile layout (แนวนอน/แนวตั้ง/รอยบ�
   });
 
   it('จอ 4:3 (แท็บเล็ต): ไม่มีที่ข้างภาพ → ปุ่มซ้อนบนขอบภาพ (ภาพไม่ถูกบีบ)', () => {
-    const l = computeMobileLayout(1024, 768, none, true);
+    const l = computeMobileLayout(1024, 768, none);
     expect(l.sideColumns).toBe(false);
     expect(l.game.w / l.game.h).toBeCloseTo(GAME_ASPECT, 6);
   });
 
   it('แนวตั้ง: ตรวจพบเพื่อแสดงคำแนะนำให้หมุนจอ', () => {
-    expect(computeMobileLayout(390, 844, none, true).portrait).toBe(true);
+    expect(computeMobileLayout(390, 844, none).portrait).toBe(true);
   });
 
-  it('คอมพิวเตอร์ (ไม่มีจอสัมผัส): ภาพเกมพอดีจอ ไม่มีคอลัมน์ปุ่ม', () => {
-    const l = computeMobileLayout(1440, 900, none, false);
-    expect(l.sideColumns).toBe(false);
-    expect(l.game.h).toBe(900);
-    expect(l.left.w).toBe(0);
+  it('คอมพิวเตอร์: ใช้ UI เดียวกับมือถือ — ภาพเกม 3:2 ไม่ยืด อยู่กลางจอ มีคอลัมน์ปุ่มซ้าย–ขวา', () => {
+    const l = computeMobileLayout(1440, 900, none);
+    expect(l.sideColumns).toBe(true);
+    expect(l.game.w / l.game.h).toBeCloseTo(GAME_ASPECT, 2);
+    expect(l.game.x + l.game.w / 2).toBeCloseTo(720, 0); // กลางจอแนวนอน
+    expect(l.left.w).toBeGreaterThan(0);
+    expect(l.game.x).toBeGreaterThanOrEqual(l.left.w - 1);
   });
 });
 
