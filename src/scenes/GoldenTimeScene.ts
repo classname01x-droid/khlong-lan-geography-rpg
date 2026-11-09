@@ -82,8 +82,8 @@ export class GoldenTimeScene extends Phaser.Scene {
     panel(this, GAME_WIDTH / 2 - 110, 14, 220, 70, 0.8);
     this.timerText = txt(this, GAME_WIDTH / 2, 49, fmt(this.golden.timeLeftMs), 50, PAL.white).setOrigin(0.5);
     // เหรียญ (ขวา)
-    const g = this.add.graphics();
     panel(this, GAME_WIDTH - 230, 18, 212, 62, 0.8);
+    const g = this.add.graphics();
     drawCoin(g, GAME_WIDTH - 200, 49, 18);
     this.coinText = txt(this, GAME_WIDTH - 170, 49, '0', 38, PAL.gold).setOrigin(0, 0.5);
     void g;

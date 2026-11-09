@@ -35,6 +35,8 @@ export interface MissionSpec {
 }
 
 export const missionFlag = (id: string): string => `m-${id}`;
+/** รหัสรางวัลของภารกิจ (รวมรหัสด่าน → ไม่ซ้ำข้ามด่าน) */
+export const rewardId = (levelId: string, id: string): string => `${levelId}:${id}`;
 
 /* ---------------- ข้อเท็จจริงจากแผนที่ ---------------- */
 
@@ -92,7 +94,8 @@ export function buildMissions(levelId: string, specs: MissionSpec[], opts: { sta
       correctFeedback: s.feedback,
       effects: [
         { type: 'flag', flag: missionFlag(s.id) },
-        { type: 'reward', id: missionFlag(s.id), coins: MISSION_COINS, faith: MISSION_FAITH },
+        // รหัสรางวัลต้องไม่ซ้ำกันทั้งเกม (ด่านต่างกันใช้ชื่อภารกิจซ้ำได้) — ได้รางวัลครั้งเดียวต่อรหัส
+        { type: 'reward', id: rewardId(levelId, s.id), coins: MISSION_COINS, faith: MISSION_FAITH },
       ],
     };
   });

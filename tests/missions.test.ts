@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LEVELS } from '../src/content/registry';
-import { missionFlag } from '../src/content/levels/simple';
+import { missionFlag, rewardId } from '../src/content/levels/simple';
 import type { LevelDefinition } from '../src/content/types';
 import { directionFromVector, THAI_DIRECTION } from '../src/core/direction/Compass';
 import { ProgressStore } from '../src/core/progress/ProgressStore';
@@ -67,7 +67,7 @@ describe('ภารกิจแบบเรียบง่าย: 1 NPC = 1 ป�
         expect(p.rpg.faith).toBe(10);
         expect(s.rewardEvents).toHaveLength(1);
         // ทำซ้ำไม่ได้เพิ่ม
-        expect(p.earn(`m-${quiz.id.slice(2)}`, 100, 10)).toBe(false);
+        expect(p.earn(rewardId(level.id, quiz.id.slice(2)), 100, 10)).toBe(false);
         expect(p.rpg.coins).toBe(100);
       });
 
@@ -93,6 +93,22 @@ describe('ภารกิจแบบเรียบง่าย: 1 NPC = 1 ป�
       });
     });
   }
+});
+
+describe('รางวัลทั้งเกม: รหัสรางวัลไม่ซ้ำข้ามด่าน (ทุกภารกิจได้ 100 เหรียญ + 10 ศรัทธา ครบ)', () => {
+  it('เล่นครบ 4 ด่านด้วยบันทึกเดียวกัน: 12 ภารกิจ = 1200 เหรียญ + 120 ศรัทธา', () => {
+    const p = store();
+    const ids = new Set<string>();
+    for (const level of LEVELS) {
+      const s = newSession(level);
+      s.wallet = p;
+      for (const q of level.quizzes!) for (const e of q.effects) if (e.type === 'reward') ids.add(e.id);
+      solve(level, s);
+    }
+    expect(ids.size).toBe(12);
+    expect(p.rpg.coins).toBe(1200);
+    expect(p.rpg.faith).toBe(120);
+  });
 });
 
 describe('คำตอบมาจากแผนที่จริง (แก้แผนที่แล้วคำตอบเปลี่ยนตาม)', () => {

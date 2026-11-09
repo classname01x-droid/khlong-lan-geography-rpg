@@ -375,7 +375,7 @@ export class TouchScreens {
         this.btn('chapter:depart', `ออกเดินทางไป${chapter.tambon}`, { icon: '▶', primary: true, disabled: !armed, cls: 'ts-go' });
     } else {
       speaker = IN_DEVELOPMENT_MESSAGE;
-      text = 'ความคืบหน้าและคำพิทักษ์ทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ';
+      text = 'ความคืบหน้าทั้งหมดถูกบันทึกไว้แล้ว จะเล่นต่อได้เมื่อภารกิจนี้พัฒนาเสร็จ';
       foot = this.btn('chapter:journey', 'กลับแผนที่การเดินทาง', { icon: '🧭', primary: true, cls: 'ts-go' });
     }
     return (

@@ -7,6 +7,7 @@ import type { NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
 import { GameSession, type SessionSnapshot } from '../core/session/GameSession';
+import { characterTextureKey } from '../graphics/PlaceholderTextures';
 import { buildWorld } from '../core/world/MapBuilder';
 import { findPath } from '../core/world/pathfinding';
 import type { TilePoint } from '../core/world/types';
@@ -25,6 +26,7 @@ import type { GuideActionId } from '../content/types';
 import type { NotebookTab } from '../core/session/GameSession';
 import type { SettlementReport } from '../core/site/SettlementAnalysis';
 import { REGISTRY_CODE_PIECES, REGISTRY_LEVEL_ID, REGISTRY_SESSION, REGISTRY_TOUCH_UI, REGISTRY_UNLOCKED } from './events';
+import { addOverworldAmbient, animateNpc, type AmbientHandle } from './rpg/ambient';
 import { canStartLevel, continueStory, getSettings, getProgress, goToEnding, goToMainMenu, goToWorldMap, SCENE, type LevelStartData } from './navigation';
 
 /** ตัวเลือกในเมนูหยุดเกม (Esc) — ลำดับต้องตรงกับ PauseOverlay */
@@ -37,6 +39,8 @@ interface NpcInstance {
   def: NpcDefinition;
   sprite: Character;
   marker: Phaser.GameObjects.Image;
+  /** เครื่องหมาย ✓ เมื่อช่วยชาวบ้านคนนี้สำเร็จแล้ว */
+  check: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
   /** ตำแหน่ง y ปกติของป้ายชื่อ (ระบบจัดป้ายเลื่อนจากค่านี้) */
   labelY: number;
@@ -66,6 +70,7 @@ export class WorldScene extends Phaser.Scene {
   private session!: GameSession;
   private player!: Player;
   private npcs: NpcInstance[] = [];
+  private ambient: AmbientHandle | null = null;
   private fogLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridOverlay!: Phaser.GameObjects.Graphics;
   private labels = new Map<string, Phaser.GameObjects.Text>();
@@ -229,8 +234,19 @@ export class WorldScene extends Phaser.Scene {
         .setResolution(CAMERA_ZOOM * 2)
         .setOrigin(0.5, 0)
         .setDepth(DEPTH.labels);
-      this.npcs.push({ def, sprite, marker, label, labelY: label.y });
+      const check = this.add
+        .text(sprite.x, sprite.y - 13, '✓', { fontFamily: FONT_FAMILY, fontSize: '9px', color: '#7dff8a', stroke: '#10301a', strokeThickness: 2 })
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.labels)
+        .setVisible(false);
+      this.npcs.push({ def, sprite, marker, check, label, labelY: label.y });
+      // NPC ขยับตัว/เดินสั้น ๆ (ตำแหน่งจริงไม่เปลี่ยน)
+      animateNpc(this, sprite, characterTextureKey(def.appearance), () => ({ x: this.player.x, y: this.player.y }), () => this.session.mode !== 'explore');
     }
+
+    // ---- บรรยากาศ: น้ำระยิบ ควัน ธง ใบไม้ นก ผีเสื้อ ----
+    this.ambient = addOverworldAmbient(this, level, grid, DEPTH.characters - 2);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.ambient?.destroy());
 
     // ---- การชน ----
     this.physics.world.setBounds(0, 0, widthPx, heightPx);
@@ -945,6 +961,16 @@ export class WorldScene extends Phaser.Scene {
     for (const n of this.npcs) {
       const isTarget = target?.kind === 'npc' && target.id === n.def.id;
       n.marker.setVisible(micro ? isTarget : s.hasNewDialogue(n.def));
+      // ช่วยแล้ว → "!" เปลี่ยนเป็น ✓ สีเขียว
+      const quizId = n.def.dialogue[0]?.nodes.find((x) => 'quiz' in x);
+      const done = !!quizId && 'quiz' in quizId && s.flags.has(`m-${quizId.quiz.replace(/^q-/, '')}`);
+      if (done && !n.check.visible) {
+        n.check.setVisible(true).setScale(0.4);
+        this.tweens.add({ targets: n.check, scale: 1.3, duration: 220, ease: 'Back.easeOut', yoyo: true, hold: 0 });
+        this.tweens.add({ targets: n.check, scale: 1, delay: 480, duration: 120 });
+      }
+      n.check.setVisible(done);
+      n.check.setPosition(n.sprite.x, n.sprite.y - 13);
       n.label.setColor(isTarget ? '#ffd84d' : '#ffffff');
     }
     this.layoutDirty = true;

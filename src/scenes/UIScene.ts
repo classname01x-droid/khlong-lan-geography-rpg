@@ -207,7 +207,7 @@ export class UIScene extends Phaser.Scene {
   private createHud(): void {
     const s = this.session;
     const panel = this.add.graphics();
-    const hudH = s.coords ? 112 : 92;
+    const hudH = s.coords ? 134 : 114;
     panel.fillStyle(COLORS.panel, 0.82).fillRoundedRect(12, 12, 330, hudH, 8);
     panel.lineStyle(2, COLORS.panelBorder, 0.9).strokeRoundedRect(12, 12, 330, hudH, 8);
     const title = this.add.text(24, 18, `${s.level.tambon}\n${s.level.title}`, { ...textStyle(16, COLORS.accent), lineSpacing: 0 });
