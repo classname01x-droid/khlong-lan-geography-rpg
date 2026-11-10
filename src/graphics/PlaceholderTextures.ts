@@ -313,6 +313,20 @@ export function generatePlaceholderTextures(scene: Phaser.Scene): void {
   px(c, 3, 8, '#8a7a64', 6, 4); // ฐาน
   px(c, 4, 9, '#b9ab90', 4, 2);
   shrine.refresh();
+
+  // กองขยะ (ถุงขยะ ขวด กล่อง) — ภารกิจสักงาม
+  const trash = createCanvas(scene, 'trash', 12, 12);
+  const t = trash.context;
+  px(t, 1, 7, '#2b2f36', 5, 4); // ถุงดำ
+  px(t, 2, 6, '#2b2f36', 3, 1);
+  px(t, 6, 8, '#4f7ac7', 4, 3); // ถุงฟ้า
+  px(t, 7, 7, '#4f7ac7', 2, 1);
+  px(t, 4, 4, '#b8873c', 3, 3); // กล่องกระดาษ
+  px(t, 8, 5, '#d8d8d8', 1, 3); // ขวด
+  px(t, 9, 4, '#7fd0ff', 1, 1);
+  px(t, 0, 10, '#6b6b5a', 12, 2); // พื้นเปียก
+  px(t, 3, 3, '#e8e2c8', 1, 1);
+  trash.refresh();
 }
 
 /** สร้าง animation เดินของตัวละครทุกแบบ */

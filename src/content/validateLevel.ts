@@ -85,6 +85,10 @@ export function validateLevel(
         if (!quizIds.has(node.quiz)) errors.push(`${where} อ้างถึงคำถามที่ไม่มี: ${node.quiz}`);
         continue;
       }
+      if ('lesson' in node) {
+        if (!level.lessons?.[node.lesson]) errors.push(`${where} อ้างถึงบทเรียนที่ไม่มี: ${node.lesson}`);
+        continue;
+      }
       checkText(where, node.text);
       checkEffects(where, node.effects);
     }

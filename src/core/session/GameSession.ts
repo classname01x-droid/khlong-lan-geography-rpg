@@ -235,7 +235,9 @@ export class GameSession {
   /** ข้อความแจ้งเตือนที่รอให้ UI แสดง */
   readonly pendingToasts: string[] = [];
   /** กระเป๋า RPG (เหรียญ/ศรัทธา) — WorldScene ต่อกับ ProgressStore · ไม่มี = ไม่แจกรางวัล (เทสต์ระบบเดิม) */
-  wallet: { earn(id: string, coins: number, faith: number): boolean } | null = null;
+  wallet: { earn(id: string, coins: number, faith: number): boolean; addBossHp?(amount: number, cap: number): number } | null = null;
+  /** จุดสอนใช้เครื่องมือ: ตัวละครหยุดเดินจนกว่าจะกดเครื่องมือนั้น (null = ไม่มี) */
+  teach: { tool: 'measure'; text: string; flag: string } | null = null;
   /** รางวัลที่เพิ่งได้ (ให้ฉากแสดงเหรียญ/ศรัทธาลอยขึ้น แล้วเคลียร์) */
   readonly rewardEvents: Array<{ coins: number; faith: number }> = [];
 
@@ -501,6 +503,7 @@ export class GameSession {
     const runner = new DialogueRunner(nodes.filter((n) => !n.when || this.matches(n.when)), {
       resolveText: (t) => this.resolveText(t),
       getQuiz: (id) => this.level.quizzes?.find((q) => q.id === id),
+      getLesson: (id) => this.level.lessons?.[id],
       applyEffect: (e) => this.applyEffect(e),
       onQuizAnswer: (_id, correct) => {
         if (!correct) this.mistakes.quiz++;
@@ -516,6 +519,11 @@ export class GameSession {
     if (!this.dialogue) return 'ended';
     this.dialogue.runner.advance();
     return this.dialogue.runner.done ? this.finishDialogue() : 'continue';
+  }
+
+  /** ย้อนกลับหน้าก่อนหน้าของบทเรียน */
+  backDialogue(): void {
+    this.dialogue?.runner.back();
   }
 
   answerQuiz(choiceIndex: number): boolean | null {
@@ -559,6 +567,11 @@ export class GameSession {
         if (!ev || this.evidence.includes(ev.id)) return;
         this.evidence.push(ev.id);
         this.pendingToasts.push(`ได้รับหลักฐาน: ${ev.name}`);
+        return;
+      }
+      case 'bossHp': {
+        const added = this.wallet?.addBossHp?.(effect.amount, effect.cap) ?? 0;
+        if (added > 0) this.pendingToasts.push(`พลังมลพิษพญาจระเข้ +${added}!`);
         return;
       }
       case 'reward': {
@@ -1527,17 +1540,34 @@ export class GameSession {
    * คืน true เมื่อมีจุดใหม่ที่ถึงแล้ว
    */
   checkArrivals(tile: TilePoint): boolean {
-    let changed = false;
+    if (this.mode !== 'explore' || this.teach) return false;
     for (const a of this.level.arrivals ?? []) {
-      if (this.flags.has(a.flag) || !this.matches(a.when)) continue;
-      if (Math.hypot(a.at.x - tile.x, a.at.y - tile.y) <= a.radiusTiles) {
-        this.flags.add(a.flag);
-        this.toast(a.toast);
-        changed = true;
+      // บทสนทนา/จุดสอน เรียกซ้ำได้จนกว่าจะเสร็จจริง (กันค้างถ้าปิดเกมกลางคัน)
+      if (this.flags.has(a.doneFlag ?? a.flag) || !this.matches(a.when)) continue;
+      if (Math.hypot(a.at.x - tile.x, a.at.y - tile.y) > a.radiusTiles) continue;
+      if (a.teach) {
+        // หยุดเดินทันที จนกว่าจะกดเครื่องมือ (flag จดตอนทำสำเร็จ)
+        this.teach = { tool: a.teach.tool, text: a.teach.text, flag: a.flag };
+        this.uiVersion++;
+        return true;
       }
+      this.flags.add(a.flag);
+      if (a.toast) this.toast(a.toast);
+      if (a.nodes) this.startDialogue(a.nodes, 'npc', null, null);
+      this.updateQuests();
+      return true;
     }
-    if (changed) this.updateQuests();
-    return changed;
+    return false;
+  }
+
+  /** ทำตามที่จุดสอนสั้นสำเร็จ (เช่น กดเครื่องมือวัดระยะ) → ปลดล็อกการเดิน และไม่แสดงซ้ำ */
+  completeTeach(tool: 'measure'): boolean {
+    if (!this.teach || this.teach.tool !== tool) return false;
+    this.flags.add(this.teach.flag);
+    this.teach = null;
+    this.updateQuests();
+    this.uiVersion++;
+    return true;
   }
 
   /* ---------------- วัดระยะจากจุดอ้างอิง ---------------- */

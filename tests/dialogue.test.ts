@@ -23,6 +23,7 @@ function runner(applied: Effect[], answers: boolean[]) {
     {
       resolveText: (t) => t,
       getQuiz: (id) => (id === 'q' ? quiz : undefined),
+      getLesson: () => undefined,
       applyEffect: (e) => applied.push(e),
       onQuizAnswer: (_id, ok) => answers.push(ok),
     },

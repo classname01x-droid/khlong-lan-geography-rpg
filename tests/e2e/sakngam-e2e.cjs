@@ -60,84 +60,141 @@ const KEY = 'khlonglan-geo-rpg:progress';
   const labels0 = await ev(() => { const w = window.__GAME__.scene.getScene('WorldScene'); return [...w.labels.entries()].filter(([, t]) => t.visible && t.alpha > 0).map(([id]) => id); });
   check('เริ่มด่าน: ยังไม่แสดงป้ายสถานที่ไกลตัว (บ้านผู้ใหญ่ ศาลา สะพาน บ้านป้าเจียว) จนกว่าจะเดินเข้าใกล้', !labels0.some((id) => ['headman-house', 'sala', 'bridge', 'jiao-house'].includes(id)), JSON.stringify(labels0));
   const t0 = await trackerText();
-  check('แถบภารกิจ: บอกภารกิจปัจจุบัน + มาตราส่วน (ยังไม่เฉลยคำตอบ)', t0.includes('พบครูเนม') && t0.includes('1:10,000') && !t0.includes('400'), t0);
+  check('แถบภารกิจ: บอกภารกิจปัจจุบัน + มาตราส่วน (ยังไม่เฉลยคำตอบ)', t0.includes('พบครูเนม') && t0.includes('มาตราส่วน') && !t0.includes('400'), t0);
 
-  // 1) ครูเนม
+  /** เดินบทสนทนา: บรรทัด = แตะกล่อง/ปุ่ม · บทเรียน = ถัดไป · คำถาม = เลือกตามลำดับ answers */
+  const kindNow = () => ev(() => { const v = window.__TEST__.session.dialogueView; return v && v.kind; });
+  const drive = async (answers) => {
+    const seen = { lesson: 0, lines: [] };
+    for (let g = 0; g < 60; g++) {
+      const v = await ev(() => { const d = window.__TEST__.session.dialogueView; return d && { kind: d.kind, text: d.text || d.question || '', page: d.page, button: d.button }; });
+      if (!v) break;
+      if (v.kind === 'quiz') { if (!answers.length) break; await pick(answers.shift()); }
+      else if (v.kind === 'lesson') { seen.lesson++; await tapDom('.tl-sheet .tl-option', v.page === 5 ? 'เข้าใจแล้ว' : 'ถัดไป'); }
+      else { seen.lines.push(v.text); if (v.button) await tapDom('.tl-sheet .tl-option', v.button); else await nextLine(); }
+    }
+    return seen;
+  };
+  const walkBg = async (x, y) => { await ev(([x, y]) => { window.__TEST__.walkTo(x, y); }, [x, y]); };
+  const waitFor = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await ev(fn)) return true; await wait(250); } return false; };
+
+  // 1) ครูเนม: บทเรียน 5 หน้า (ย้อนกลับ/ถัดไป) → โจทย์ 4 ซม. (ผิดครั้งแรก → บทเรียนอีกครั้ง → ตอบใหม่)
   await walk(13, 41); await talkKey();
   let s = await sess();
   check('ครูเนม: คุยแล้วเข้าบทสนทนา', !!s.dlg, JSON.stringify(s));
-  for (let i = 0; i < 4; i++) { s = await sess(); if (s.dlg === 'quiz') break; await nextLine(); }
+  for (let i = 0; i < 6; i++) { if ((await kindNow()) === 'lesson') break; await nextLine(); }
+  check('ครูเนม: เปิดบทเรียนมาตราส่วน หน้า 1/5', (await ev(() => window.__TEST__.session.dialogueView.page)) === 1);
+  await shot('02-lesson-1');
+  await tapDom('.tl-sheet .tl-option', 'ถัดไป');
+  await tapDom('.tl-sheet .tl-option', 'ถัดไป');
+  check('บทเรียน: ถัดไปไปหน้า 3 (แปลง ซม. เป็นเมตร)', (await ev(() => window.__TEST__.session.dialogueView.title)).includes('ซม. เป็นเมตร'));
+  await tapDom('.tl-sheet .tl-option', 'ย้อนกลับ');
+  check('บทเรียน: ย้อนกลับไปหน้า 2 (1:10,000)', (await ev(() => window.__TEST__.session.dialogueView.page)) === 2);
+  await shot('02-lesson-2');
+  for (let i = 0; i < 4; i++) await tapDom('.tl-sheet .tl-option', (await ev(() => window.__TEST__.session.dialogueView.page)) === 5 ? 'เข้าใจแล้ว' : 'ถัดไป');
+  check('จบบทเรียน 5 หน้า → ขึ้นโจทย์ 4 ซม.', (await kindNow()) === 'quiz');
   await shot('02-quiz-scale');
   await pick(0); // ผิด (40 เมตร)
-  s = await sess();
-  check('โจทย์ 4 ซม.: ตอบผิดแล้วอยู่ที่คำถาม ลองใหม่ได้ ไม่เสียเหรียญ', s.dlg === 'quiz' && !s.flags.includes('q-school'), JSON.stringify(s));
+  check('ตอบมาตราส่วนผิด: เปิดบทเรียนก่อน (ไม่เพิ่ม HP บอส ไม่รีเซ็ต)', (await kindNow()) === 'lesson' && !(await sess()).flags.includes('q-school') && ((await ev((k) => JSON.parse(localStorage.getItem(k)).rpg.bossHpBonus, KEY)) || 0) === 0);
+  await shot('02b-wrong-lesson');
+  for (let i = 0; i < 5; i++) { if ((await kindNow()) !== 'lesson') break; await tapDom('.tl-sheet .tl-option', (await ev(() => window.__TEST__.session.dialogueView.page)) === 5 ? 'เข้าใจแล้ว' : 'ถัดไป'); }
+  check('จบบทเรียนแล้วกลับมาที่โจทย์เดิม', (await kindNow()) === 'quiz');
   await pick(1); // 400 เมตร
-  for (let i = 0; i < 6; i++) { s = await sess(); if (!s.dlg) break; await nextLine(); }
+  await drive([]);
+  s = await sess();
   check('ตอบถูก 400 เมตร → ผ่านขั้น 1', s.flags.includes('q-school') && s.step === 2, JSON.stringify(s));
   await noGuide('หลังคุยครูเนม');
 
-  // 2) เดินทางตะวันออกจากโรงเรียน 4 ซม. = 400 ม. = 40 ช่อง → ข้ามสะพาน → บ้านผู้ใหญ่บ้าน
-  await walk(55, 45);
+  // 2) ออกจากโรงเรียน → จุดสอนเครื่องมือวัดระยะ (หยุดเดิน ข้อความ + ลูกศรชี้ปุ่มจริง)
+  await walkBg(55, 45);
+  check('จุดสอน: ถึงจุดแล้วหยุดเดินทันที (teach)', await waitFor(() => !!window.__TEST__.session.teach));
+  const p1 = await pos(); await wait(900); const p2 = await pos();
+  check('จุดสอน: ตัวละครไม่ขยับต่อจนกว่าจะกดเครื่องมือ', p1.x === p2.x && p1.y === p2.y, JSON.stringify([p1, p2]));
+  const tm = await ev(() => ({ msg: (document.querySelector('.tl-teach-msg') || {}).innerText || '', shown: getComputedStyle(document.querySelector('.tl-teach-msg')).display, btn: !!document.querySelector('.tl-a-measure.tl-teach'), arrow: getComputedStyle(document.querySelector('.tl-a-measure'), '::before').content, anim: getComputedStyle(document.querySelector('.tl-a-measure'), '::before').animationName }));
+  check('จุดสอน: แสดง "กดเครื่องมือวัดระยะทาง" + ลูกศรเคลื่อนไหวชี้ปุ่มวัดระยะจริง', tm.msg.includes('กดเครื่องมือวัดระยะทาง') && tm.shown === 'block' && tm.btn && tm.arrow.includes('👉') && tm.anim === 'tlPoint', JSON.stringify(tm));
+  await shot('03-teach-measure');
+  await tapDom('.tl-a-measure');
+  await wait(400);
+  s = await sess();
+  const t2 = await ev(() => ({ teach: window.__TEST__.session.teach, btn: !!document.querySelector('.tl-a-measure.tl-teach'), flag: window.__TEST__.session.flags.has('teach-measure') }));
+  check('กดเครื่องมือวัดระยะแล้ว: ปลดล็อก ลูกศรหาย จดว่าผ่านแล้ว', !t2.teach && !t2.btn && t2.flag, JSON.stringify(t2));
+  await ev(() => window.__TEST__.session.stopMeasure && window.__TEST__.session.stopMeasure());
+  await walk(55, 45); // เดินต่อได้
   await shot('03-headman-house');
-  const labels1 = await ev(() => { const w = window.__GAME__.scene.getScene('WorldScene'); return [...w.labels.entries()].filter(([, t]) => t.visible && t.alpha > 0).map(([id]) => id); });
   const disc = await ev(() => [...window.__TEST__.session.discoveredLandmarks]);
-  check('เดินถึงบ้านผู้ใหญ่บ้านเอง: ค้นพบจุดสังเกต/แสดงชื่อสถานที่เมื่อเข้าใกล้', disc.includes('headman-house'), JSON.stringify([labels1, disc]));
+  check('เดินถึงบ้านผู้ใหญ่บ้านเอง: ค้นพบจุดสังเกต/แสดงชื่อสถานที่เมื่อเข้าใกล้', disc.includes('headman-house'), JSON.stringify(disc));
   await noGuide('ที่บ้านผู้ใหญ่บ้าน');
   await talkKey();
-  for (let i = 0; i < 3; i++) { s = await sess(); if (s.dlg === 'quiz') break; await nextLine(); }
-  await pick(0); // 3 ซม. ผิด
+  const hs = await drive([0, 1, 1]); // 3 ซม. ผิด → บทเรียน → ถูก · 2 ซม. ถูก
   s = await sess();
-  check('โจทย์ 3 ซม.: ตอบผิดลองใหม่ได้', s.dlg === 'quiz' && !s.flags.includes('q-west'), JSON.stringify(s));
-  await pick(1);
-  for (let i = 0; i < 3; i++) { s = await sess(); if (s.dlg === 'quiz' && !s.flags.includes('q-west')) continue; if (s.flags.includes('q-west') && s.dlg === 'quiz') break; await nextLine(); }
-  await pick(1); // 2 ซม. = 200 เมตร
-  for (let i = 0; i < 6; i++) { s = await sess(); if (!s.dlg) break; await nextLine(); }
-  check('โจทย์ 2 ซม. ถูก → รู้เส้นทางแล้ว ผ่านขั้น 2', s.flags.includes('route-known') && s.step === 3, JSON.stringify(s));
+  check('ผู้ใหญ่บ้าน: ผิดข้อ 3 ซม. มีบทเรียนก่อนตอบใหม่ แล้วผ่านทั้ง 2 โจทย์ → รู้เส้นทาง', hs.lesson >= 5 && s.flags.includes('route-known') && s.step === 3, JSON.stringify([hs.lesson, s]));
   { const t = await trackerText(); check('แถบภารกิจ: แสดงคำบอกเส้นทางที่ได้รับ (ตะวันตก 300 / เหนือ 200 เมตร) อ่านซ้ำได้', t.includes('300') && t.includes('200'), t); }
-  await shot('04-route-known');
 
-  // 3) ตะวันตก 3 ซม. = 30 ช่อง → คุณยายริมทาง (25,47) แล้วเหนือ 2 ซม. = 20 ช่อง
+  // 3) ตะวันตก 3 ซม. → คุณยาย → เหนือ 2 ซม. → ป้าเจียว
   await walk(25, 48);
-  const grand = await ev(() => window.__GAME__.scene.getScene('WorldScene').npcs.find((n) => n.def.id === 'grandma').sprite.x / 16);
-  check('เดินตะวันตก 300 ม.: พบคุณยายอยู่ที่จุดเลี้ยว (ที่เห็นได้เอง)', Math.abs(grand - 25.5) < 1.2, grand);
   await noGuide('ที่คุณยาย');
-  await shot('05-grandma');
   await walk(25, 29);
-  await shot('06-jiao-house');
-  await noGuide('ที่บ้านป้าเจียว');
+  await shot('04-jiao-house');
   await talkKey();
-  for (let i = 0; i < 4; i++) { s = await sess(); if (s.dlg === 'quiz') break; await nextLine(); }
-  await shot('07-quiz-site');
-  await pick(0); // จุด A ผิด
+  await drive([]);
   s = await sess();
-  check('เลือกจุดผิด (A) ลองใหม่ได้', s.dlg === 'quiz' && !s.flags.includes('trash-quiz'), JSON.stringify(s));
-  await pick(2); // จุด C
-  for (let i = 0; i < 6; i++) { s = await sess(); if (!s.dlg) break; await nextLine(); }
-  check('เลือกจุด C ถูก → ผ่านขั้น 3', s.flags.includes('trash-quiz') && s.step === 4, JSON.stringify(s));
-  await noGuide('หลังเลือกจุด C (ต้องเดินไปตรวจเอง)');
+  check('ป้าเจียว: ให้ไปสำนักสงฆ์เขาแสงเพชรก่อน (ยังไม่ให้เก็บขยะ)', s.flags.includes('go-wat') && !s.flags.includes('wat-quiz') && s.step === 4, JSON.stringify(s));
+  await noGuide('ที่บ้านป้าเจียว');
 
-  // 4) ไปจุด C: ตะวันออกของบ้านผู้ใหญ่บ้านราว 2 ซม. ติดทุ่งนา (72,50)
-  await walk(55, 45);
+  // 4) สำนักสงฆ์ → โจทย์ 3 ซม. (ใต้ 300 เมตร)
+  await walkBg(28, 18);
+  check('ถึงสำนักสงฆ์ → หยุดเดินและขึ้นบทสนทนา', await waitFor(() => !!window.__TEST__.session.dialogueView, 30000));
+  const l0 = await ev(() => window.__TEST__.session.dialogueView.text);
+  check('แจ้ง "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!"', l0 === 'ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!', l0);
+  await shot('05-wat-arrive');
+  await nextLine();
+  const qv = await ev(() => window.__TEST__.session.dialogueView);
+  check('โจทย์ 3 ซม.: เหนือ 300 / ใต้ 30 / ใต้ 300', qv.kind === 'quiz' && qv.choices.join('|') === 'เหนือ 300 เมตร|ใต้ 30 เมตร|ใต้ 300 เมตร', JSON.stringify(qv));
+  await shot('05-quiz-wat');
+  await pick(0);
+  check('ตอบผิด: เปิดบทเรียนก่อน (ไม่ติด)', (await kindNow()) === 'lesson');
+  for (let i = 0; i < 5; i++) { if ((await kindNow()) !== 'lesson') break; await tapDom('.tl-sheet .tl-option', (await ev(() => window.__TEST__.session.dialogueView.page)) === 5 ? 'เข้าใจแล้ว' : 'ถัดไป'); }
+  await pick(2);
+  await drive([]);
   s = await sess();
-  check('ยังไม่ถึงจุด C: ไม่มีข้อความพบพื้นที่', !s.flags.includes('c-found'), JSON.stringify(s));
-  await walk(72, 49);
-  s = await sess();
-  check('เดินถึงจุด C เอง → "พบพื้นที่ที่เหมาะสมสำหรับรวบรวมขยะ" (flag c-found)', s.flags.includes('c-found') && s.step === 5, JSON.stringify(s));
-  const toast = await ev(() => (document.body.innerText || '').includes('พบพื้นที่ที่เหมาะสมสำหรับรวบรวมขยะ'));
-  await shot('08-spot-c');
-  await noGuide('ที่จุด C');
+  check('ตอบถูก (ใต้ 300 เมตร) → ผ่านขั้น 4 แล้วเดินต่อได้เอง', s.flags.includes('wat-quiz') && s.step === 5 && s.mode === 'explore', JSON.stringify(s));
+  await noGuide('หลังตอบโจทย์ที่สำนักสงฆ์ (ไม่มีลูกศร/หมุดไปกองขยะ)');
 
-  // 5) กลับไปรายงานป้าเจียวโดยเส้นทางเดิม
+  // 5) เดินลงใต้เอง → พบกองขยะ → "พบเศษขยะแล้ว!" [ตกลง]
+  s = await sess();
+  check('ยังไม่ถึงกองขยะ: ไม่มีข้อความพบเศษขยะ', !s.flags.includes('trash-found'));
+  await walkBg(28, 46);
+  check('ถึงกองขยะ → หยุดเดินและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView, 40000));
+  const tv = await ev(() => window.__TEST__.session.dialogueView);
+  check('"พบเศษขยะแล้ว!" พร้อมปุ่ม "ตกลง"', tv.text === 'พบเศษขยะแล้ว!' && tv.button === 'ตกลง', JSON.stringify(tv));
+  await wait(400);
+  const okBtn = await ev(() => [...document.querySelectorAll('.tl-sheet .tl-option')].map((b) => b.innerText.trim()));
+  check('ปุ่ม "ตกลง" แสดงบนจอ', okBtn.some((t) => t.includes('ตกลง')), JSON.stringify(okBtn));
+  await shot('06-trash-found');
+  await tapDom('.tl-sheet .tl-option', 'ตกลง');
+  await wait(400);
+  s = await sess();
+  check('กดตกลง → เข้าสู่ขั้นตอนถัดไป (ผ่านขั้น 5) และไม่แสดงซ้ำ', s.flags.includes('trash-found') && s.step === 6 && !s.dlg, JSON.stringify(s));
+  await walk(28, 40); await walk(28, 46);
+  check('ยืนที่กองขยะอีกครั้ง: ไม่แสดงซ้ำ', !(await sess()).dlg);
+  await noGuide('ที่กองขยะ');
+
+  // 6) กลับไปป้าเจียว: คำแนะนำ 2 ข้อ (ผิดครั้งแรกของข้อ 1 → HP บอส +10)
   await walk(25, 48); await walk(25, 29);
   await talkKey();
-  for (let i = 0; i < 8; i++) { s = await sess(); if (!s.dlg && s.flags.includes('m-report')) break; await nextLine(); }
+  await drive([0]);
+  const bonus1 = await ev((k) => JSON.parse(localStorage.getItem(k)).rpg.bossHpBonus, KEY);
+  const toast = await ev(() => document.body.innerText.includes('พลังมลพิษพญาจระเข้ +10!'));
+  check('คำแนะนำข้อ 1 ตอบผิด: HP พญาจระเข้ +10 · แสดง "พลังมลพิษพญาจระเข้ +10!" · เลือกใหม่ได้', bonus1 === 10 && (await kindNow()) === 'quiz', JSON.stringify([bonus1, toast]));
+  await shot('07-advice-wrong');
+  await drive([1, 2]);
   await wait(800);
   const rpg = await ev((k) => JSON.parse(localStorage.getItem(k)).rpg, KEY);
-  check('รายงานป้าเจียว: ได้ +100 เหรียญ +10 พลังศรัทธา', rpg.coins === 100 && rpg.faith === 10, JSON.stringify(rpg));
+  check('ตอบถูกครบ 2 ข้อ: ได้ +100 เหรียญ +10 พลังศรัทธา · HP บอส +10 ถูกบันทึกไว้', rpg.coins === 100 && rpg.faith === 10 && rpg.bossHpBonus === 10, JSON.stringify(rpg));
   for (let i = 0; i < 10; i++) { s = await sess(); if (s.mode === 'summary') break; if (s.dlg) await nextLine(); else await wait(300); }
   s = await sess();
   check('จบภารกิจสักงาม → หน้าสรุป', s.mode === 'summary', JSON.stringify(s));
-  await shot('09-summary');
+  await shot('08-summary');
 
   // Save/Load: เล่นใหม่ครึ่งทางแล้วรีโหลด
   const saved = await ev((k) => JSON.parse(localStorage.getItem(k)), KEY);

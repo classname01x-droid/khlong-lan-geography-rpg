@@ -60,7 +60,8 @@ export function mercyScales(losses: number): { damage: number; hp: number } {
 /** เริ่มการต่อสู้จากทรัพยากรที่มี (เป็นสำเนา — ไม่แก้ RpgState จนกว่าจะชนะ) */
 export function startBattle(rpg: RpgState, losses = 0): BattleState {
   const m = mercyScales(losses);
-  const bossMax = Math.round(BOSS_MAX_HP * m.hp);
+  // HP บอส = ค่าพื้นฐาน + ที่เพิ่มจากการตอบคำถามแนะนำผิด (ตัวคูณผ่อนแรงเมื่อแพ้ยังใช้ — ชนะได้เสมอ)
+  const bossMax = Math.round((BOSS_MAX_HP + rpg.bossHpBonus) * m.hp);
   return {
     hp: PLAYER_MAX_HP,
     bossHp: bossMax,

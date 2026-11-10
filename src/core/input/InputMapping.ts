@@ -106,7 +106,7 @@ export interface TouchContextInput {
   interact: { label: string; verb: string } | null;
   /** ด่านนี้มีหน้าวิเคราะห์ (กระดานวิเคราะห์ หรือ เปรียบเทียบแผนที่) */
   analysis: { available: boolean; label: string } | null;
-  dialogue: { kind: 'line' | 'quiz'; choices: string[] } | null;
+  dialogue: { kind: 'line' | 'quiz' | 'lesson'; choices: string[]; /** ป้ายปุ่มไปต่อของบรรทัดนี้ */ button?: string; /** บทเรียน: หน้าที่/จำนวนหน้า */ page?: number; pages?: number } | null;
   map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; wisdomChoices: string[]; /** เครื่องมือบนแผนที่ (ไม่ระบุ = ปักหมุด) */ tool?: 'pin' | 'settlement' | null };
   notebook: { routeChoices: string[] };
   compareChoices: string[];
@@ -183,7 +183,22 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
     case 'dialogue':
       if (!i.dialogue) return none;
       if (i.dialogue.kind === 'quiz') return { ...none, sheet: { title: 'เลือกคำตอบ', options: choices(i.dialogue.choices) } };
-      return { ...none, tapToAdvance: true, sheet: { title: '', options: [act('next', 'ไปต่อ', '▶', ACTION_KEY.next, true, true)] } };
+      if (i.dialogue.kind === 'lesson') {
+        // บทเรียนทีละหน้า: ย้อนกลับ / ถัดไป (หน้าสุดท้าย = เข้าใจแล้ว)
+        const page = i.dialogue.page ?? 1;
+        const last = page >= (i.dialogue.pages ?? 1);
+        return {
+          ...none,
+          sheet: {
+            title: '',
+            options: [
+              act('tabPrev', 'ย้อนกลับ', '◀', ACTION_KEY.tabPrev, page > 1),
+              act('next', last ? 'เข้าใจแล้ว' : 'ถัดไป', last ? '✔' : '▶', ACTION_KEY.next, true, true),
+            ],
+          },
+        };
+      }
+      return { ...none, tapToAdvance: true, sheet: { title: '', options: [act('next', i.dialogue.button ?? 'ไปต่อ', '▶', ACTION_KEY.next, true, true)] } };
     case 'map': {
       if (i.map.pinStage === 'wisdom') {
         return {

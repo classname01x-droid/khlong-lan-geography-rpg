@@ -404,7 +404,8 @@ export class WorldScene extends Phaser.Scene {
 
     const scripted = this.scriptedDirection(delta);
     const touch = this.touchVector.lengthSq() > 0 ? this.touchVector : null;
-    const v = this.player.handleInput(s.mode === 'explore', scripted ?? touch);
+    // จุดสอนเครื่องมือ: หยุดเดินจนกว่าจะกดเครื่องมือ
+    const v = this.player.handleInput(s.mode === 'explore' && !s.teach, scripted ?? touch);
     if (v.lengthSq() > 0) s.updateFacing(v.x, v.y);
 
     // ระยะทางจากตำแหน่งจริงหลังชน (ไม่ใช่จากความเร็ว)
@@ -747,6 +748,9 @@ export class WorldScene extends Phaser.Scene {
         const view = s.dialogueView;
         if (view?.kind === 'quiz') {
           if (choice >= 0) this.withStepToasts(() => s.answerQuiz(choice));
+        } else if (view?.kind === 'lesson' && (code === 'ArrowLeft' || code === 'KeyA')) {
+          s.backDialogue();
+          this.bumpUi();
         } else if (confirm) {
           this.withStepToasts(() => {
             const outcome = s.advanceDialogue();
@@ -1107,6 +1111,7 @@ export class WorldScene extends Phaser.Scene {
   private startMeasure(): void {
     const s = this.session;
     const m = s.startMeasure();
+    s.completeTeach('measure');
     s.toast(m.originId ? `เริ่มวัดจาก${m.label} — ดูเส้นสีเหลืองและแถบวัดระยะ` : 'เริ่มวัดระยะจากจุดที่ยืนอยู่');
     this.withStepToasts(() => undefined);
   }

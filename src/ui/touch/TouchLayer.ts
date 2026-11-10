@@ -85,7 +85,7 @@ type SigKey =
   | 'mapinfo'
   | 'legend'
   | 'coach'
-  | 'measure';
+  | 'measure'| 'teach';
 
 /**
  * ชั้นควบคุมและข้อมูลบนจอ (DOM ซ้อนบน canvas)
@@ -152,6 +152,7 @@ export class TouchLayer {
     mapinfo: '',
     legend: '',
     coach: '',
+    teach: '',
   };
   private trackerCollapsed = false;
   /** เป้าหมายล่าสุดที่แสดง (ใช้ตรวจว่าเปลี่ยนแล้ว) และเวลาที่ยังแสดง "เป้าหมายใหม่" */
@@ -211,6 +212,7 @@ export class TouchLayer {
     this.tracker = div('tl-tracker', this.root);
     this.status = div('tl-status', this.root);
     this.prompt = div('tl-prompt', this.root);
+    this.teachEl = div('tl-teach-msg', this.root);
     this.toast = div('tl-toast', this.root);
     this.coach = div('tl-coach-card', this.root);
     this.measureEl = div('tl-measure', this.root);
@@ -518,7 +520,7 @@ export class TouchLayer {
   }
 
   private button(a: TouchAction, extra = ''): string {
-    const coach = this.coachHi !== null && this.coachHi === a.id ? 'tl-coach' : '';
+    const coach = this.coachHi !== null && this.coachHi === a.id ? 'tl-coach' : this.teachTool === a.id ? 'tl-teach' : '';
     const cls = ['tl-btn', `tl-a-${a.id}`, a.primary ? 'tl-primary' : '', a.selected ? 'tl-selected' : '', a.half ? 'tl-half' : '', coach, extra]
       .filter(Boolean)
       .join(' ');
@@ -545,7 +547,14 @@ export class TouchLayer {
           : L.routeAnalysis || L.settlementAnalysis
             ? { available: true, label: 'วิเคราะห์' }
             : null,
-      dialogue: view ? { kind: view.kind, choices: view.kind === 'quiz' ? view.choices : [] } : null,
+      dialogue: view
+        ? {
+            kind: view.kind,
+            choices: view.kind === 'quiz' ? view.choices : [],
+            ...(view.kind === 'line' && view.button ? { button: view.button } : {}),
+            ...(view.kind === 'lesson' ? { page: view.page, pages: view.pages } : {}),
+          }
+        : null,
       map: {
         pinStage: s.pinStage,
         tool: s.mapTool,
@@ -624,6 +633,7 @@ export class TouchLayer {
     // ปุ่มเครื่องมือที่ขั้นปัจจุบันต้องใช้ → กะพริบ (ผู้เล่นเห็นว่าต้องแตะปุ่มไหน)
     const guideAct = this.lastTracker?.action?.id;
     const guideHi = s.mode === 'explore' && guideAct ? GUIDE_TO_BUTTON[guideAct] : null;
+    this.teachTool = s.mode === 'explore' ? (s.teach?.tool ?? null) : null;
     this.setHtml('actions', this.actions, this.touch ? ctx.actions.map((a) => this.button(a, a.id === guideHi ? 'tl-guide' : '')).join('') : '');
     this.actions.classList.toggle('tl-explore', s.mode === 'explore');
 
@@ -671,6 +681,15 @@ export class TouchLayer {
       this.prompt.style.top = `${coachTop !== null ? coachTop - 6 : cr.bottom - (this.touch ? 12 : 56)}px`;
       this.prompt.style.maxWidth = `${Math.max(160, cr.width - 2 * this.overlayInset(cr) - 24)}px`;
     } else this.setHtml('prompt', this.prompt, '');
+    // ข้อความจุดสอน: อยู่กลางภาพเกมด้านบน (ไม่บังปุ่ม) · ลูกศรชี้ที่ปุ่มจริงด้วย CSS (.tl-teach)
+    const teach = s.mode === 'explore' ? s.teach : null;
+    this.teachEl.style.display = teach ? 'block' : 'none';
+    if (teach) {
+      this.setHtml('teach', this.teachEl, `👉 ${esc(teach.text)}`);
+      this.teachEl.style.left = `${cr.left + cr.width / 2}px`;
+      this.teachEl.style.top = `${cr.top + cr.height * 0.12}px`;
+      this.teachEl.style.maxWidth = `${Math.max(180, cr.width - 2 * this.overlayInset(cr) - 24)}px`;
+    }
     this.placeToast(cr, s.mode === 'explore');
     this.publishObstacles(cr);
   }
@@ -900,7 +919,10 @@ export class TouchLayer {
       // บทสนทนาตัวอักษรใหญ่ แทนกล่องใน canvas (อ่านง่ายบนจอเล็ก)
       const body = view.kind === 'quiz' ? view.question : view.text;
       html += `<div class="tl-dlg${ctx.tapToAdvance ? ' tl-tap' : ''}"${ctx.tapToAdvance ? ' data-code="Space"' : ''}>`;
-      html += `<div class="tl-speaker">${esc(view.speaker)} <span class="tl-step">${view.step}/${view.total}</span></div>`;
+      html +=
+        view.kind === 'lesson'
+          ? `<div class="tl-speaker">${esc(view.speaker)} · 📖 บทเรียน <span class="tl-step">หน้า ${view.page}/${view.pages}</span></div><div class="tl-lesson-title">${esc(view.title)}</div>`
+          : `<div class="tl-speaker">${esc(view.speaker)} <span class="tl-step">${view.step}/${view.total}</span></div>`;
       html += `<div class="tl-text">${esc(w(body))}</div>`;
       if (view.kind === 'quiz' && view.feedback) html += `<div class="tl-feedback">${esc(w(view.feedback))}</div>`;
       html += '</div>';
@@ -1101,6 +1123,9 @@ export class TouchLayer {
   }
 
   private exploreMode = false;
+  /** จุดสอนเครื่องมือ: ข้อความ + ลูกศรชี้ปุ่มจริง (ตัวละครหยุดเดินจนกว่าจะกด) */
+  private teachEl!: HTMLElement;
+  private teachTool: string | null = null;
   private renderTracker(t: QuestTrackerView | null, cr: DOMRect, wd: (t: string) => string, width: number, inset = 0): void {
     if (!t) {
       this.setHtml('tracker', this.tracker, '');

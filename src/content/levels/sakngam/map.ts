@@ -125,6 +125,12 @@ export const sakNgamMap: MapDefinition = {
     // ต้นสักใหญ่ (จุดสังเกตที่ทางแยก)
     { kind: 'object', object: 'tree', at: { x: 59, y: 30 } },
 
+    // v0.24 สำนักสงฆ์เขาแสงเพชร (ทิศเหนือของบ้านป้าเจียวราว 1 ซม.) + ทางเดินดินลงใต้
+    // สำนักสงฆ์ (28,17) → กองขยะ (28,47): ทิศใต้ 30 ช่อง = 3 ซม. = 300 ม. (ตรงกับโจทย์ ตรวจด้วย tests/sakngam.test.ts)
+    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 28, y: 29 }, { x: 28, y: 18 }] },
+    { kind: 'rect', terrain: 'paving', area: { x: 25, y: 17, w: 7, h: 2 } },
+    { kind: 'building', area: { x: 26, y: 13, w: 5, h: 4 }, roof: 'roofOrange', door: { x: 28, y: 16 } },
+
     // ป่าทางตะวันตกเฉียงเหนือ และต้นไม้ทั่วพื้นที่
     { kind: 'scatter', object: 'tree', area: { x: 1, y: 1, w: 28, h: 26 }, density: 0.32 },
     {

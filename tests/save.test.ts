@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FogOfWar } from '../src/core/fog/FogOfWar';
 import type { SessionSnapshot } from '../src/core/session/GameSession';
-import { explore, newSession, talk } from './helpers';
+import { explore, newSession, runDialogue, talk } from './helpers';
 
 describe('FogOfWar export/import', () => {
   it('บันทึกและโหลดช่องที่สำรวจแล้วได้ครบ', () => {
@@ -52,11 +52,15 @@ describe('บันทึกการเล่นกลางด่าน (snaps
     expect(b.playerTile).toEqual({ x: 35, y: 46 });
     expect(b.drainToasts()).toEqual([]); // ไม่แจ้งเตือนซ้ำตอนโหลด
 
-    // เล่นต่อ: ครูเนมที่ถามแล้วไม่ถามซ้ำ · จบด่านได้ (จุด C ต้องเดินถึงเอง)
+    // เล่นต่อ: ครูเนมที่ถามแล้วไม่ถามซ้ำ · เดินต่อจนจบด่าน (ถึงสำนักสงฆ์/กองขยะด้วยการเดินถึงเอง)
     talk(b, 'headman', [rightOf('q-west', b), rightOf('q-north', b)]);
-    talk(b, 'jiao', [rightOf('q-site', b)]);
-    expect(b.checkArrivals({ x: 72, y: 50 })).toBe(true);
     talk(b, 'jiao');
+    expect(b.flags.has('go-wat')).toBe(true);
+    expect(b.checkArrivals({ x: 28, y: 17 })).toBe(true);
+    runDialogue(b, [rightOf('q-wat', b)]);
+    expect(b.checkArrivals({ x: 28, y: 47 })).toBe(true);
+    runDialogue(b);
+    talk(b, 'jiao', [rightOf('q-adv1', b), rightOf('q-adv2', b)]);
     while (b.inDialogue) b.advanceDialogue();
     expect(b.completed || b.flags.has('sakngam-complete')).toBe(true);
   });

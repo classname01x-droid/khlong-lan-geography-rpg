@@ -7,7 +7,7 @@
  * รับ storage แบบ localStorage — ถ้าใช้ไม่ได้ (โหมดส่วนตัว/ถูกบล็อก) จะเก็บในหน่วยความจำแทน
  */
 import { parseTutorialSave, type TutorialSave } from '../tutorial/Tutorial';
-import { buy as buyItem, canBuy, earnReward, emptyRpg, sanitizeRpg, type BuyResult, type RpgState } from '../rpg/Economy';
+import { BOSS_HP_BONUS_CAP, buy as buyItem, canBuy, earnReward, emptyRpg, sanitizeRpg, type BuyResult, type RpgState } from '../rpg/Economy';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -219,6 +219,17 @@ export class ProgressStore {
   bossLost(): void {
     this.rpg.bossLosses = Math.min(5, this.rpg.bossLosses + 1);
     this.write();
+  }
+
+  /** ตอบคำถามแนะนำผิด → HP พญาจระเข้เพิ่ม (รวมไม่เกิน cap) — คืนจำนวนที่เพิ่มจริง · บันทึกทันที */
+  addBossHp(amount: number, cap: number): number {
+    const r = this.rpg;
+    const add = Math.max(0, Math.min(amount, Math.min(cap, BOSS_HP_BONUS_CAP) - r.bossHpBonus));
+    if (add > 0) {
+      r.bossHpBonus += add;
+      this.write();
+    }
+    return add;
   }
 
   finishBoss(): void {

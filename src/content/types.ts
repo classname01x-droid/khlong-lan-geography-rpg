@@ -58,13 +58,17 @@ export type Effect =
   | { type: 'evidence'; evidenceId: string }
   | { type: 'flag'; flag: string }
   /** รางวัลภารกิจ (เหรียญ + พลังศรัทธา) — ได้ครั้งเดียวต่อ id (ทำซ้ำไม่ได้เพิ่ม) */
-  | { type: 'reward'; id: string; coins: number; faith: number };
+  | { type: 'reward'; id: string; coins: number; faith: number }
+  /** เพิ่ม HP พญาจระเข้ในการต่อสู้จริง (ตอบผิดคำถามแนะนำ) — รวมไม่เกิน cap · บันทึกในข้อมูลเกม */
+  | { type: 'bossHp'; amount: number; cap: number };
 
 export interface DialogueLine {
   speaker: string;
   text: string;
   /** ผลที่เกิดขึ้นเมื่อบรรทัดนี้แสดง เช่น บันทึกเบาะแสลงสมุด */
   effects?: Effect[];
+  /** (ไม่บังคับ) ป้ายปุ่มไปต่อของบรรทัดนี้ เช่น "ตกลง" (ไม่ระบุ = "ไปต่อ") */
+  button?: string;
   /** (ไม่บังคับ) แสดงบรรทัดนี้เฉพาะเมื่อเงื่อนไขตรง ณ ตอนเริ่มคุย — ใช้กับบทเรียนเสริมเฉพาะหัวข้อ */
   when?: Condition;
 }
@@ -76,7 +80,20 @@ export interface QuizNode {
   when?: Condition;
 }
 
-export type DialogueNode = DialogueLine | QuizNode;
+/** บทเรียนทีละหน้า (มีปุ่มถัดไป/ย้อนกลับ) — id อ้างถึง LevelDefinition.lessons */
+export interface LessonNode {
+  lesson: string;
+  when?: Condition;
+}
+
+export type DialogueNode = DialogueLine | QuizNode | LessonNode;
+
+export interface LessonDefinition {
+  /** ผู้สอน (แสดงเป็นชื่อผู้พูด) */
+  speaker: string;
+  /** หน้าบทเรียน — แสดงทีละหน้า */
+  pages: Array<{ title: string; text: string }>;
+}
 
 export interface DialogueVariant {
   /** ไม่ระบุ = ใช้ได้เสมอ (ระบบเลือก variant แรกที่เงื่อนไขตรง) */
@@ -178,6 +195,10 @@ export interface QuizDefinition {
   correctFeedback: string;
   /** ผลเมื่อตอบถูก */
   effects: Effect[];
+  /** ตอบผิด → เปิดบทเรียนนี้ก่อน แล้วกลับมาตอบคำถามเดิม (ไม่รีเซ็ตความคืบหน้า) */
+  wrongLesson?: string;
+  /** ผลทุกครั้งที่ตอบผิด (เช่น เพิ่ม HP พญาจระเข้) */
+  wrongEffects?: Effect[];
   /**
    * ตรวจเนื้อหา: คำตอบที่ถูกต้องต้องตรงกับทิศน้ำไหลของลำน้ำนี้ ที่คำนวณจากระดับความสูง
    * (validateLevel จะล้มถ้าแก้แผนที่/ความสูงแล้วคำตอบไม่ตรง)
@@ -472,7 +493,7 @@ export interface StoryStep {
 /** ของตกแต่งในฉาก (ภาพ placeholder ไม่มีการชน ไม่มีผลต่อภารกิจ) เช่น ศาลพญาจระเข้ข้างครูเนม */
 export interface DecorDefinition {
   id: string;
-  kind: 'shrine';
+  kind: 'shrine' | 'trash';
   at: TilePoint;
 }
 
@@ -586,6 +607,8 @@ export interface LevelDefinition {
   exploreMode?: boolean;
   /** จุดที่ "เดินไปถึงเอง" แล้วจดเหตุการณ์ (flag + ข้อความสั้น) — ไม่มีหมุด/ป้ายบอกตำแหน่งล่วงหน้า */
   arrivals?: ArrivalDefinition[];
+  /** บทเรียนทีละหน้า (อ้างจากบทสนทนา/คำถามที่ตอบผิด) */
+  lessons?: Record<string, LessonDefinition>;
 }
 
 /** จุดที่ผู้เล่นเดินไปถึงเอง (เช่น จุดที่ต้องไปตรวจสอบ) — เปิดใช้เมื่อเงื่อนไข when เป็นจริง */
@@ -594,6 +617,13 @@ export interface ArrivalDefinition {
   at: TilePoint;
   radiusTiles: number;
   when?: Condition;
+  /** flag ที่จดเมื่อถึงจุด (ชนิด teach = จดเมื่อทำตามที่สอนสำเร็จ) */
   flag: string;
-  toast: string;
+  /** แสดงข้อความสั้นเมื่อถึงจุด (toast) */
+  toast?: string;
+  /** (ไม่บังคับ) หยุดเดินแล้วเปิดบทสนทนา/คำถามทันที — ใช้เรียกซ้ำจนกว่า doneFlag จะมี (กันค้างถ้าปิดเกมกลางคัน) */
+  nodes?: DialogueNode[];
+  doneFlag?: string;
+  /** (ไม่บังคับ) จุดสอนใช้เครื่องมือ: หยุดเดินจนกว่าจะกดเครื่องมือนั้น (มีลูกศรชี้ปุ่มจริง) — ผ่านแล้วไม่แสดงซ้ำ */
+  teach?: { tool: 'measure'; text: string };
 }

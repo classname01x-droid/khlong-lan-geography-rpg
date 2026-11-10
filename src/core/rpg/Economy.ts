@@ -2,6 +2,9 @@
  * เงินตรา · พลังศรัทธา · ร้านค้า · อุปกรณ์ (ตรรกะล้วน ทดสอบได้) — ไม่มีระบบ Inventory ใหญ่: ของทุกอย่างอยู่ใน RpgState เดียว
  * ค่าตั้งต้น 0 · ได้รางวัลภารกิจครั้งเดียวต่อรหัส (id) · เงินไม่ติดลบ · อาวุธ/เกราะสวมได้อย่างละ 1 ชิ้น (ซื้อใหม่ = สวมแทน เก็บของเดิมไว้)
  */
+/** HP พญาจระเข้ที่เพิ่มได้สูงสุดจากการตอบคำถามแนะนำผิด */
+export const BOSS_HP_BONUS_CAP = 50;
+
 export interface ShopItem {
   id: string;
   kind: 'weapon' | 'armor' | 'potion';
@@ -43,10 +46,12 @@ export interface RpgState {
   bossDone: boolean;
   /** จำนวนครั้งที่แพ้พญาจระเข้ (ช่วยผ่อนแรงบอสเล็กน้อยเมื่อลองซ้ำ) */
   bossLosses: number;
+  /** HP พญาจระเข้ที่เพิ่มจากการตอบคำถามแนะนำผิด (รวมไม่เกิน BOSS_HP_BONUS_CAP) */
+  bossHpBonus: number;
 }
 
 export function emptyRpg(): RpgState {
-  return { coins: 0, faith: 0, potions: 0, owned: [], weapon: null, armor: null, rewarded: [], goldenDone: false, goldenCoins: 0, shopDone: false, bossDone: false, bossLosses: 0 };
+  return { coins: 0, faith: 0, potions: 0, owned: [], weapon: null, armor: null, rewarded: [], goldenDone: false, goldenCoins: 0, shopDone: false, bossDone: false, bossLosses: 0, bossHpBonus: 0 };
 }
 
 /** อ่านข้อมูลบันทึก (ข้อมูลเสีย/ขาดช่อง → ค่าเริ่มต้น เงินและพลังไม่ติดลบ) */
@@ -71,6 +76,7 @@ export function sanitizeRpg(raw: unknown): RpgState {
     shopDone: r.shopDone === true,
     bossDone: r.bossDone === true,
     bossLosses: Math.min(5, n(r.bossLosses)),
+    bossHpBonus: Math.min(BOSS_HP_BONUS_CAP, n(r.bossHpBonus)),
   };
 }
 

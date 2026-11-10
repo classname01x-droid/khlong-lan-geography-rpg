@@ -176,23 +176,36 @@ const check = (n, ok, extra = '') => {
     await tapDom('.tl-actions .tl-btn', 'รับภารกิจถัดไป');
     await wait(1000);
   };
-  /** ด่านสักงาม (สำรวจด้วยทิศ+มาตราส่วน): เดินไปตามพิกัดที่คำนวณจากคำบอก แล้วตอบโจทย์ */
+  /** ด่านสักงาม (สำรวจด้วยทิศ+มาตราส่วน): เดินไปตามพิกัดที่คำนวณจากคำบอก · จุดสอนวัดระยะ · สำนักสงฆ์ · กองขยะ · แนะนำป้าเจียว */
   const doSakngam = async () => {
     const walkTo = async (x, y) => { await page.evaluate(([x, y]) => window.__TEST__.walkTo(x, y), [x, y]); await wait(400); };
-    const quizThrough = async (answers) => {
-      for (let g = 0; g < 14; g++) {
-        const d = await sess();
-        if (!d.dlg) break;
-        const k = await ev(() => window.__TEST__.session.dialogueView.kind);
-        if (k === 'quiz' && answers.length) await pick(answers.shift());
+    const walkBg = async (x, y) => { await page.evaluate(([x, y]) => { window.__TEST__.walkTo(x, y); }, [x, y]); };
+    const waitFor = async (fn, ms = 40000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await page.evaluate(fn)) return true; await wait(250); } return false; };
+    const drive = async (answers) => {
+      for (let g = 0; g < 80; g++) {
+        const v = await page.evaluate(() => { const d = window.__TEST__.session.dialogueView; return d && { kind: d.kind, page: d.page, button: d.button }; });
+        if (!v) break;
+        if (v.kind === 'quiz') { if (!answers.length) break; await pick(answers.shift()); }
+        else if (v.kind === 'lesson') await tapDom('.tl-sheet .tl-option', v.page === 5 ? 'เข้าใจแล้ว' : 'ถัดไป');
+        else if (v.button) await tapDom('.tl-sheet .tl-option', v.button);
         else await nextLine();
       }
     };
-    await walkTo(13, 41); await talkKey(); await quizThrough([1]);
-    await walkTo(55, 45); await talkKey(); await quizThrough([1, 1]);
-    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await quizThrough([2]);
-    await walkTo(72, 49);
-    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await quizThrough([]);
+    await walkTo(13, 41); await talkKey(); await drive([1]);
+    await walkBg(55, 45);
+    check('sakngam: จุดสอน หยุดเดินจนกว่าจะกดเครื่องมือวัดระยะ', await waitFor(() => !!window.__TEST__.session.teach));
+    await tapDom('.tl-a-measure');
+    await wait(300);
+    await walkTo(55, 45); await talkKey(); await drive([1, 1]);
+    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await drive([]);
+    await walkBg(28, 18);
+    check('sakngam: ถึงสำนักสงฆ์ → หยุดและถามโจทย์', await waitFor(() => !!window.__TEST__.session.dialogueView));
+    await drive([2]);
+    await walkBg(28, 46);
+    check('sakngam: พบกองขยะ → ข้อความ + ปุ่มตกลง', await waitFor(() => !!window.__TEST__.session.dialogueView));
+    await drive([]);
+    await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await drive([1, 2]);
+    await wait(500);
     const c = await coins();
     check('sakngam: จบภารกิจสักงาม ได้ +100 เหรียญ +10 ศรัทธา (รวม Golden Time 100 → 200 เหรียญ)', c.coins === 200 && c.faith === 10, JSON.stringify(c));
   };

@@ -195,6 +195,13 @@ export const TOUCH_CSS = `
 .tl-compact .tl-tr-btns { flex-wrap: nowrap; }
 .tl-compact .tl-tr-mini.tl-tr-go { min-width: 0; padding: 2px 6px; }
 .tl-compact .tl-tr-mini.tl-tr-help { flex: none; padding: 2px 6px; font-size: 18px; }
+.tl-lesson-title { font-size: 22px; font-weight: 700; color: #8a2f12; margin: 2px 0 6px; }
+.tl-dlg .tl-text { white-space: pre-line; }
+.tl-teach-msg { position: fixed; z-index: 6; display: none; transform: translateX(-50%); background: #fff6d5; color: #2b2118; border: 4px solid #d94b4b; border-radius: 14px; padding: 8px 16px; font-size: 22px; font-weight: 700; text-align: center; pointer-events: none; box-shadow: 0 4px 14px #0008; animation: tlTeachMsg 1s ease-in-out infinite; }
+@keyframes tlTeachMsg { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }
+.tl-btn.tl-teach { position: relative; outline: 4px solid #d94b4b; z-index: 2; animation: tlCoach 1s ease-in-out infinite; }
+.tl-btn.tl-teach::before { content: '👉'; position: absolute; left: -46px; top: 50%; margin-top: -20px; font-size: 34px; line-height: 40px; animation: tlPoint 0.6s ease-in-out infinite alternate; }
+@keyframes tlPoint { from { transform: translateX(-8px); } to { transform: translateX(6px); } }
 .tl-btn.tl-guide { outline: 3px solid #9be08a; animation: tlGuide 1.1s ease-in-out infinite; }
 @keyframes tlGuide { 0%, 100% { box-shadow: 0 0 0 0 rgba(155, 224, 138, 0.0); } 50% { box-shadow: 0 0 0 6px rgba(155, 224, 138, 0.55); } }
 

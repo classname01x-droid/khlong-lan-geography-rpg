@@ -84,6 +84,7 @@ type FlagSource = { kind: 'npc'; name: string } | { kind: 'inspect'; name: strin
 function nodesSetFlag(level: LevelDefinition, nodes: DialogueNode[], flag: string): boolean {
   return nodes.some((n) => {
     if ('quiz' in n) return !!level.quizzes?.find((q) => q.id === n.quiz)?.effects?.some((e) => e.type === 'flag' && e.flag === flag);
+    if ('lesson' in n) return false;
     return !!n.effects?.some((e) => e.type === 'flag' && e.flag === flag);
   });
 }
