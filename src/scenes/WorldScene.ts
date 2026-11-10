@@ -1242,8 +1242,7 @@ export class WorldScene extends Phaser.Scene {
   private openMap(): void {
     const s = this.session;
     s.pinFeedback = null;
-    for (const m of s.level.mapOpenMarks ?? []) if (s.matches(m.when)) s.flags.add(m.flag);
-    s.updateQuests();
+    s.applyMapOpenMarks();
     // บทที่ 3: จดว่าเปิดแผนที่ภูมิประเทศแล้ว (ขั้น "เปิดแผนที่ดูเส้นชั้นความสูง") — นับเฉพาะหลังได้รับแผนที่จากครูเนม
     if ((s.level.settlementAnalysis || s.level.trackMapOpen) && (!s.level.topoMapFlag || s.flags.has(s.level.topoMapFlag))) s.noteOpened('map');
     if (s.isPinAvailable()) {

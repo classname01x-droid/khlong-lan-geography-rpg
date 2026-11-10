@@ -343,8 +343,8 @@ export class MapOverlay {
         g.fillStyle(0x10141f, 1).fillTriangle(px - 4, py + 3, px + 4, py + 3, px, py - 4);
         this.labels.add(
           scene.add
-            .text(px + 5, py + 7, `${elev.meters(p)}`, { ...textStyle(this.labelSize(11), '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
-            .setOrigin(0, 0.5),
+            .text(px - 6, py + 8, `${elev.meters(p)}`, { ...textStyle(this.labelSize(11), '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
+            .setOrigin(1, 0.5),
         );
       }
     }

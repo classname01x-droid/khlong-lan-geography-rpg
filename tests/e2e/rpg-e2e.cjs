@@ -227,26 +227,38 @@ const check = (n, ok, extra = '') => {
       }
     };
     const before = await coins();
+    const openClose = async () => { await page.keyboard.press('KeyM'); await wait(500); await page.keyboard.press('Escape'); await wait(400); };
     check('level-2: เริ่มที่บ้านผู้ใหญ่บ้าน บทสนทนาเริ่มเอง', await waitFor(() => !!window.__TEST__.session.dialogueView, 10000));
     await drive([0, 1]); // โจทย์ 4 ซม.: ผิด → บทเรียนครูเนม → ถูก
     await walkBg(54, 11);
     check('level-2: เดินไปบ้านตาคำ (ข้ามสะพาน)', await waitFor(() => window.__TEST__.session.flags.has('near:ta-kham')));
-    await talkKey(); await drive([1]);
-    await walkBg(74, 11);
-    check('level-2: เดินไปสถานีป่าไม้', await waitFor(() => window.__TEST__.session.flags.has('near:ranger')));
     await talkKey(); await drive([]);
-    await page.keyboard.press('KeyM'); await wait(500); await page.keyboard.press('Escape'); await wait(400);
-    await talkKey(); await drive([2, 0]); // เส้นในสุด 200 ม. · เส้นชิดกัน = จุด A ชันกว่า
-    await talkKey(); await drive([2, 1, 1]); // น้ำไหล A,B → C · ตรวจลำน้ำ B · ระยะรวม 500 ม.
-    check('level-2: วิเคราะห์ลำน้ำ เลือกต้นน้ำ B แล้ว', (await sess()).flags.includes('q-source'));
-    await walkTo(75, 41);
-    await walkBg(54, 41);
-    check('level-2: เดินถึงจุดตรวจสอบ → พบร่องรอยสารเคมี', await waitFor(() => !!window.__TEST__.session.dialogueView));
+    check('level-2: ตาคำให้แผนที่ → แผนที่เด้งขึ้นกลางจอ', await waitFor(() => window.__TEST__.session.mode === 'map', 6000));
+    await wait(500);
+    await tapDom('.tl-actions .tl-btn', 'ตกลง');
+    await wait(400);
+    await walkBg(74, 11);
+    check('level-2: ใช้แผนที่หาสถานีป่าไม้ แล้วเดินไปถึง', await waitFor(() => window.__TEST__.session.flags.has('near:ranger')));
+    await talkKey(); await drive([]);
+    await openClose();
+    await talkKey(); await drive([2, 0]); // เส้นในสุด 200 ม. · เส้นชิดกันชันกว่า
+    check('level-2: ได้ข้อมูลความสูง (ตัวเลขบนแผนที่)', (await sess()).flags.includes('contours-learned'));
+    await walkTo(48, 12); await walkTo(48, 15); // ทางแยกลงแอ่งต่ำ → บ้านนางแป้น (ผู้เล่นเลือกทางเอง)
+    await talkKey(); await drive([]);
+    check('level-2: พบนางแป้น', (await sess()).flags.includes('met-paen'));
+    await openClose();
+    await talkKey(); await drive([1]); // ใกล้ลำน้ำ B
+    await openClose();
+    await talkKey(); await drive([2]); // ย้อนขึ้นทางที่สูงตามลำน้ำ B
+    check('level-2: วิเคราะห์ย้อนขึ้นต้นน้ำถูก', (await sess()).flags.includes('q-upstream'));
+    await walkTo(48, 16); await walkTo(51, 19); await walkTo(54, 24);
+    await walkBg(55, 34);
+    check('level-2: เดินเลียบลำน้ำ B ถึงต้นน้ำ → พบร่องรอยสารเคมี', await waitFor(() => !!window.__TEST__.session.dialogueView));
     await drive([0, 2]); // ผิด (เปิดถัง) → +10 HP บอส → ถูก (อยู่ห่างและแจ้งเจ้าหน้าที่)
     const mid = await coins();
     check('level-2: ตอบผิดเรื่องสารเคมี → HP บอส +10 (บันทึกในข้อมูลเกม)', mid.bossHpBonus === 10, JSON.stringify(mid));
     await walkBg(14, 11);
-    check('level-2: เดินกลับบ้านผู้ใหญ่บ้านเอง', await waitFor(() => window.__TEST__.session.playerTile.x <= 16 && window.__TEST__.session.playerTile.y <= 13, 120000));
+    check('level-2: เดินกลับบ้านผู้ใหญ่บ้านเอง', await waitFor(() => window.__TEST__.session.playerTile.x <= 16 && window.__TEST__.session.playerTile.y <= 13, 150000));
     await talkKey(); await drive([]);
     await wait(500);
     const after = await coins();

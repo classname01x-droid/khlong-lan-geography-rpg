@@ -37,7 +37,7 @@ export const L2_HOUSES = {
   mid: { x: 46, y: 28 },
   east: { x: 64, y: 30 },
   southeast: { x: 64, y: 47 },
-  paen: { x: 46, y: 16 },
+  paen: { x: 46, y: 15 },
 } as const;
 export const L2_CONFLUENCE = { x: 34, y: 12 } as const;
 
@@ -256,13 +256,13 @@ const npcs: NpcDefinition[] = [
         ],
       },
       {
-        when: { flags: ['contour-task'], notFlags: ['opened:map', 'contour-labeled'] },
+        when: { flags: ['contour-task'], notFlags: ['contour-map', 'contour-labeled'] },
         ambient: true,
         nodes: [{ speaker: RANGER, text: 'ยังไม่ได้เปิดแผนที่เลยนะ ลองเปิดแผนที่ นับเส้นชั้นความสูงบนภูเขา แล้วค่อยกลับมาตอบ' }],
       },
       {
         // ฉากที่ 3 (2): กิจกรรมสั้น ๆ อ่านเส้นชั้นความสูง → เติมตัวเลขบนเส้น · ความลาดชัน → ตัวเลขความสูงของบ้าน → ไปตามหานางแป้น
-        when: { flags: ['contour-task', 'opened:map'], notFlags: ['contours-learned'] },
+        when: { flags: ['contour-task', 'contour-map'], notFlags: ['contours-learned'] },
         nodes: [
           ...unlessDone('contour-labeled', [
             { speaker: RANGER, text: 'นับเส้นบนภูเขาได้แล้วใช่ไหม ลองตอบดู' },
@@ -368,7 +368,7 @@ const story: StoryStep[] = [
     micro('s3b', 'คุยกับเจ้าหน้าที่ป่าไม้', ['ฟังเรื่องเส้นชั้นความสูง', 'จดผลสำรวจ: เส้นนอกสุด 100 ม. ต่างกันเส้นละ 50 ม.'], flag('contour-task'), '✓ ได้ข้อมูลระดับความสูง'),
   ]),
   step(4, 'อ่านเส้นชั้นความสูงและความลาดชัน', 'ranger-station', 'contours-learned', [
-    micro('s4a', 'เปิดแผนที่ นับเส้นชั้นความสูงบนภูเขา', ['เปิดแผนที่ (ปุ่มแผนที่)', 'นับจำนวนเส้นบนภูเขา เส้นนอกสุด 100 ม. ต่างกันเส้นละ 50 ม.'], flag('opened:map'), '✓ ดูแผนที่แล้ว'),
+    micro('s4a', 'เปิดแผนที่ นับเส้นชั้นความสูงบนภูเขา', ['เปิดแผนที่ (ปุ่มแผนที่)', 'นับจำนวนเส้นบนภูเขา เส้นนอกสุด 100 ม. ต่างกันเส้นละ 50 ม.'], flag('contour-map'), '✓ ดูแผนที่แล้ว'),
     micro('s4b', 'ตอบโจทย์ความสูง แล้วเติมตัวเลขลงบนแผนที่', ['กลับไปคุยกับเจ้าหน้าที่ป่าไม้', 'ตอบว่าเส้นในสุดสูงเท่าไร'], flag('contour-labeled'), '✓ ตัวเลขความสูงถูกเติมบนแผนที่แล้ว'),
     micro('s4c', 'ตอบโจทย์ความลาดชัน', ['เส้นชิดกันหรือห่างกัน ต่างกันอย่างไร'], flag('contours-learned'), '✓ เข้าใจความสูงและความลาดชัน'),
   ]),
@@ -475,8 +475,9 @@ export const khlongNamLaiLevel: LevelDefinition = {
   contourIntervalMeters: 50,
   contourLabelsFlag: 'contour-labeled',
   spotHeightsFlag: 'contours-learned',
-  trackMapOpen: true,
   mapOpenMarks: [
+    // เปิดแผนที่หลังเจ้าหน้าที่ให้ไปนับเส้น (การเปิดแผนที่ตอนรับแผนที่จากตาคำไม่นับ)
+    { when: { flags: ['contour-task'] }, flag: 'contour-map' },
     { when: { flags: ['paen-task'] }, flag: 'paen-map' },
     { when: { flags: ['upstream-task'] }, flag: 'upstream-map' },
   ],

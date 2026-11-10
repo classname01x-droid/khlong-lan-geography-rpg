@@ -1612,6 +1612,14 @@ export class GameSession {
     return true;
   }
 
+  /** เปิดแผนที่แล้วจด flag ตามที่ด่านกำหนด (mapOpenMarks) — ใช้กับขั้น "เปิดแผนที่ดูแล้วค่อยตอบ" */
+  applyMapOpenMarks(): void {
+    for (const m of this.level.mapOpenMarks ?? []) if (this.matches(m.when)) this.flags.add(m.flag);
+    // ด่านที่ติดตามการเปิดแผนที่: นับหลังได้รับแผนที่ภูมิประเทศแล้วเท่านั้น
+    if (this.level.trackMapOpen && (!this.level.topoMapFlag || this.flags.has(this.level.topoMapFlag))) this.noteOpened('map');
+    this.updateQuests();
+  }
+
   /** จดว่าผู้เล่นเปิดเครื่องมือนี้แล้ว (flag "opened:<เครื่องมือ>" — ใช้กับขั้น "เปิดกระดาน…") */
   noteOpened(tool: string): void {
     if (this.flags.has(`opened:${tool}`)) return;

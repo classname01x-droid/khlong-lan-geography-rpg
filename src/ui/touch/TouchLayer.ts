@@ -846,6 +846,7 @@ export class TouchLayer {
     const toCanvas = GAME_WIDTH / cr.width;
     let bar = '';
     if (isMap) {
+      if (s.mapRevealTitle) this.clearToast(); // หัวข้อ "คุณได้รับแผนที่" ต้องไม่ถูกข้อความแจ้งเตือนเก่าบัง
       const tiles100 = s.scale.metersToTiles(100);
       const len = Math.round(touchView.mapCellPx * tiles100 * (cr.width / GAME_WIDTH));
       bar =
@@ -1228,6 +1229,7 @@ export class TouchLayer {
 
   private pushToast(msg: string): void {
     const s = this.session();
+    if (s?.mapRevealTitle) return;
     const text = s ? this.wording(s)(msg) : msg;
     if (this.toastQueue[this.toastQueue.length - 1] !== text) this.toastQueue.push(text);
     if (this.toastTimer === null) this.nextToast();

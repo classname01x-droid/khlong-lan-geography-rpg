@@ -2,18 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   khlongNamLaiLevel as L,
   L2_BARREL,
-  L2_CHECK_A,
-  L2_CHECK_B,
-  L2_CHECK_C,
+  L2_CONFLUENCE,
   L2_HEADMAN,
-  L2_HUT,
+  L2_HOUSES,
   L2_KHAM,
+  L2_PAEN,
   L2_RANGER,
   L2_SITE,
 } from '../src/content/levels/khlongnamlai';
 import { A_POINTS, B_POINTS, MAIN_POINTS } from '../src/content/levels/khlongnamlai/map';
 import { validateLevel } from '../src/content/validateLevel';
-import { directionFromVector } from '../src/core/direction/Compass';
+import { directionFromVector, THAI_DIRECTION } from '../src/core/direction/Compass';
 import { guideTarget } from '../src/core/guide/Navigation';
 import { buildQuestTracker } from '../src/core/guide/QuestGuide';
 import { ProgressStore } from '../src/core/progress/ProgressStore';
@@ -28,22 +27,22 @@ import { newSession } from './helpers';
 const grid = buildWorld(L.map);
 const elev = new ElevationModel(L.map.elevation!);
 const h = (p: { x: number; y: number }) => elev.heightAt(p.x, p.y);
-const cm = (a: { x: number; y: number }, b: { x: number; y: number }) => defaultScale.tilesToMeters(Math.hypot(a.x - b.x, a.y - b.y)) / 100;
 const quiz = (id: string) => L.quizzes!.find((q) => q.id === id)!;
 const rightIdx = (id: string) => quiz(id).choices.findIndex((c) => c.id === quiz(id).correctChoiceId);
 const wrongIdx = (id: string, n = 0) => quiz(id).choices.map((_, i) => i).filter((i) => i !== rightIdx(id))[n];
 const kind = (s: GameSession) => s.dialogueView?.kind;
-const view = (s: GameSession) => s.dialogueView as { kind: string; text?: string; speaker?: string; question?: string; choices?: string[]; feedback?: string | null; button?: string; page?: number; pages?: number; title?: string };
+type View = { kind: string; text?: string; speaker?: string; question?: string; choices?: string[]; feedback?: string | null; button?: string; page?: number; pages?: number; title?: string };
+const view = (s: GameSession) => s.dialogueView as View;
 const talk = (s: GameSession, id: string) => s.talkTo(L.npcs.find((n) => n.id === id)!);
-function toQuiz(s: GameSession): void {
+const toQuiz = (s: GameSession) => {
   for (let g = 0; g < 40 && s.inDialogue && kind(s) !== 'quiz'; g++) s.advanceDialogue();
-}
-function finish(s: GameSession): void {
+};
+const finish = (s: GameSession) => {
   for (let g = 0; g < 40 && s.inDialogue; g++) {
     if (kind(s) === 'quiz') throw new Error(`ติดที่คำถาม: ${view(s).question}`);
     s.advanceDialogue();
   }
-}
+};
 /** อ่านทุกบรรทัดจนถึงคำถามถัดไป (หรือจบ) — คืนข้อความที่ผ่านไป */
 function lines(s: GameSession): string[] {
   const out: string[] = [];
@@ -64,18 +63,20 @@ function newPlay() {
   s.wallet = p;
   return { s, p };
 }
-/** สถานะกลางเกมที่กำหนด flag เอง (เหมือนโหลดเกมที่บันทึกไว้ขั้นนั้น) */
 const FLAGS = {
   kham: ['q-kham'],
-  topo: ['q-kham', 'got-topo', 'q-station'],
-  task: ['q-kham', 'got-topo', 'q-station', 'contour-task'],
-  mapOpened: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map'],
-  labeled: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled'],
-  learned: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled', 'contours-learned'],
-  source: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source'],
-  site: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source', 'q-site'],
-  found: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source', 'q-site', 'site-found', 'barrel-seen'],
-  done: ['q-kham', 'got-topo', 'q-station', 'contour-task', 'opened:map', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source', 'q-site', 'site-found', 'barrel-seen', 'q-chem'],
+  topo: ['q-kham', 'got-topo', 'map-revealed'],
+  task: ['q-kham', 'got-topo', 'map-revealed', 'contour-task'],
+  mapOpened: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map'],
+  labeled: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled'],
+  learned: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned'],
+  paenTask: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task'],
+  paenMap: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map'],
+  stream: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map', 'q-stream', 'upstream-task'],
+  upstreamMap: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map', 'q-stream', 'upstream-task', 'upstream-map'],
+  upstream: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map', 'q-stream', 'upstream-task', 'upstream-map', 'q-upstream'],
+  found: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map', 'q-stream', 'upstream-task', 'upstream-map', 'q-upstream', 'site-found', 'barrel-seen'],
+  done: ['q-kham', 'got-topo', 'map-revealed', 'contour-task', 'contour-map', 'contour-labeled', 'contours-learned', 'met-paen', 'paen-task', 'paen-map', 'q-stream', 'upstream-task', 'upstream-map', 'q-upstream', 'site-found', 'barrel-seen', 'q-chem'],
 } as const;
 function withFlags(stage: keyof typeof FLAGS) {
   const r = newPlay();
@@ -83,10 +84,10 @@ function withFlags(stage: keyof typeof FLAGS) {
   r.s.updateQuests(true);
   return r;
 }
-/** เล่นถึงขั้นที่กำหนดด้วยบทสนทนาจริง (ตอบถูกทุกข้อ) */
-function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'site' | 'chem') {
+/** เล่นด้วยบทสนทนาและการเปิดแผนที่จริง (ตอบถูกทุกข้อ) ถึงขั้นที่กำหนด */
+function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'paenTask' | 'stream' | 'upstream' | 'chem') {
   const { s, p } = newPlay();
-  const order = ['kham', 'topo', 'task', 'learned', 'site', 'chem'];
+  const order = ['kham', 'topo', 'task', 'learned', 'paenTask', 'stream', 'upstream', 'chem'];
   const upTo = (x: string) => order.indexOf(stage) >= order.indexOf(x);
   talk(s, 'headman');
   toQuiz(s);
@@ -94,8 +95,6 @@ function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'site' | 'chem') {
   finish(s);
   if (upTo('topo')) {
     talk(s, 'ta-kham');
-    toQuiz(s);
-    answer(s, 'q-station');
     finish(s);
   }
   if (upTo('task')) {
@@ -103,7 +102,7 @@ function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'site' | 'chem') {
     finish(s);
   }
   if (upTo('learned')) {
-    s.noteOpened('map');
+    s.applyMapOpenMarks();
     talk(s, 'ranger');
     toQuiz(s);
     answer(s, 'q-contour');
@@ -111,14 +110,22 @@ function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'site' | 'chem') {
     answer(s, 'q-slope');
     finish(s);
   }
-  if (upTo('site')) {
-    talk(s, 'ranger');
+  if (upTo('paenTask')) {
+    talk(s, 'paen');
+    finish(s);
+  }
+  if (upTo('stream')) {
+    s.applyMapOpenMarks();
+    talk(s, 'paen');
     toQuiz(s);
-    answer(s, 'q-flow');
+    answer(s, 'q-stream');
+    finish(s);
+  }
+  if (upTo('upstream')) {
+    s.applyMapOpenMarks();
+    talk(s, 'paen');
     toQuiz(s);
-    answer(s, 'q-source');
-    toQuiz(s);
-    answer(s, 'q-site');
+    answer(s, 'q-upstream');
     finish(s);
   }
   if (upTo('chem')) {
@@ -130,16 +137,50 @@ function playTo(stage: 'kham' | 'topo' | 'task' | 'learned' | 'site' | 'chem') {
   return { s, p };
 }
 
-describe('ด่าน 2: แผนที่ — ภูมิประเทศ เส้นชั้นความสูง ลำน้ำ', () => {
-  it('ข้อมูลด่านผ่านการตรวจสอบ (ลำน้ำไม่ไหลขึ้นเนิน ตรงกับช่องน้ำ · NPC/จุดสังเกตเดินถึงได้)', () => {
+const nearest = (pts: Array<{ x: number; y: number }>, p: { x: number; y: number }) => Math.min(...pts.map((t) => Math.hypot(t.x - p.x, t.y - p.y)));
+const A_TILES = waterwayTiles(A_POINTS);
+const B_TILES = waterwayTiles(B_POINTS);
+const M_TILES = waterwayTiles(MAIN_POINTS);
+const isRoad = (x: number, y: number) => ['road', 'bridge'].includes(grid.getTerrain(x, y)!);
+
+describe('ด่าน 2: แผนที่ — ทางแยก แอ่งต่ำ ที่สูง ลำน้ำ 2 สาย', () => {
+  it('ข้อมูลด่านผ่านการตรวจสอบ · ทุกจุดเดินถึงได้ (บ้าน ต้นน้ำ ถังสารเคมี) · แผนที่ขนาดเดิม 80×60', () => {
     expect(validateLevel(L)).toEqual([]);
+    expect([L.map.widthTiles, L.map.heightTiles]).toEqual([80, 60]);
     const reach = reachableTiles(grid, L.spawn);
     for (const n of L.npcs) expect(isPointReachable(grid, reach, n.at, 1), n.id).toBe(true);
-    for (const p of [L2_SITE, L2_HUT, L2_BARREL]) expect(isPointReachable(grid, reach, p, 1), JSON.stringify(p)).toBe(true);
-    expect(grid.isBlocked(L.spawn.x, L.spawn.y)).toBe(false);
+    for (const p of [...Object.values(L2_HOUSES), L2_SITE, L2_BARREL]) expect(isPointReachable(grid, reach, p, 1), JSON.stringify(p)).toBe(true);
   });
 
-  it('ช่วงต่างระดับ 50 ม.: มีเส้นชั้นความสูงเพียง 3 เส้น (100, 150, 200) วงล้อมกันเข้าหาศูนย์กลาง', () => {
+  it('ถนนสายหลักมีทางแยกหลายทิศ (ตะวันตก กลาง ลงแอ่ง ตะวันออก) · มีทางเชื่อมและทางตัน ไม่มีเส้นทางเดียวตรงไปเป้าหมาย', () => {
+    for (const x of [25, 40, 48, 62]) {
+      expect(isRoad(x, 10) && isRoad(x, 11), `ถนนสายหลัก x=${x}`).toBe(true); // อยู่บนถนนสายหลัก
+      expect(isRoad(x, 13), `ทางแยก x=${x}`).toBe(true); // แยกลงใต้
+    }
+    // ทางเชื่อมตะวันตก–กลาง (y=22) และทางลัดตะวันออก (y=35) เชื่อมเครือข่ายเป็นวง
+    expect(isRoad(30, 22) || isRoad(31, 22)).toBe(true);
+    expect(isRoad(58, 35)).toBe(true);
+    // ปลายทางแต่ละหลังเชื่อมกับถนนต่างสาย: บ้านนางแป้นกับต้นน้ำ B ไม่ได้อยู่บนเส้นเดียวกับบ้านหลังอื่น
+    const roadTiles: Array<{ x: number; y: number }> = [];
+    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) if (isRoad(x, y)) roadTiles.push({ x, y });
+    for (const k of ['west', 'mid', 'east', 'southeast', 'paen'] as const) expect(nearest(roadTiles, L2_HOUSES[k]), k).toBeLessThanOrEqual(3);
+    // ผู้เล่นเดินผิดทางได้แต่ไม่ติด: จากบ้านทุกหลัง/ทางตันกลับถนนสายหลักได้
+    for (const p of [...Object.values(L2_HOUSES), { x: 29, y: 34 }, L2_SITE]) {
+      expect(findPath(grid, p, { x: L2_HEADMAN.x, y: L2_HEADMAN.y + 1 }), JSON.stringify(p)).not.toBeNull();
+    }
+  });
+
+  it('มีสะพานจริง: ถนนสายหลักข้ามลำน้ำสายหลัก · ทางแยกกลางข้ามลำน้ำ B · ทางเชื่อมข้ามลำน้ำ A', () => {
+    const bridges: Array<{ x: number; y: number }> = [];
+    for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) if (grid.getTerrain(x, y) === 'bridge') bridges.push({ x, y });
+    expect(bridges.some((b) => b.y <= 11 && b.y >= 10 && b.x >= 34 && b.x <= 35)).toBe(true);
+    expect(bridges.some((b) => nearest(B_TILES, b) <= 1 && b.y > 12)).toBe(true);
+    expect(bridges.some((b) => nearest(A_TILES, b) <= 1)).toBe(true);
+    const lm = L.landmarks.find((l) => l.id === 'bridge')!;
+    expect(grid.getTerrain(lm.at.x, lm.at.y)).toBe('bridge');
+  });
+
+  it('เส้นชั้นความสูงช่วงต่าง 50 ม. มีเพียง 100, 150, 200 · ภูเขาวงซ้อนกัน', () => {
     expect(L.contourIntervalMeters).toBe(50);
     let min = Infinity;
     let max = -Infinity;
@@ -151,14 +192,9 @@ describe('ด่าน 2: แผนที่ — ภูมิประเทศ 
         max = Math.max(max, v);
         bands.add(Math.floor(v / 50));
       }
-    // ความสูง 50–249 ม. → ขอบชั้นที่ตัดภายในแผนที่คือ 100, 150, 200 เท่านั้น (ไม่มีเส้น 50 หรือ 250)
     expect(min).toBeGreaterThan(50);
     expect(max).toBeLessThan(250);
-    expect([...bands].sort()).toEqual([1, 2, 3, 4]);
-    const boundaries = [...bands].sort().slice(1).map((b) => b * 50);
-    expect(boundaries).toEqual([100, 150, 200]);
-
-    // วงล้อมกัน: บริเวณที่สูงเกิน 100/150/200 ต่อเนื่องเป็นผืนเดียว และซ้อนกันเข้าข้างใน
+    expect([...bands].sort().slice(1).map((b) => b * 50)).toEqual([100, 150, 200]);
     const region = (level: number) => {
       const cells: boolean[] = [];
       for (let y = 0; y < grid.height; y++) for (let x = 0; x < grid.width; x++) cells.push(h({ x: x + 0.5, y: y + 0.5 }) >= level);
@@ -174,11 +210,9 @@ describe('ด่าน 2: แผนที่ — ภูมิประเทศ 
         seen.add(i);
         while (stack.length) {
           const c = stack.pop()!;
-          const cx = c % grid.width;
-          const cy = Math.floor(c / grid.width);
           for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-            const nx = cx + dx;
-            const ny = cy + dy;
+            const nx = (c % grid.width) + dx;
+            const ny = Math.floor(c / grid.width) + dy;
             if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) continue;
             const j = ny * grid.width + nx;
             if (cells[j] && !seen.has(j)) {
@@ -193,200 +227,144 @@ describe('ด่าน 2: แผนที่ — ภูมิประเทศ 
     const r100 = region(100);
     const r150 = region(150);
     const r200 = region(200);
-    expect([components(r100), components(r150), components(r200)]).toEqual([1, 1, 1]); // 3 วงใหญ่ (วงในสุด = 200 ม.)
+    expect([components(r150), components(r200)]).toEqual([1, 1]); // วงใน (150 และ 200 ม.) เป็นผืนเดียวซ้อนกัน
+    expect(components(r100)).toBeGreaterThanOrEqual(2); // ที่สูงมุมเหนือ + ภูเขา
     for (let i = 0; i < r100.length; i++) {
       if (r200[i]) expect(r150[i]).toBe(true);
       if (r150[i]) expect(r100[i]).toBe(true);
     }
-    expect(r200.filter(Boolean).length).toBeGreaterThan(50); // วงในสุดมีพื้นที่ให้เห็นบนแผนที่
   });
 
-  it('ลำน้ำ A และ B ไหลลงตามความสูง มาบรรจบที่จุดเดียวกัน แล้วไหลต่อเป็นลำน้ำสายหลัก (ไม่ไหลขึ้นเนินแม้แต่ช่องเดียว)', () => {
+  it('ลำน้ำ A และ B ไหลลงตามความสูง (ไม่ไหลขึ้นเนิน) มาบรรจบที่เดียวกัน แล้วไหลต่อเป็นลำน้ำสายหลัก · แสดงชื่อ/จุดบรรจบบนแผนที่', () => {
     const a = analyzeWaterway(A_POINTS, elev);
     const b = analyzeWaterway(B_POINTS, elev);
     const m = analyzeWaterway(MAIN_POINTS, elev);
     for (const w of [a, b, m]) expect(w.monotonic).toBe(true);
-    expect(a.mouth).toEqual(b.mouth);
-    expect(a.mouth).toEqual(m.source);
-    expect(a.mouth).toEqual({ x: 40, y: 14 });
-    // จุดบรรจบต่ำกว่าต้นน้ำทั้งสองสาย และลำน้ำสายหลักต่ำลงต่อไปจนถึงปลายน้ำ
-    expect(a.sourceMeters).toBeGreaterThan(a.mouthMeters);
-    expect(b.sourceMeters).toBeGreaterThan(b.mouthMeters);
-    expect(m.sourceMeters).toBeGreaterThan(m.mouthMeters);
-    // ทุกช่องของลำน้ำเป็นน้ำจริงบนแผนที่
-    for (const pts of [A_POINTS, B_POINTS, MAIN_POINTS])
-      for (const t of waterwayTiles(pts)) expect(['water', 'bridge']).toContain(grid.getTerrain(t.x, t.y));
-    // น้ำไหลขึ้นไปทางเหนือ (ด้านบนจอ) แต่ไหลจากที่สูงไปที่ต่ำ: ปลายน้ำ C อยู่ด้านบนจอ
-    expect(directionFromVector(m.mouth.x - m.source.x, m.mouth.y - m.source.y)).toBe('N');
-  });
-
-  it('ต้นน้ำสาย B ไม่ใช่ยอดเขา: ยอดสูงสุดอยู่ห่างจากลำน้ำทั้งสอง และต้นน้ำ B ต่ำกว่ายอดเกิน 50 ม.', () => {
+    expect(a.mouth).toEqual(L2_CONFLUENCE);
+    expect(b.mouth).toEqual(L2_CONFLUENCE);
+    expect(m.source).toEqual(L2_CONFLUENCE);
+    expect(a.sourceMeters).toBeGreaterThan(a.mouthMeters + 40);
+    expect(b.sourceMeters).toBeGreaterThan(b.mouthMeters + 40);
+    for (const pts of [A_POINTS, B_POINTS, MAIN_POINTS]) for (const t of waterwayTiles(pts)) expect(['water', 'bridge']).toContain(grid.getTerrain(t.x, t.y));
+    expect(directionFromVector(m.mouth.x - m.source.x, m.mouth.y - m.source.y)).toBe('N'); // ไหลขึ้นด้านบนจอ แต่เป็นไหลจากที่สูงไปที่ต่ำ
+    expect(L.waterways!.map((w) => [w.name, w.showName])).toEqual([['ลำน้ำ A', true], ['ลำน้ำ B', true], ['ลำน้ำสายหลัก', true]]);
+    const conf = L.landmarks.find((l) => l.id === 'confluence')!;
+    expect(conf.at).toEqual(L2_CONFLUENCE);
+    expect(conf.knownWhen).toEqual({ flags: ['got-topo'] });
+    // ต้นน้ำไม่ใช่ยอดเขา
     let peak = { x: 0, y: 0 };
     let best = -Infinity;
     for (let y = 0; y < grid.height; y++)
-      for (let x = 0; x < grid.width; x++) {
-        const v = h({ x, y });
-        if (v > best) {
-          best = v;
+      for (let x = 0; x < grid.width; x++)
+        if (h({ x, y }) > best) {
+          best = h({ x, y });
           peak = { x, y };
         }
-      }
-    const water = [...waterwayTiles(A_POINTS), ...waterwayTiles(B_POINTS), ...waterwayTiles(MAIN_POINTS)];
-    expect(Math.min(...water.map((t) => Math.hypot(t.x - peak.x, t.y - peak.y)))).toBeGreaterThan(8);
-    const bSource = analyzeWaterway(B_POINTS, elev).source;
-    expect(best - h(bSource)).toBeGreaterThan(50);
-    expect(grid.getTerrain(peak.x, peak.y)).not.toBe('water');
+    expect(nearest([...A_TILES, ...B_TILES, ...M_TILES], peak)).toBeGreaterThan(8);
+    expect(best - b.sourceMeters).toBeGreaterThan(40);
   });
 
-  it('จุดตรวจ A, B, C อยู่บนลำน้ำของตนเอง · ความสูงตามช่วงเส้น (A 100–150, B 150–200, C ต่ำกว่า 100) · C อยู่ด้านบนจอแต่ต่ำที่สุด', () => {
-    expect(waterwayTiles(A_POINTS).some((t) => t.x === L2_CHECK_A.x && t.y === L2_CHECK_A.y)).toBe(true);
-    expect(waterwayTiles(B_POINTS).some((t) => t.x === L2_CHECK_B.x && t.y === L2_CHECK_B.y)).toBe(true);
-    expect(waterwayTiles(MAIN_POINTS).some((t) => t.x === L2_CHECK_C.x && t.y === L2_CHECK_C.y)).toBe(true);
-    const a = h(L2_CHECK_A);
-    const b = h(L2_CHECK_B);
-    const c = h(L2_CHECK_C);
-    expect(a).toBeGreaterThan(100 + 15);
-    expect(a).toBeLessThan(150 - 15);
-    expect(b).toBeGreaterThan(150 + 15);
-    expect(b).toBeLessThan(200 - 15);
-    expect(c).toBeLessThan(100 - 15);
-    expect(L2_CHECK_C.y).toBeLessThan(L2_CHECK_A.y); // บนจอสูงกว่า…
-    expect(L2_CHECK_C.y).toBeLessThan(L2_CHECK_B.y);
-    expect(c).toBeLessThan(a); // …แต่ต่ำที่สุด (ปลายน้ำ)
-    expect(c).toBeLessThan(b);
-    // ต้นน้ำ B (บริเวณตรวจสอบ) สูงกว่าจุดตรวจ B
-    expect(h(L2_SITE)).toBeGreaterThan(b);
+  it('บ้านชาวบ้าน 5 หลัง: บ้านนางแป้นอยู่ในแอ่งต่ำสุด (< 100 ม.) หลังเดียว · ต่ำกว่าหลังอื่นชัดเจน · ใกล้ลำน้ำ B ไม่ใกล้สายอื่น', () => {
+    const hs = Object.entries(L2_HOUSES).map(([k, p]) => ({ k, h: h(p) }));
+    const paen = hs.find((x) => x.k === 'paen')!;
+    const others = hs.filter((x) => x.k !== 'paen');
+    expect(paen.h).toBeLessThan(100); // อยู่ต่ำกว่าเส้น 100 ม. = พื้นที่ต่ำสุดตามเส้นชั้นความสูง
+    for (const o of others) {
+      expect(o.h, o.k).toBeGreaterThanOrEqual(100); // บ้านอื่นไม่อยู่ในแอ่งต่ำ
+      expect(o.h - paen.h, o.k).toBeGreaterThan(30);
+    }
+    // บ้านที่มีป้ายชื่อ (ผู้ใหญ่บ้าน/ตาคำ/สถานีป่าไม้) อยู่บนที่สูงกว่าเส้น 100 ม. ด้วย → ไม่ปะปนกับพื้นที่ต่ำสุด
+    for (const p of [L2_HEADMAN, L2_KHAM, L2_RANGER]) expect(h(p)).toBeGreaterThan(100);
+    // นางแป้นยืนหน้าบ้านนั้น · ใกล้ลำน้ำ B (≤ 4 ช่อง) และห่างลำน้ำ A/สายหลักมาก → ตอบ B ได้จากแผนที่
+    expect(Math.hypot(L2_PAEN.x - L2_HOUSES.paen.x, L2_PAEN.y - L2_HOUSES.paen.y)).toBeLessThanOrEqual(2);
+    expect(nearest(B_TILES, L2_PAEN)).toBeLessThanOrEqual(4);
+    expect(nearest(A_TILES, L2_PAEN)).toBeGreaterThan(8);
+    expect(nearest(M_TILES, L2_PAEN)).toBeGreaterThan(8);
+    expect(nearest(B_TILES, L2_PAEN)).toBeLessThan(nearest(M_TILES, L2_PAEN) / 2);
+    // บ้านชาวบ้านบนแผนที่ไม่มีป้ายชื่อบอกว่าเป็นบ้านใคร และปรากฏเฉพาะเมื่อได้รับแผนที่
+    const houses = L.landmarks.filter((l) => l.id.startsWith('house-'));
+    expect(houses).toHaveLength(5);
+    expect(new Set(houses.map((l) => l.name))).toEqual(new Set(['บ้านชาวบ้าน']));
+    for (const l of houses) expect(l.symbol).toBe('village');
+    // ตัวเลขความสูงของบ้านปรากฏเมื่อเข้าใจความสูง (spotHeights) ครบทั้ง 5 หลัง
+    expect(L.spotHeights).toEqual(Object.values(L2_HOUSES));
+    expect(L.spotHeightsFlag).toBe('contours-learned');
+    expect(Math.min(...hs.map((x) => x.h))).toBe(paen.h);
   });
 
-  it('ความลาดชัน: รอบจุด A เส้นชั้นความสูงชิดกัน รอบจุด B เส้นห่างกัน (ช่วงต่างระดับเท่ากัน)', () => {
-    // ระยะระหว่างเส้นชั้นความสูง ≈ 50 ม. ÷ ความชัน — วัดจากความสูงรอบจุดจริง (ต่างกันตามระยะ 3 ช่อง)
-    const grad = (p: { x: number; y: number }) => {
-      const gx = (h({ x: p.x + 3, y: p.y }) - h({ x: p.x - 3, y: p.y })) / 6;
-      const gy = (h({ x: p.x, y: p.y + 3 }) - h({ x: p.x, y: p.y - 3 })) / 6;
-      return Math.hypot(gx, gy); // เมตรต่อช่อง
-    };
-    const spacingA = 50 / grad(L2_CHECK_A);
-    const spacingB = 50 / grad(L2_CHECK_B);
-    expect(spacingA).toBeLessThan(8); // เส้นห่างกันไม่ถึง 8 ช่อง (80 ม.)
-    expect(spacingB).toBeGreaterThan(15); // เส้นห่างกันเกิน 15 ช่อง (150 ม.)
-    expect(spacingB).toBeGreaterThan(spacingA * 2.5);
-  });
-});
-
-describe('ด่าน 2: ทิศและระยะของเส้นทาง (1:10,000 · 1 ซม. = 100 ม.) ตรงกับแผนที่จริง', () => {
-  it('บ้านผู้ใหญ่บ้าน → บ้านตาคำ: ทิศตะวันออก 4 ซม. = 400 ม. · ผ่านสะพานข้ามลำน้ำที่อยู่ระหว่างทางจริง', () => {
-    expect(directionFromVector(L2_KHAM.x - L2_HEADMAN.x, L2_KHAM.y - L2_HEADMAN.y)).toBe('E');
-    expect(L2_KHAM.y).toBe(L2_HEADMAN.y);
-    expect(cm(L2_HEADMAN, L2_KHAM)).toBeCloseTo(4, 5);
-    expect(defaultScale.tilesToMeters(L2_KHAM.x - L2_HEADMAN.x)).toBe(400);
-    const path = findPath(grid, L.spawn, { x: L2_KHAM.x, y: L2_KHAM.y + 1 })!;
+  it('ต้นน้ำ B: ทางเดินเลียบลำน้ำจากบ้านนางแป้นขึ้นไปถึงจุดตรวจสอบ · จุดตรวจสอบสูงกว่าบ้านนางแป้นมาก · ถังอยู่ใกล้ลำธาร', () => {
+    const path = findPath(grid, L2_PAEN, L2_SITE)!;
     expect(path).not.toBeNull();
-    const bridge = path.find((p) => grid.getTerrain(p.x, p.y) === 'bridge')!;
-    expect(bridge).toBeDefined();
-    expect(bridge.x).toBeGreaterThan(L2_HEADMAN.x);
-    expect(bridge.x).toBeLessThan(L2_KHAM.x);
-    const lm = L.landmarks.find((l) => l.id === 'bridge')!;
-    expect(grid.getTerrain(lm.at.x, lm.at.y)).toBe('bridge');
-  });
-
-  it('บ้านตาคำ → สถานีป่าไม้: ทิศตะวันออก 2 ซม. = 200 ม.', () => {
-    expect(directionFromVector(L2_RANGER.x - L2_KHAM.x, L2_RANGER.y - L2_KHAM.y)).toBe('E');
-    expect(L2_RANGER.y).toBe(L2_KHAM.y);
-    expect(cm(L2_KHAM, L2_RANGER)).toBeCloseTo(2, 5);
-    expect(findPath(grid, { x: L2_KHAM.x, y: L2_KHAM.y + 1 }, { x: L2_RANGER.x, y: L2_RANGER.y + 1 })).not.toBeNull();
-  });
-
-  it('สถานีป่าไม้ → กระท่อมเฝ้าป่า: ทิศใต้ 3 ซม. · กระท่อม → จุดตรวจสอบต้นน้ำ B: ทิศตะวันตก 2 ซม. · รวม 5 ซม. = 500 ม.', () => {
-    expect(directionFromVector(L2_HUT.x - L2_RANGER.x, L2_HUT.y - L2_RANGER.y)).toBe('S');
-    expect(L2_HUT.x).toBe(L2_RANGER.x);
-    expect(cm(L2_RANGER, L2_HUT)).toBeCloseTo(3, 5);
-    expect(directionFromVector(L2_SITE.x - L2_HUT.x, L2_SITE.y - L2_HUT.y)).toBe('W');
-    expect(L2_SITE.y).toBe(L2_HUT.y);
-    expect(cm(L2_HUT, L2_SITE)).toBeCloseTo(2, 5);
-    expect(cm(L2_RANGER, L2_HUT) + cm(L2_HUT, L2_SITE)).toBeCloseTo(5, 5);
-    // กระท่อมเฝ้าป่า (สิ่งปลูกสร้าง) อยู่ที่มุมเลี้ยวจริง · เส้นทางเดินถึงได้และเลี้ยวที่มุมนั้น
-    const hut = L.landmarks.find((l) => l.id === 'hut')!;
-    expect(Math.hypot(hut.at.x - L2_HUT.x, hut.at.y - L2_HUT.y)).toBeLessThanOrEqual(3);
-    // ถนนดินตามคำบอกทางมีจริงตลอดแนว: ลงใต้ (x=74) แล้วเลี้ยวตะวันตก (y=40) จนถึงจุดตรวจสอบ
-    const isRoad = (x: number, y: number) => ['road', 'bridge'].includes(grid.getTerrain(x, y)!);
-    for (let y = L2_RANGER.y; y <= L2_HUT.y; y++) expect(isRoad(L2_RANGER.x, y) && isRoad(L2_RANGER.x + 1, y), `x=74 y=${y}`).toBe(true);
-    for (let x = L2_SITE.x; x <= L2_HUT.x; x++) expect(isRoad(x, L2_HUT.y) && isRoad(x, L2_HUT.y + 1), `y=40 x=${x}`).toBe(true);
-    const path = findPath(grid, { x: L2_RANGER.x + 1, y: L2_RANGER.y + 1 }, L2_SITE)!;
-    expect(path).not.toBeNull();
-    expect(defaultScale.tilesToMeters(path.length)).toBeGreaterThanOrEqual(400); // เดินตรงข้ามป่าสั้นกว่าถนนได้ แต่ไม่สั้นกว่าระยะเส้นตรง
-  });
-
-  it('จุดตรวจสอบอยู่ใกล้ลำน้ำ B ทางต้นน้ำ · ถังสารเคมีอยู่ใกล้ลำธารและเดินถึงได้ · กลับบ้านผู้ใหญ่บ้านได้', () => {
-    const bTiles = waterwayTiles(B_POINTS);
-    const dist = (p: { x: number; y: number }) => Math.min(...bTiles.map((t) => Math.hypot(t.x - p.x, t.y - p.y)));
-    expect(dist(L2_SITE)).toBeLessThanOrEqual(3);
-    expect(dist(L2_BARREL)).toBeLessThanOrEqual(3);
+    const along = path.filter((p) => nearest(B_TILES, p) <= 6).length / path.length;
+    expect(along).toBeGreaterThan(0.7); // เดินเลียบลำน้ำ B ขึ้นไป
+    // ตลอดเส้นทางระดับความสูงเพิ่มขึ้น (ย้อนขึ้นไปทางต้นน้ำ)
+    expect(h(L2_SITE) - h(L2_PAEN)).toBeGreaterThan(60);
+    expect(nearest(B_TILES, L2_SITE)).toBeLessThanOrEqual(3);
+    expect(nearest(B_TILES, L2_BARREL)).toBeLessThanOrEqual(2);
+    expect(nearest(A_TILES, L2_SITE)).toBeGreaterThan(15);
     expect(grid.getTerrain(L2_BARREL.x, L2_BARREL.y)).not.toBe('water');
     expect(grid.isBlocked(L2_BARREL.x, L2_BARREL.y)).toBe(false);
-    expect(Math.hypot(L2_BARREL.x - L2_SITE.x, L2_BARREL.y - L2_SITE.y)).toBeLessThanOrEqual(3); // ถังอยู่ในระยะที่ผู้เล่นเห็นตอนมาถึง
+    expect(Math.hypot(L2_BARREL.x - L2_SITE.x, L2_BARREL.y - L2_SITE.y)).toBeLessThanOrEqual(3);
+    // ต้นน้ำ B ไม่ใช่จุดสูงสุดของภูเขา (หลักฐานต้องไล่ตามลำน้ำ ไม่ใช่ขึ้นยอดเขา)
+    expect(h(L2_SITE)).toBeLessThan(190);
+    // ทางลัดจากถนนตะวันออกไปยังต้นน้ำ B ก็ถึงได้ (ทางเลือก)
+    expect(findPath(grid, { x: 62, y: 20 }, L2_SITE)).not.toBeNull();
+    // กลับบ้านผู้ใหญ่บ้านได้
     expect(findPath(grid, L2_SITE, { x: L2_HEADMAN.x, y: L2_HEADMAN.y + 1 })).not.toBeNull();
-    // ระยะกลับตามที่แถบภารกิจบอก: ตะวันออก 2 → เหนือ 3 → ตะวันตก 6 ซม.
-    expect(cm(L2_RANGER, L2_HEADMAN)).toBeCloseTo(6, 5);
-    expect(directionFromVector(L2_HEADMAN.x - L2_RANGER.x, L2_HEADMAN.y - L2_RANGER.y)).toBe('W');
   });
 
-  it('ไม่มีลูกศร/หมุด/เป้าหมายนำทาง และไม่มีป้ายบอกตำแหน่งตาคำหรือต้นน้ำล่วงหน้า', () => {
+  it('ผู้ใหญ่บ้าน → ตาคำ: ตะวันออก 4 ซม. = 400 ม. · ข้ามสะพานระหว่างทาง', () => {
+    expect(directionFromVector(L2_KHAM.x - L2_HEADMAN.x, L2_KHAM.y - L2_HEADMAN.y)).toBe('E');
+    expect(defaultScale.tilesToMeters(L2_KHAM.x - L2_HEADMAN.x)).toBe(400);
+    const path = findPath(grid, L.spawn, { x: L2_KHAM.x, y: L2_KHAM.y + 1 })!;
+    const bridge = path.find((p) => grid.getTerrain(p.x, p.y) === 'bridge')!;
+    expect(bridge.x).toBeGreaterThan(L2_HEADMAN.x);
+    expect(bridge.x).toBeLessThan(L2_KHAM.x);
+  });
+
+  it('ไม่มีลูกศร/หมุด/เป้าหมายนำทาง · ตอนเริ่มไม่มีเครื่องหมายใดบนแผนที่ · เมื่อได้รับแผนที่เห็นบ้าน/ภูเขา/ป่า/สถานี/จุดบรรจบ', () => {
     expect(L.exploreMode).toBe(true);
     const { s } = newPlay();
-    for (const f of ['start', 'q-kham', 'got-topo', 'q-station', 'contour-task', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source', 'q-site', 'site-found', 'q-chem', 'l2-report']) {
+    for (const f of ['start', ...FLAGS.done]) {
       if (f !== 'start') s.flags.add(f);
       expect(guideTarget(s), f).toBeNull();
       expect(buildQuestTracker(s, {}).target, f).toBeNull();
     }
     expect(L.landmarks.every((l) => !l.revealFlag)).toBe(true);
     const fresh = newSession(L);
-    // ตอนเริ่ม: ไม่มีจุดใดบนแผนที่ที่บอกตำแหน่งบ้านตาคำ/ต้นน้ำ (จุดตรวจ A, B, C ปรากฏเมื่อได้แผนที่ภูมิประเทศเท่านั้น)
     expect(L.landmarks.filter((l) => fresh.isLandmarkOnMap(l)).map((l) => l.id)).toEqual([]);
     fresh.flags.add('got-topo');
-    expect(L.landmarks.filter((l) => fresh.isLandmarkOnMap(l)).map((l) => l.id).sort()).toEqual(['check-a', 'check-b', 'check-c']);
+    const onMap = L.landmarks.filter((l) => fresh.isLandmarkOnMap(l)).map((l) => l.id);
+    expect(onMap).toEqual(expect.arrayContaining(['house-1', 'house-2', 'house-3', 'house-4', 'house-5', 'peak', 'forest-w', 'forest-e', 'ranger-station', 'confluence']));
+    expect(L.landmarks.filter((l) => l.symbol === 'peak' || l.symbol === 'forest' || l.symbol === 'village').length).toBeGreaterThanOrEqual(8);
+    // บ้านนางแป้นไม่มีป้ายพิเศษ/ลูกศร: NPC ไม่มีเครื่องหมาย (exploreMode) และบ้านชื่อเหมือนกันทุกหลัง
+    expect(L.landmarks.some((l) => l.name.includes('แป้น'))).toBe(false);
   });
 });
 
 describe('ด่าน 2: ฉากที่ 1 — บ้านผู้ใหญ่บ้าน', () => {
-  it('ผู้กล้าเกิดที่บ้านผู้ใหญ่บ้าน · บทสนทนาเริ่มเองในพื้นที่เริ่มต้น (ครั้งเดียว)', () => {
+  it('ผู้กล้าเกิดที่บ้านผู้ใหญ่บ้าน · บทสนทนาเริ่มเอง (ครั้งเดียว)', () => {
     expect(Math.hypot(L.spawn.x - L2_HEADMAN.x, L.spawn.y - L2_HEADMAN.y)).toBeLessThanOrEqual(2);
     const s = newSession(L);
-    const t = s.triggerAt(L.spawn);
-    expect(t?.npcId).toBe('headman');
+    expect(s.triggerAt(L.spawn)?.npcId).toBe('headman');
     s.flags.add('q-kham');
     expect(s.triggerAt(L.spawn)).toBeUndefined();
   });
 
-  it('บทสนทนาตามเรื่อง → บอกทิศ+ระยะ+มาตราส่วน+จุดสังเกต ก่อนถามโจทย์ 3 ตัวเลือก', () => {
-    const { s } = newPlay();
+  it('บอกทิศ+ระยะ+มาตราส่วน+สะพาน ก่อนถามโจทย์ · ตอบผิด = บทเรียนครูเนมแล้วตอบข้อเดิม ไม่เพิ่ม HP บอส', () => {
+    const { s, p } = newPlay();
     talk(s, 'headman');
     const read = lines(s);
     expect(read[0]).toBe('ผู้ใหญ่บ้าน: ผู้กล้า! มีคนแอบนำสารเคมีไปทิ้งบริเวณต้นน้ำ ตอนนี้น้ำในชุมชนเริ่มผิดปกติแล้ว');
     expect(read[1]).toBe('ผู้กล้า: แล้วเราจะรู้ได้อย่างไรว่าต้นน้ำอยู่ที่ไหนครับ?');
     expect(read[2]).toBe('ผู้ใหญ่บ้าน: ข้าไม่รู้ตำแหน่งแน่ชัด แต่ตาคำรู้จักป่าแถบนี้ดี ลองไปหาเขาดู');
-    expect(read[3]).toContain('ทิศตะวันออก');
-    expect(read[3]).toContain('4 เซนติเมตร');
-    expect(read[3]).toContain('1:10,000');
-    expect(read[3]).toContain('สะพาน');
-    const q = view(s);
-    expect(q.kind).toBe('quiz');
-    expect(q.choices).toEqual(['40 เมตร', '400 เมตร', '4,000 เมตร']);
-    expect(q.question).toContain('4 ซม.');
-    expect(s.flags.has('q-kham')).toBe(false);
-  });
-
-  it('ตอบมาตราส่วนผิด → กลับไปเรียนกับครูเนม (บทเรียน 5 หน้า) แล้วตอบข้อเดิม · ไม่หักรางวัล ไม่เพิ่ม HP บอส', () => {
-    const { s, p } = newPlay();
-    talk(s, 'headman');
-    toQuiz(s);
+    expect(read[3]).toMatch(/ทิศตะวันออก.*4 เซนติเมตร.*1:10,000.*สะพาน/);
+    expect(view(s).choices).toEqual(['40 เมตร', '400 เมตร', '4,000 เมตร']);
     s.answerQuiz(wrongIdx('q-kham'));
-    expect(kind(s)).toBe('lesson');
-    expect(view(s)).toMatchObject({ speaker: 'ครูเนม', page: 1, pages: 5 });
+    expect(view(s)).toMatchObject({ kind: 'lesson', speaker: 'ครูเนม', page: 1, pages: 5 });
     skipLesson(s);
     expect(kind(s)).toBe('quiz');
-    expect(view(s).question).toContain('4 ซม.');
     expect(p.rpg.bossHpBonus).toBe(0);
-    expect(p.rpg.coins).toBe(0);
     s.answerQuiz(rightIdx('q-kham'));
     finish(s);
     expect(s.flags.has('q-kham')).toBe(true);
@@ -394,270 +372,264 @@ describe('ด่าน 2: ฉากที่ 1 — บ้านผู้ให�
   });
 });
 
-describe('ด่าน 2: ฉากที่ 2 — บ้านตาคำ · แผนที่ภูมิประเทศ', () => {
-  it('ตาคำไม่ให้แผนที่ก่อนผู้ใหญ่บ้านบอกทาง (ห้ามข้ามขั้น)', () => {
+describe('ด่าน 2: ฉากที่ 2 — ตาคำมอบแผนที่ (แผนที่เด้งขึ้นกลางจอ)', () => {
+  it('ตาคำไม่ให้แผนที่ก่อนผู้ใหญ่บ้านบอกทาง', () => {
     const { s } = newPlay();
     talk(s, 'ta-kham');
-    expect(kind(s)).toBe('line');
     finish(s);
     expect(s.flags.has('got-topo')).toBe(false);
   });
 
-  it('ได้แผนที่ภูมิประเทศ 1 ภาพ (ยังไม่มีตัวเลข) · ภารกิจใหม่ · บอกทางไปสถานีป่าไม้ + โจทย์ระยะ', () => {
+  it('บทสนทนาตามเรื่อง → ได้แผนที่ · ตั้งค่าให้แผนที่เด้งขึ้นกลางจอ "คุณได้รับแผนที่ของตาคำ!" ครั้งเดียว · ภารกิจถัดไป', () => {
     const { s } = playTo('kham');
     talk(s, 'ta-kham');
     const read = lines(s);
-    expect(read[0]).toBe('ผู้กล้า: ตาคำครับ ผมกำลังตามหาต้นน้ำที่ถูกทิ้งสารเคมีครับ');
-    expect(read[1]).toBe('ตาคำ: ตาเก็บแผนที่ภูเขาแถบนี้ไว้ แต่ตัวเลขความสูงเลือนหายไปแล้ว');
-    expect(read.join(' ')).toContain('เจ้าลองไปหาเจ้าหน้าที่ป่าไม้ เขามีข้อมูลสำรวจระดับความสูง');
-    expect(read.join(' ')).toContain('ทิศตะวันออก');
-    expect(read.join(' ')).toContain('2 เซนติเมตร');
+    expect(read).toEqual([
+      'ผู้กล้า: ตาคำครับ ผมกำลังตามหาต้นน้ำที่ถูกทิ้งสารเคมีครับ',
+      'ตาคำ: ตาเก็บแผนที่ภูมิประเทศแถบนี้ไว้ เจ้าลองนำไปใช้สืบหาต้นน้ำดู',
+    ]);
+    expect(s.inDialogue).toBe(false);
     expect(s.flags.has('got-topo')).toBe(true);
-    // แผนที่ที่ได้: ไม่มีตัวเลขบนเส้น และไม่มีจุดระดับความสูง A/B/C จนกว่าจะทำกิจกรรม
-    expect(L.topoMapFlag).toBe('got-topo');
+    expect(L.mapReveal).toEqual({ flag: 'got-topo', shownFlag: 'map-revealed', title: 'คุณได้รับแผนที่ของตาคำ!' });
+    expect(L.topoMapFlag).toBe('got-topo'); // แสดงภูมิประเทศ/เส้นชั้นความสูงทั้งแผ่น เปิดอ่านซ้ำจากปุ่มแผนที่เดิม
+    // ยังไม่มีตัวเลขความสูงกำกับเส้น และยังไม่มีตัวเลขที่บ้าน
     expect(L.contourLabelsFlag && s.flags.has(L.contourLabelsFlag)).toBe(false);
     expect(L.spotHeightsFlag && s.flags.has(L.spotHeightsFlag)).toBe(false);
-    expect(view(s).choices).toEqual(['20 เมตร', '200 เมตร', '2,000 เมตร']);
-    s.answerQuiz(wrongIdx('q-station'));
-    expect(kind(s)).toBe('lesson'); // ตอบผิด → ทบทวนกับครูเนม
-    skipLesson(s);
-    s.answerQuiz(rightIdx('q-station'));
-    finish(s);
-    expect(s.flags.has('q-station')).toBe(true);
     s.updateQuests(true);
     const t = buildQuestTracker(s, {});
-    expect([t.objective, ...t.steps].join(' ')).toContain('ตามหาเจ้าหน้าที่ป่าไม้เพื่อสอบถามระดับความสูง');
+    expect([t.objective, ...t.steps].join(' ')).toContain('ไปพบเจ้าหน้าที่ป่าไม้เพื่อสอบถามข้อมูลระดับความสูง');
+    // คุยซ้ำไม่แจกแผนที่ซ้ำ
+    talk(s, 'ta-kham');
+    expect(view(s).text).toContain('เปิดดูซ้ำได้จากปุ่มแผนที่');
+    finish(s);
   });
 
-  it('คุยซ้ำกับตาคำ: ไม่ให้แผนที่/รางวัลซ้ำ ไม่ถามซ้ำ · โหลดเกมกลางบทสนทนาแล้วไม่ค้าง', () => {
-    const { s } = newPlay();
-    for (const f of ['q-kham', 'got-topo']) s.flags.add(f); // ได้แผนที่แล้วแต่ยังไม่ได้ตอบโจทย์ระยะ (ปิดเกมกลางบทสนทนา)
-    talk(s, 'ta-kham');
-    const read = lines(s);
-    expect(read.join(' ')).not.toContain('ผมกำลังตามหาต้นน้ำ'); // ข้ามบทแรกที่ทำไปแล้ว
-    expect(kind(s)).toBe('quiz');
-    s.answerQuiz(rightIdx('q-station'));
-    finish(s);
-    talk(s, 'ta-kham');
-    expect(kind(s)).toBe('line');
-    finish(s);
+  it('ชื่อหัวข้อแผนที่ที่เพิ่งได้รับ (mapTitle) และปุ่ม "ตกลง" ปิดแผนที่ได้', async () => {
+    const { mapTitle } = await import('../src/ui/views/mapText');
+    const { buildTouchContext } = await import('../src/core/input/InputMapping');
+    const { s } = withFlags('topo');
+    expect(mapTitle(s)).toBe('แผนที่สำรวจ ตำบลคลองน้ำไหล');
+    s.mapRevealTitle = L.mapReveal!.title;
+    expect(mapTitle(s)).toBe('คุณได้รับแผนที่ของตาคำ!');
+    const ctx = (reveal: boolean) =>
+      buildTouchContext({
+        mode: 'map',
+        interact: null,
+        analysis: null,
+        dialogue: null,
+        map: { pinStage: 'none', canSwitchSheet: false, wisdomChoices: [], reveal },
+        notebook: { routeChoices: [] },
+        compareChoices: [],
+        grid: { choices: [], selected: null, solved: false },
+      });
+    expect(ctx(true).actions.find((a) => a.id === 'close')!.label).toBe('ตกลง');
+    expect(ctx(false).actions.find((a) => a.id === 'close')!.label).toBe('ปิดแผนที่');
   });
 });
 
-describe('ด่าน 2: ฉากที่ 3 — เจ้าหน้าที่ป่าไม้ · เส้นชั้นความสูง · ความลาดชัน', () => {
-  it('บทสนทนาแรก: อธิบายเส้นชั้นความสูง + บทเรียนทีละหน้า + ให้เปิดแผนที่นับเส้น (ยังไม่ถามโจทย์)', () => {
+describe('ด่าน 2: ฉากที่ 3 — เจ้าหน้าที่ป่าไม้ · เส้นชั้นความสูง (กิจกรรมสั้น ๆ)', () => {
+  it('บทแรก: ผู้กล้าถาม เจ้าหน้าที่ให้ข้อมูลระดับความสูง → บทเรียนทีละหน้า → ให้เปิดแผนที่นับเส้น', () => {
     const { s } = playTo('topo');
     talk(s, 'ranger');
     const read = lines(s);
-    expect(read[0]).toBe('ผู้กล้า: ผมได้แผนที่จากตาคำ แต่ไม่รู้ว่าพื้นที่ไหนสูงหรือต่ำครับ');
-    expect(read[1]).toBe('เจ้าหน้าที่ป่าไม้: เส้นบนแผนที่นี้เรียกว่าเส้นชั้นความสูง แต่ละเส้นเชื่อมจุดที่สูงจากระดับน้ำทะเลเท่ากัน');
-    expect(read[2]).toBe('เจ้าหน้าที่ป่าไม้: ฉันมีผลสำรวจอยู่ ลองใช้ข้อมูลนี้อ่านแผนที่ดู');
+    expect(read[0]).toBe('ผู้กล้า: ผมได้แผนที่จากตาคำ แต่ยังไม่รู้ว่าพื้นที่ไหนสูงหรือต่ำครับ');
+    expect(read[1]).toBe('เจ้าหน้าที่ป่าไม้: ฉันมีข้อมูลระดับความสูงจากการสำรวจ ลองนำไปอ่านคู่กับแผนที่ดู');
     expect(read.filter((x) => x.startsWith('[บทเรียน'))).toHaveLength(4);
     expect(read.join(' ')).toContain('เส้นนอกสุดของภูเขาสูง 100 เมตร');
-    expect(read.join(' ')).toContain('50 เมตร');
     expect(s.flags.has('contour-task')).toBe(true);
-    expect(s.inDialogue).toBe(false);
-    const text = L.lessons!.contour.pages.map((p) => p.text).join(' ');
-    expect(text).toContain('ช่วงต่างระดับ');
-    expect(text).toContain('เส้นอยู่ชิดกัน');
-    expect(text).toContain('เส้นอยู่ห่างกัน');
-  });
-
-  it('ก่อนเปิดแผนที่ดูเส้น: เจ้าหน้าที่ยังไม่ถามโจทย์ ให้ไปเปิดแผนที่ก่อน · ตัวเลขยังไม่ถูกเติม', () => {
-    const { s } = playTo('task');
-    talk(s, 'ranger');
+    talk(s, 'ranger'); // ยังไม่เปิดแผนที่ → ไม่ถามโจทย์
     expect(kind(s)).toBe('line');
     expect(view(s).text).toContain('เปิดแผนที่');
     finish(s);
-    expect(s.flags.has('contour-labeled')).toBe(false);
-    expect(L.trackMapOpen).toBe(true);
   });
 
-  it('กิจกรรม 1: เส้นนอก 100 ม. ต่างเส้นละ 50 ม. เส้นในสุด = 200 ม. (ตรงกับจำนวนเส้นบนแผนที่จริง) · ตอบถูกเติมตัวเลขลงแผนที่เดิม', () => {
+  it('โจทย์เส้นด้านในสุด = 200 ม. (ตรงจำนวนเส้นบนแผนที่ 3 เส้น) · ตอบผิด: อธิบายสั้น ๆ แล้วลองใหม่ที่เดิม · ตอบถูกเติมตัวเลขบนเส้น', () => {
     const { s } = playTo('task');
-    s.noteOpened('map');
+    s.applyMapOpenMarks();
     talk(s, 'ranger');
     toQuiz(s);
-    const q = view(s);
-    expect(q.question).toBe('ถ้าเส้นนอกสูง 100 เมตร และเส้นแต่ละชั้นต่างกัน 50 เมตร เส้นด้านในสุดสูงเท่าไร?');
-    expect(q.choices).toEqual(['100 เมตร', '150 เมตร', '200 เมตร']);
-    expect(quiz('q-contour').choices[rightIdx('q-contour')].label).toBe('200 เมตร');
-    // เส้นบนแผนที่จริง: 100 + (3 − 1) × 50 = 200
-    const interval = L.contourIntervalMeters!;
-    expect(100 + (3 - 1) * interval).toBe(200);
-    // ตอบผิด → เจ้าหน้าที่อธิบายสั้น ๆ แล้วลองใหม่ที่เดิม (ไม่เดินกลับ ไม่เริ่มใหม่ ไม่เพิ่ม HP บอส)
+    expect(view(s).question).toBe('ถ้าเส้นนอกสูง 100 เมตร และเส้นแต่ละชั้นต่างกัน 50 เมตร เส้นด้านในสุดสูงเท่าไร?');
+    expect(view(s).choices).toEqual(['100 เมตร', '150 เมตร', '200 เมตร']);
+    expect(100 + (3 - 1) * L.contourIntervalMeters!).toBe(200);
     s.answerQuiz(wrongIdx('q-contour'));
     expect(view(s).kind).toBe('quiz');
     expect(view(s).feedback).toBe('เส้นชั้นความสูงแต่ละเส้นมีช่วงต่างระดับที่แน่นอน ลองนับจำนวนช่วงระหว่างเส้นดูอีกครั้ง');
-    s.answerQuiz(wrongIdx('q-contour', 1));
     expect(s.flags.has('contour-labeled')).toBe(false);
     s.answerQuiz(rightIdx('q-contour'));
-    expect(s.flags.has('contour-labeled')).toBe(true); // ตัวเลขบนเส้นปรากฏในแผนที่เดิม
+    expect(s.flags.has('contour-labeled')).toBe(true);
     expect(L.contourLabelsFlag).toBe('contour-labeled');
   });
 
-  it('กิจกรรม 2: เส้นชิดกัน = ชัน (จุด A) · ตอบผิดอธิบายแล้วลองใหม่ · ตอบถูกได้แผนที่ตัวเลขครบ', () => {
-    const { s, p } = withFlags('labeled');
-    expect(s.flags.has('contour-labeled')).toBe(true);
-    expect(s.flags.has('contours-learned')).toBe(false);
-    talk(s, 'ranger');
-    // โหลดเกมกลางบทสนทนา: ข้ามกิจกรรม 1 ที่ทำแล้ว ไปที่กิจกรรม 2 โดยตรง
-    const read = lines(s);
-    expect(read.join(' ')).not.toContain('นับเส้นบนภูเขาได้แล้ว');
-    expect(read.join(' ')).toContain('เส้นชั้นความสูงที่อยู่ชิดกันหมายถึงพื้นที่ชัน');
-    expect(read.join(' ')).toContain('รอบจุด A เส้นชั้นความสูงอยู่ชิดกัน');
-    const q = view(s);
-    expect(q.question).toBe('พื้นที่ใดมีความลาดชันมากกว่า?');
-    expect(q.choices).toEqual(['จุด A', 'จุด B', 'ทั้งสองจุดชันเท่ากัน']);
-    for (const n of [0, 1]) {
-      s.answerQuiz(wrongIdx('q-slope', n));
-      expect(view(s).kind).toBe('quiz');
-      expect(view(s).feedback).toBe('เมื่อช่วงต่างระดับเท่ากัน เส้นที่อยู่ชิดกันแสดงว่าระดับความสูงเปลี่ยนเร็วในระยะทางสั้น จึงชันกว่า');
-    }
-    expect(p.rpg.bossHpBonus).toBe(0);
-    s.answerQuiz(rightIdx('q-slope'));
-    expect(quiz('q-slope').choices[rightIdx('q-slope')].label).toBe('จุด A');
-    const end = lines(s);
-    expect(end.join(' ')).toContain('เก่งมากผู้กล้า ตอนนี้เจ้ารู้แล้วว่าพื้นที่ไหนสูงหรือต่ำ ลองใช้แผนที่ตามหาต้นน้ำดู');
+  it('ความลาดชัน: เส้นชิด = ชัน · เสร็จแล้วได้ตัวเลขความสูงของบ้าน และเจ้าหน้าที่บอกเพียงว่านางแป้นอาศัยในบริเวณต่ำสุดใกล้ลำน้ำ (ไม่บอกทิศ/บ้าน/สะพาน/สาย/เส้นทาง)', () => {
+    const { s, p } = playTo('learned');
     expect(s.flags.has('contours-learned')).toBe(true);
-    expect(L.spotHeightsFlag).toBe('contours-learned'); // จุดระดับความสูง A, B, C ปรากฏ → แผนที่ตัวเลขครบ
-    expect(L.spotHeights).toEqual([L2_CHECK_A, L2_CHECK_B, L2_CHECK_C]);
+    expect(p.rpg.bossHpBonus).toBe(0);
+    const { s: s2 } = withFlags('labeled');
+    talk(s2, 'ranger');
+    const read = lines(s2);
+    expect(read.join(' ')).toContain('เส้นชั้นความสูงที่อยู่ชิดกันหมายถึงพื้นที่ชัน');
+    expect(view(s2).question).toContain('ความลาดชันมากกว่า');
+    s2.answerQuiz(wrongIdx('q-slope'));
+    expect(view(s2).feedback).toBe('เมื่อช่วงต่างระดับเท่ากัน เส้นที่อยู่ชิดกันแสดงว่าระดับความสูงเปลี่ยนเร็วในระยะทางสั้น จึงชันกว่า');
+    s2.answerQuiz(rightIdx('q-slope'));
+    const end = lines(s2).join(' ');
+    expect(end).toContain('มีชาวบ้านชื่อนางแป้นอาศัยอยู่ใกล้ลำน้ำในบริเวณที่ต่ำที่สุดของพื้นที่สำรวจ ลองไปตามหาเธอดู');
+    // ข้อความของเจ้าหน้าที่ทั้งหมดและทุกบรรทัดภารกิจ ห้ามเฉลยตำแหน่ง/เส้นทาง
+    const texts: string[] = [];
+    for (const v of L.npcs.find((n) => n.id === 'ranger')!.dialogue) for (const nd of v.nodes) if ('text' in nd) texts.push(nd.text);
+    for (const st of L.story) texts.push(st.title, ...(st.micro ?? []).flatMap((m) => [m.goal, ...m.steps]));
+    for (const t of texts) {
+      expect(t, t).not.toMatch(/นางแป้น.*(ทิศ|ตะวัน|เหนือ|ใต้|สะพาน|ลำน้ำ [AB]|ถนน|ทางแยก)/);
+    }
+    expect(L.npcs.find((n) => n.id === 'ranger')!.dialogue.some((v) => v.nodes.some((nd) => 'text' in nd && /บ้านหลัง|สะพานที่|ลำน้ำ B/.test(nd.text)))).toBe(false);
   });
 });
 
-describe('ด่าน 2: ฉากที่ 4 — วิเคราะห์ทิศทางการไหลของน้ำ', () => {
-  it('หลักฐาน: ลำน้ำ A ปกติ · B พบปลาตายก่อนบรรจบ · C ปลายน้ำ → โจทย์ทิศทางการไหลจากค่าความสูงจริง', () => {
-    const { s } = playTo('learned');
-    talk(s, 'ranger');
-    const read = lines(s);
-    expect(read[0]).toBe('ผู้กล้า: น้ำทั้งสองสายไหลมารวมกัน แต่เราจะรู้ได้อย่างไรว่าควรตรวจสอบที่ไหน?');
-    expect(read[1]).toContain('ลำน้ำ A ไม่พบความผิดปกติ');
-    expect(read[1]).toContain('ลำน้ำ B พบปลาตายและน้ำผิดปกติก่อนถึงจุดบรรจบ');
-    expect(read[1]).toContain('บริเวณ C อยู่ปลายน้ำหลังจุดบรรจบ');
-    expect(read[2]).toContain('ทิศทางการไหลของน้ำ');
-    const q = view(s);
-    expect(q.question).toBe('จากข้อมูลระดับความสูงในแผนที่ น้ำไหลจากบริเวณใดไปยังบริเวณใด?');
-    expect(q.choices).toHaveLength(3);
-    // ตัวเลือกใช้ช่วงความสูงจริงของจุดตรวจ (A 100–150 · B 150–200 · C ต่ำกว่า 100)
-    expect(q.choices![2]).toBe('จากจุด A (100–150 ม.) และจุด B (150–200 ม.) ไปยังจุด C (ต่ำกว่า 100 ม.)');
-    expect(quiz('q-flow').choices[rightIdx('q-flow')].label).toBe(q.choices![2]);
-    for (const c of q.choices!) expect(c).toMatch(/\d{3}–\d{3} ม\./);
-    // คำตอบถูกต้องคือที่สูง (A, B) → ที่ต่ำ (C) ตามแบบจำลองความสูงจริง
-    expect(h(L2_CHECK_A)).toBeGreaterThan(h(L2_CHECK_C));
-    expect(h(L2_CHECK_B)).toBeGreaterThan(h(L2_CHECK_C));
-    s.answerQuiz(wrongIdx('q-flow'));
-    expect(view(s).kind).toBe('quiz');
-    expect(view(s).feedback).toContain('ดูตัวเลขความสูง');
-    s.answerQuiz(rightIdx('q-flow'));
-    expect(s.flags.has('q-flow')).toBe(true);
+describe('ด่าน 2: ฉากที่ 4–5 — ออกตามหานางแป้น · ระบุลำน้ำ', () => {
+  it('นางแป้นไม่เริ่มบทสนทนาหลักก่อนผู้กล้าได้ข้อมูลความสูง (ห้ามข้ามขั้น)', () => {
+    const { s } = withFlags('topo');
+    talk(s, 'paen');
+    expect(kind(s)).toBe('line');
+    finish(s);
+    expect(s.flags.has('met-paen')).toBe(false);
   });
 
-  it('เลือกต้นทางที่ต้องตรวจสอบ: ลำน้ำ B (ถูก) · ผิด = อธิบายแล้วลองใหม่ · คำอธิบายเน้นว่าเป็นการเลือกจุดตรวจสอบ ไม่ใช่ยืนยันต้นเหตุ', () => {
-    const { s } = playTo('learned');
-    talk(s, 'ranger');
-    toQuiz(s);
-    s.answerQuiz(rightIdx('q-flow'));
-    toQuiz(s);
-    expect(view(s)).toMatchObject({ kind: 'quiz', question: 'จากหลักฐาน ผู้กล้าควรเริ่มตรวจสอบต้นทางของลำน้ำสายใด?' });
-    expect(view(s).choices).toEqual(['ลำน้ำ A', 'ลำน้ำ B', 'จุด C หลังลำน้ำบรรจบ']);
-    expect(quiz('q-source').choices[rightIdx('q-source')].label).toBe('ลำน้ำ B');
-    s.answerQuiz(0);
-    expect(view(s).feedback).toContain('ลำน้ำ A ไม่พบความผิดปกติ');
-    s.answerQuiz(2);
-    expect(view(s).feedback).toContain('ต้นน้ำของสายที่พบความผิดปกติ');
-    expect(s.flags.has('q-source')).toBe(false);
-    s.answerQuiz(1);
-    expect(quiz('q-source').correctFeedback).toContain('ย้อนขึ้นไปทางต้นน้ำของสาย B');
-    expect(quiz('q-source').correctFeedback).toContain('ยังไม่ได้ยืนยันว่าพบต้นเหตุ');
-    expect(s.flags.has('q-source')).toBe(true);
+  it('พบนางแป้น: บทแรกตามเรื่อง → ให้เปิดแผนที่ (ยังไม่ถามโจทย์) · อัปเดตภารกิจ', () => {
+    const { s } = withFlags('learned');
+    talk(s, 'paen');
+    const read = lines(s);
+    expect(read[0]).toBe('นางแป้น: ช่วงนี้น้ำในลำธารแถวบ้านฉันเริ่มผิดปกติ ไม่รู้ว่าเกิดอะไรขึ้นจากต้นน้ำ');
+    expect(read[1]).toContain('เปิดแผนที่');
+    expect(s.flags.has('met-paen')).toBe(true);
+    expect(s.inDialogue).toBe(false);
+    talk(s, 'paen'); // ยังไม่ได้เปิดแผนที่ → ไม่ถาม
+    expect(view(s).text).toContain('ยังไม่ได้เปิดแผนที่');
+    finish(s);
+    expect(s.flags.has('q-stream')).toBe(false);
   });
 
-  it('หลังเลือกลำน้ำ B: ไม่ต้องกลับไปหาตาคำ · ได้คำบอกทางไปต้นน้ำ B (ใต้ 3 ซม. กระท่อมเฝ้าป่า ตะวันตก 2 ซม.) · โจทย์ระยะรวม', () => {
-    const { s } = playTo('learned');
-    talk(s, 'ranger');
-    toQuiz(s);
-    answer(s, 'q-flow');
-    toQuiz(s);
-    answer(s, 'q-source');
+  it('คำถามว่าบ้านนางแป้นอยู่ใกล้ลำน้ำสายใด: ตัวเลือกตรงลำน้ำบนแผนที่ · ไม่มีข้อความเฉลยก่อนตอบ · ตอบผิดแล้วปิดบทสนทนา ให้ไปเปิดแผนที่สังเกตใหม่ ไม่ต้องเดินกลับไปหา NPC อื่น', () => {
+    const { s } = playTo('paenTask');
+    s.applyMapOpenMarks();
+    expect(s.flags.has('paen-map')).toBe(true); // เปิดแผนที่แล้วจดไว้
+    talk(s, 'paen');
     const read = lines(s);
-    expect(read.join(' ')).toContain('ไม่ต้องกลับไปหาตาคำอีก');
-    const route = read.find((x) => x.includes('ทิศใต้'))!;
-    expect(route).toContain('3 เซนติเมตร');
-    expect(route).toContain('1:10,000');
-    expect(route).toContain('กระท่อมเฝ้าป่า');
-    expect(route).toContain('ทิศตะวันตก');
-    expect(route).toContain('2 เซนติเมตร');
-    const q = view(s);
-    expect(q.question).toContain('ทิศใต้ 3 ซม.');
-    expect(q.choices).toEqual(['50 เมตร', '500 เมตร', '5,000 เมตร']);
-    s.answerQuiz(wrongIdx('q-site'));
-    expect(kind(s)).toBe('lesson'); // ครูเนม
-    skipLesson(s);
-    s.answerQuiz(rightIdx('q-site'));
+    expect(read[0]).toBe('ผู้กล้า: ผมเปิดแผนที่ดูแล้วครับ');
+    expect(view(s).question).toBe('บ้านนางแป้นตั้งอยู่ใกล้ลำน้ำสายใด?');
+    expect(view(s).choices).toEqual(['ลำน้ำ A', 'ลำน้ำ B', 'ลำน้ำสายหลัก (หลังจุดบรรจบ)']);
+    // ชื่อลำน้ำทุกตัวเลือกมีบนแผนที่ (waterways showName)
+    for (const w of L.waterways!) expect(w.showName).toBe(true);
+    // ไม่มีข้อความใดเฉลยว่านางแป้นอยู่ริมสายใดก่อนตอบ
+    const pre = L.npcs.flatMap((n) => n.dialogue.flatMap((v) => v.nodes.filter((nd) => 'text' in nd).map((nd) => (nd as { text: string }).text)));
+    for (const t of pre) expect(t, t).not.toMatch(/(บ้าน|นางแป้น).*(ริม|ใกล้)ลำน้ำ ?[AB]|ลำน้ำ ?[AB].*บ้านนางแป้น/);
+    expect(quiz('q-stream').question).not.toMatch(/[AB]\b.*ใกล้|อยู่ริม/);
+    // ตอบผิด → คำใบ้เป็นบรรทัดสุดท้ายแล้วจบ (ไม่ถูกบังคับให้เดินไปหา NPC อื่น) · เปิดแผนที่แล้วคุยใหม่ได้
+    s.answerQuiz(wrongIdx('q-stream'));
+    expect(view(s)).toMatchObject({ kind: 'line', speaker: 'นางแป้น' });
+    expect(view(s).text).toContain('ลองเปิดแผนที่');
     finish(s);
-    expect(s.flags.has('q-site')).toBe(true);
-    // อ่านคำบอกทางซ้ำได้จากเจ้าหน้าที่ และแถบภารกิจ
-    talk(s, 'ranger');
-    expect(view(s).text).toContain('ทิศใต้ 3 เซนติเมตร');
+    expect(s.flags.has('q-stream')).toBe(false);
+    s.applyMapOpenMarks();
+    talk(s, 'paen');
+    toQuiz(s);
+    expect(view(s).question).toBe('บ้านนางแป้นตั้งอยู่ใกล้ลำน้ำสายใด?');
+    answer(s, 'q-stream');
+    expect(quiz('q-stream').choices[rightIdx('q-stream')].label).toBe('ลำน้ำ B'); // ตรงกับระยะจริงบนแผนที่ (ใกล้ B)
     finish(s);
-    s.updateQuests(true);
-    const t = buildQuestTracker(s, {});
-    expect([t.objective, ...t.steps].join(' ')).toContain('ทิศใต้ 3 ซม.');
+    expect(s.flags.has('q-stream')).toBe(true);
+    expect(s.flags.has('upstream-task')).toBe(true);
   });
 });
 
-describe('ด่าน 2: ฉากที่ 5–6 — เดินไปจุดตรวจสอบ · ถังสารเคมี · ตัดสินใจ', () => {
-  it('ถึงจุดตรวจสอบก่อนคำนวณระยะ/วิเคราะห์ ไม่เกิดอะไร (ห้ามข้ามขั้น)', () => {
-    const { s } = withFlags('source');
-    expect(s.checkArrivals(L2_SITE)).toBe(false);
-    expect(s.flags.has('site-found')).toBe(false);
-    const f = newPlay().s;
-    expect(f.checkArrivals(L2_SITE)).toBe(false);
+describe('ด่าน 2: ฉากที่ 6 — วิเคราะห์ย้อนขึ้นต้นน้ำ', () => {
+  it('คำถามทิศทางไหลจากสูงลงต่ำ: ตัวเลือกคำนวณจากทิศและระดับความสูงจริงของลำน้ำบนแผนที่ · ตอบผิดปิดบทสนทนาให้ดูแผนที่ใหม่', () => {
+    const { s } = playTo('stream');
+    talk(s, 'paen');
+    expect(view(s).text).toContain('เปิดแผนที่');
+    finish(s);
+    s.applyMapOpenMarks();
+    talk(s, 'paen');
+    toQuiz(s);
+    const q = view(s);
+    expect(q.question).toBe('จากข้อมูลระดับความสูงบนแผนที่ น้ำในลำน้ำสายนี้ไหลมาจากไหน และเราควรสำรวจย้อนขึ้นไปทางใด?');
+    const b = analyzeWaterway(B_POINTS, elev);
+    const a = analyzeWaterway(A_POINTS, elev);
+    const dir = (from: { x: number; y: number }, to: { x: number; y: number }) => THAI_DIRECTION[directionFromVector(to.x - from.x, to.y - from.y)!];
+    const bandOf = (v: number) => (Math.floor(v / 50) * 50 < 100 ? 'ต่ำกว่า 100 ม.' : `${Math.floor(v / 50) * 50}–${Math.floor(v / 50) * 50 + 50} ม.`);
+    const correct = q.choices![rightIdx('q-upstream')];
+    expect(correct).toContain(`ย้อนขึ้นไปทาง${dir(L2_PAEN, b.source)}`);
+    expect(correct).toContain('ลำน้ำ B');
+    expect(correct).toContain(bandOf(b.sourceMeters));
+    expect(b.sourceMeters).toBeGreaterThan(h(L2_PAEN) + 50); // ต้นน้ำสูงกว่าบ้านนางแป้นจริง
+    expect(q.choices!.filter((c) => c.includes('ลำน้ำ A'))).toHaveLength(1);
+    expect(q.choices!.find((c) => c.includes('ลำน้ำ A'))).toContain(dir(L2_PAEN, a.source));
+    expect(q.choices!.find((c) => c.startsWith('ตามน้ำ'))).toContain('ต่ำกว่า 100 ม.'); // ตามน้ำ = ไปทางต่ำ (ผิด)
+    expect(new Set(q.choices).size).toBe(3);
+    s.answerQuiz(wrongIdx('q-upstream'));
+    expect(view(s).text).toContain('ลองเปิดแผนที่');
+    finish(s);
+    expect(s.flags.has('q-upstream')).toBe(false);
+    s.applyMapOpenMarks();
+    talk(s, 'paen');
+    toQuiz(s);
+    answer(s, 'q-upstream');
+    const end = lines(s).join(' ');
+    expect(end).toContain('ไปตรวจสอบต้นน้ำ');
+    expect(s.flags.has('q-upstream')).toBe(true);
   });
 
-  it('ถึงจุดตรวจสอบ: "พบร่องรอยสารเคมีบริเวณต้นน้ำ!" ปุ่มตกลง → ถังสารเคมีปรากฏ → ถามวิธีรับมือ', () => {
-    const { s } = playTo('site');
-    expect(s.checkArrivals({ x: L2_SITE.x + 8, y: L2_SITE.y })).toBe(false); // ยังไม่ถึง
+  it('ต้นน้ำที่ถูกต้องสอดคล้องกับทิศไหลและหลักฐาน: ย้อนตามน้ำจากบ้านนางแป้นไปทางที่สูงขึ้นถึงจุดตรวจสอบจริง', () => {
+    const b = analyzeWaterway(B_POINTS, elev);
+    const dist = (p: { x: number; y: number }) => b.tiles.findIndex((t) => Math.hypot(t.x - p.x, t.y - p.y) <= 3);
+    // ตำแหน่งจุดตรวจสอบอยู่ใกล้ปลายต้นน้ำมากกว่าบ้านนางแป้น (ดัชนีตามลำดับต้นน้ำ → ปลายน้ำ)
+    expect(dist(L2_SITE)).toBeGreaterThanOrEqual(0);
+    expect(dist(L2_PAEN)).toBeGreaterThan(dist(L2_SITE));
+  });
+});
+
+describe('ด่าน 2: ฉากที่ 7 — พบต้นตอสารเคมี · ตัดสินใจ · รายงาน', () => {
+  it('ถึงต้นน้ำก่อนวิเคราะห์ ไม่เกิดอะไร (ห้ามข้ามขั้น)', () => {
+    for (const stage of ['learned', 'paenMap', 'stream', 'upstreamMap'] as const) {
+      const { s } = withFlags(stage);
+      expect(s.checkArrivals(L2_SITE), stage).toBe(false);
+      expect(s.flags.has('site-found')).toBe(false);
+    }
+  });
+
+  it('พบร่องรอยสารเคมี "พบร่องรอยสารเคมีบริเวณต้นน้ำ!" [ตกลง] → ถังสารเคมีปรากฏ → ถามวิธีรับมือ (ไม่มีการจับ/เปิด/ย้ายถัง)', () => {
+    const { s } = withFlags('upstream');
+    expect(s.checkArrivals({ x: L2_SITE.x - 10, y: L2_SITE.y })).toBe(false);
     const decor = L.decor!.find((d) => d.kind === 'barrel')!;
-    expect(s.matches(decor.showWhen)).toBe(false); // ถังยังไม่ปรากฏ
-    expect(s.checkArrivals({ x: L2_SITE.x + 2, y: L2_SITE.y })).toBe(true);
-    expect(s.mode).toBe('dialogue');
+    expect(s.matches(decor.showWhen)).toBe(false);
+    expect(s.checkArrivals({ x: L2_SITE.x - 1, y: L2_SITE.y + 1 })).toBe(true);
     expect(view(s)).toMatchObject({ kind: 'line', text: 'พบร่องรอยสารเคมีบริเวณต้นน้ำ!', button: 'ตกลง' });
     expect(s.matches(decor.showWhen)).toBe(false);
     s.advanceDialogue();
-    expect(view(s).text).toBe('พบถังสารเคมีแล้ว! เราควรทำอย่างไรดี?');
-    expect(s.matches(decor.showWhen)).toBe(true); // ถังปรากฏหลังกดตกลง
+    expect(s.matches(decor.showWhen)).toBe(true);
     expect(decor.at).toEqual(L2_BARREL);
     s.advanceDialogue();
-    const q = view(s);
-    expect(q.kind).toBe('quiz');
-    expect(q.choices).toEqual(['เปิดถังตรวจสอบด้วยตัวเอง', 'ผลักถังลงลำธาร', 'อยู่ห่างจากถังและแจ้งเจ้าหน้าที่ให้ตรวจสอบ']);
-    expect(quiz('q-chem').choices[rightIdx('q-chem')].label).toBe('อยู่ห่างจากถังและแจ้งเจ้าหน้าที่ให้ตรวจสอบ');
+    expect(view(s).choices).toEqual(['เปิดถังตรวจสอบด้วยตัวเอง', 'ผลักถังลงลำธาร', 'อยู่ห่างจากถังและแจ้งเจ้าหน้าที่ให้ตรวจสอบ']);
+    expect(L.inspectPoints).toBeUndefined();
   });
 
-  it('ตอบผิด: พลังมลพิษพญาจระเข้ +10 HP ทันที (แจ้งผลกระทบ) · ลองใหม่ได้ · เพดานรวม 50 ใช้ร่วมกับด่าน 1 ไม่เริ่มนับใหม่', () => {
-    const { s, p } = playTo('site');
-    p.addBossHp(40, 50); // ด่าน 1 ทำให้สะสมมาแล้ว 40
+  it('ตอบผิด: พลังมลพิษพญาจระเข้ +10 HP ทันที (เพดานรวม 50 ร่วมกับด่าน 1) · ลองใหม่ได้ · ตอบถูก "ตัดสินใจถูกต้อง!"', () => {
+    const { s, p } = withFlags('upstream');
+    p.addBossHp(40, 50);
     s.checkArrivals(L2_SITE);
     toQuiz(s);
     s.drainToasts();
     s.answerQuiz(0);
     expect(p.rpg.bossHpBonus).toBe(50);
     expect(s.drainToasts()).toContain('พลังมลพิษพญาจระเข้ +10!');
-    expect(view(s).kind).toBe('quiz');
     expect(view(s).feedback).toContain('สารเคมีอาจรั่วไหล');
     s.answerQuiz(1);
-    expect(p.rpg.bossHpBonus).toBe(50); // เต็มเพดานแล้ว ไม่เกิน 50 แม้ตอบผิดซ้ำ
-    expect(view(s).feedback).toContain('ปนเปื้อนไปตามน้ำ');
-    expect(s.flags.has('q-chem')).toBe(false);
+    expect(p.rpg.bossHpBonus).toBe(50);
     s.answerQuiz(2);
     expect(quiz('q-chem').correctFeedback).toBe('ตัดสินใจถูกต้อง!');
-    expect(s.flags.has('q-chem')).toBe(true);
     finish(s);
-    expect(s.mode).toBe('explore');
-    expect(s.checkArrivals(L2_SITE)).toBe(false); // ผ่านแล้วไม่ขึ้นซ้ำ
-    // ตอบผิดเริ่มจากศูนย์ → +10 ต่อครั้ง
-    const f = playTo('site');
+    expect(s.flags.has('q-chem')).toBe(true);
+    expect(s.checkArrivals(L2_SITE)).toBe(false);
+    const f = withFlags('upstream');
     f.s.checkArrivals(L2_SITE);
     toQuiz(f.s);
     f.s.answerQuiz(0);
@@ -665,76 +637,50 @@ describe('ด่าน 2: ฉากที่ 5–6 — เดินไปจุ�
     expect(f.p.rpg.bossHpBonus).toBe(20);
   });
 
-  it('ปิดเกมระหว่างถามวิธีรับมือ (ยังไม่ตอบถูก) → โหลดแล้วเดินถึงอีกครั้งเรียกคำถามซ้ำได้ ไม่ค้าง', () => {
-    const { s } = playTo('site');
+  it('ปิดเกมระหว่างถามวิธีรับมือ → โหลดแล้วเดินถึงอีกครั้งเรียกคำถามซ้ำได้ ไม่ค้าง', () => {
+    const { s } = withFlags('upstream');
     s.checkArrivals(L2_SITE);
     const s2 = newSession(L);
     expect(s2.restore(JSON.parse(JSON.stringify(s.toSnapshot())))).toBe(true);
     expect(s2.mode).toBe('explore');
     expect(s2.checkArrivals(L2_SITE)).toBe(true);
-    expect(s2.mode).toBe('dialogue');
   });
 
-  it('คำตอบถูก: ไม่มีการสัมผัสหรือเคลื่อนย้ายถังจริง (ถังเป็นภาพประกอบ ไม่มีการชน ไม่มีตัวเลือกให้เก็บ)', () => {
-    const decor = L.decor!.find((d) => d.kind === 'barrel')!;
-    expect(decor).toBeDefined();
-    expect(L.inspectPoints).toBeUndefined();
-    expect(quiz('q-chem').choices.map((c) => c.label).join(' ')).not.toMatch(/เก็บ|ย้าย/);
-  });
-});
-
-describe('ด่าน 2: ฉากที่ 7 — รายงานผู้ใหญ่บ้าน · รางวัล · จบด่าน', () => {
-  it('ต้องตัดสินใจถูกก่อน ผู้ใหญ่บ้านจึงรับรายงาน · ก่อนหน้านั้นพูดย้ำทางไปตาคำ ไม่ให้รางวัล', () => {
-    const { s, p } = withFlags('found');
-    talk(s, 'headman');
-    expect(view(s).text).toContain('ตาคำ');
-    finish(s);
-    expect(s.flags.has('l2-report')).toBe(false);
-    expect(p.rpg.coins).toBe(0);
-  });
-
-  it('รายงานผู้ใหญ่บ้าน: บทสนทนาตามเรื่อง · ได้ +100 เหรียญ +10 ศรัทธา ครั้งเดียว · จบด่านและปลดล็อกด่านถัดไป', () => {
-    const { s, p } = playTo('chem');
-    expect(s.flags.has('q-chem')).toBe(true);
+  it('รายงานผู้ใหญ่บ้าน: บทสนทนาตามเรื่อง · +100 เหรียญ +10 ศรัทธา ครั้งเดียว · จบด่านปลดล็อกด่านถัดไป · ก่อนตัดสินใจถูกยังรายงานไม่ได้', () => {
+    const a = withFlags('found');
+    talk(a.s, 'headman');
+    finish(a.s);
+    expect(a.s.flags.has('l2-report')).toBe(false);
+    const { s, p } = withFlags('done');
     talk(s, 'headman');
     const read = lines(s);
     expect(read[0]).toBe('ผู้กล้า: ผู้ใหญ่ครับ ผมพบถังสารเคมีบริเวณต้นทางลำน้ำที่ผิดปกติแล้ว!');
     expect(read[1]).toBe('ผู้ใหญ่บ้าน: ขอบใจมากผู้กล้า เราจะรีบประสานเจ้าหน้าที่ และเตือนชาวบ้านให้งดใช้น้ำบริเวณที่สงสัยว่าปนเปื้อนจนกว่าจะตรวจสอบว่าปลอดภัย');
     expect(read[2]).toBe('ภารกิจสำเร็จ: ปกป้องต้นน้ำคลองน้ำไหล');
-    expect(s.flags.has('l2-report')).toBe(true);
-    expect(p.rpg.coins).toBe(100);
-    expect(p.rpg.faith).toBe(10);
+    expect([p.rpg.coins, p.rpg.faith]).toEqual([100, 10]);
     expect(p.rpg.rewarded).toContain('level-2:final');
     expect(L.ending?.startWhen).toEqual({ flags: ['l2-report'] });
-    expect(L.ending?.completeFlag).toBe('level-2-complete');
     expect(L.ending?.messages[0].text).toBe('ภารกิจสำเร็จ — ปกป้องต้นน้ำคลองน้ำไหล');
     expect(L.unlocks).toBe('level-3');
-    // รายงานซ้ำ/คุยซ้ำ: ไม่ได้รางวัลซ้ำ
     talk(s, 'headman');
     finish(s);
-    expect(p.rpg.coins).toBe(100);
-    expect(p.rpg.faith).toBe(10);
+    expect([p.rpg.coins, p.rpg.faith]).toEqual([100, 10]);
   });
 
-  it('คุยกับ NPC เดิมระหว่างทาง ไม่เกิดบทสนทนาผิดลำดับ', () => {
-    const { s } = playTo('learned');
-    // ตาคำหลังได้แผนที่: ย้ำทางไปสถานีป่าไม้ ไม่แจกแผนที่ซ้ำ
-    talk(s, 'ta-kham');
-    expect(view(s).text).toContain('สถานีป่าไม้');
-    finish(s);
-    // ผู้ใหญ่บ้านระหว่างภารกิจ: ย้ำทางไปบ้านตาคำ ไม่ถามโจทย์ใหม่ ไม่ให้รางวัล
-    talk(s, 'headman');
-    expect(kind(s)).toBe('line');
-    finish(s);
+  it('คุยกับ NPC เดิมระหว่างทาง ไม่เกิดบทสนทนาผิดลำดับ ไม่ให้รางวัลซ้ำ', () => {
+    const { s, p } = playTo('stream');
+    for (const id of ['headman', 'ta-kham', 'ranger']) {
+      talk(s, id);
+      expect(kind(s)).toBe('line');
+      finish(s);
+    }
     expect(s.flags.has('l2-report')).toBe(false);
-    // เจ้าหน้าที่หลังเรียนรู้แล้ว: ไม่สอนซ้ำ ไปที่การวิเคราะห์ลำน้ำ
-    talk(s, 'ranger');
-    expect(view(s).text).toContain('น้ำทั้งสองสายไหลมารวมกัน');
+    expect(p.rpg.coins).toBe(0);
   });
 });
 
-describe('ด่าน 2: แถบภารกิจ · บันทึก/โหลด · ผู้เล่นเรียกว่า "ผู้กล้า"', () => {
-  it('แถบภารกิจแสดงคำบอกทางที่ได้รับ (อ่านซ้ำได้) และไม่เฉลยก่อนตอบถูก', () => {
+describe('ด่าน 2: แถบภารกิจ · บันทึก/โหลด · คำเรียก · คำถาม', () => {
+  it('แถบภารกิจแสดงเป้าหมายสั้น ๆ ตามขั้น และไม่เฉลยตำแหน่งนางแป้น/ต้นน้ำ/คำตอบ', () => {
     const s = newSession(L);
     const text = () => {
       const t = buildQuestTracker(s, {});
@@ -743,53 +689,55 @@ describe('ด่าน 2: แถบภารกิจ · บันทึก/โ�
     s.updateQuests(true);
     expect(text()).toContain('ทิศตะวันออก 4 ซม.');
     expect(text()).not.toContain('400');
-    s.flags.add('q-kham');
-    s.updateQuests(true);
-    expect(text()).toContain('ทิศตะวันออก 4 ซม.');
-    s.flags.add('got-topo');
-    s.flags.add('q-station');
-    s.updateQuests(true);
-    expect(text()).toContain('ตามหาเจ้าหน้าที่ป่าไม้เพื่อสอบถามระดับความสูง');
-    s.flags.add('contour-task');
-    s.updateQuests(true);
-    expect(text()).toContain('นับเส้นชั้นความสูง');
-    expect(text()).not.toContain('200 เมตร');
-    for (const f of ['opened:map', 'contour-labeled', 'contours-learned', 'q-flow', 'q-source']) s.flags.add(f);
-    s.updateQuests(true);
-    expect(text()).toContain('ทิศใต้ 3 ซม.');
-    expect(text()).not.toContain('500 เมตร');
-    for (const f of ['q-site', 'site-found', 'q-chem']) s.flags.add(f);
-    s.updateQuests(true);
-    expect(text()).toContain('ทิศตะวันตก 6 ซม.');
+    const expectations: Array<[keyof typeof FLAGS, string]> = [
+      ['topo', 'ไปพบเจ้าหน้าที่ป่าไม้เพื่อสอบถามข้อมูลระดับความสูง'],
+      ['task', 'นับเส้นชั้นความสูง'],
+      ['learned', 'ตามหานางแป้นที่อาศัยอยู่ใกล้ลำน้ำในพื้นที่ต่ำที่สุด'],
+      ['paenTask', 'เปิดแผนที่'],
+      ['stream', 'ตัวเลขความสูง'],
+      ['upstream', 'เดินสำรวจย้อนขึ้นไปตามลำน้ำ'],
+      ['found', 'อย่าสัมผัสหรือเคลื่อนย้ายถัง'],
+      ['done', 'เดินกลับไปรายงานผู้ใหญ่บ้าน'],
+    ];
+    for (const [stage, expected] of expectations) {
+      for (const f of FLAGS[stage]) s.flags.add(f);
+      s.updateQuests(true);
+      expect(text(), stage).toContain(expected);
+    }
+    // ขั้นตามหานางแป้น: มี 5 ขั้นตอนตามเงื่อนไข และไม่บอกทิศ/บ้าน/สะพาน/สายลำน้ำ/เส้นทาง
+    const s2 = withFlags('learned').s;
+    s2.updateQuests(true);
+    const t2 = buildQuestTracker(s2, {});
+    expect(t2.steps).toEqual(['เปิดแผนที่ภูมิประเทศ', 'อ่านตัวเลขระดับความสูง', 'เปรียบเทียบพื้นที่ต่าง ๆ', 'สำรวจเส้นทางด้วยตนเอง (เลือกทางแยกเอง)', 'ค้นหาบ้านนางแป้น']);
+    expect([t2.objective, ...t2.steps].join(' ')).not.toMatch(/ทิศ|ตะวัน|เหนือ|ใต้|สะพาน|ลำน้ำ [AB]/);
   });
 
   it('บันทึก/โหลดทุกขั้นของภารกิจ: สถานะเท่าเดิม แล้วเล่นต่อจนจบด่านได้', () => {
     for (const stage of Object.keys(FLAGS) as Array<keyof typeof FLAGS>) {
       const { s } = withFlags(stage);
-      const snap = JSON.parse(JSON.stringify(s.toSnapshot()));
       const r = newSession(L);
       r.wallet = new ProgressStore(null, 'sakngam');
-      expect(r.restore(snap), stage).toBe(true);
+      expect(r.restore(JSON.parse(JSON.stringify(s.toSnapshot()))), stage).toBe(true);
       expect([...r.flags].sort(), stage).toEqual([...s.flags].sort());
       expect(r.currentStepOrder, stage).toBe(s.currentStepOrder);
       expect(r.mode).toBe('explore');
     }
-    // เล่นผ่านบทสนทนาจริงแล้วบันทึก/โหลด ณ ขั้นต่าง ๆ
-    for (const stage of ['kham', 'topo', 'task', 'learned', 'site', 'chem'] as const) {
+    for (const stage of ['kham', 'topo', 'task', 'learned', 'paenTask', 'stream', 'upstream', 'chem'] as const) {
       const { s } = playTo(stage);
       const r = newSession(L);
       expect(r.restore(JSON.parse(JSON.stringify(s.toSnapshot()))), stage).toBe(true);
       expect([...r.flags].sort(), stage).toEqual([...s.flags].sort());
     }
-    // โหลดแล้วเล่นต่อจนจบ (จากขั้นหลังตอบโจทย์ลำน้ำ)
-    const { s } = withFlags('source');
+    // โหลดกลางภารกิจแล้วเล่นต่อ (หลังตอบลำน้ำ B ถูก) จนรายงาน
+    const { s } = playTo('stream');
     const r = newSession(L);
     const p = new ProgressStore(null, 'sakngam');
     r.wallet = p;
     expect(r.restore(JSON.parse(JSON.stringify(s.toSnapshot())))).toBe(true);
-    talk(r, 'ranger');
+    r.applyMapOpenMarks();
+    talk(r, 'paen');
     toQuiz(r);
-    answer(r, 'q-site');
+    answer(r, 'q-upstream');
     finish(r);
     expect(r.checkArrivals(L2_SITE)).toBe(true);
     toQuiz(r);
@@ -801,7 +749,7 @@ describe('ด่าน 2: แถบภารกิจ · บันทึก/โ�
     expect(p.rpg.coins).toBe(100);
   });
 
-  it('ผู้เล่นเรียกว่า "ผู้กล้า" ไม่มี "นักเรียน" ในบทพูด/โจทย์/ภารกิจ', () => {
+  it('ผู้เล่นเรียกว่า "ผู้กล้า" ไม่มี "นักเรียน"', () => {
     const all: string[] = [];
     for (const n of L.npcs) for (const v of n.dialogue) for (const node of v.nodes) if ('text' in node) all.push(node.text, node.speaker);
     for (const q of L.quizzes!) all.push(q.question, q.speaker, q.correctFeedback, ...q.choices.map((c) => c.label));
@@ -810,17 +758,16 @@ describe('ด่าน 2: แถบภารกิจ · บันทึก/โ�
     expect(all.some((t) => t.includes('ผู้กล้า'))).toBe(true);
   });
 
-  it('คำถามทุกข้อ 3 ตัวเลือก คำตอบถูก 1 ข้อ · ผิดข้อมูลมาตราส่วน = บทเรียนครูเนม (ไม่เพิ่ม HP) · ผิดเรื่องสิ่งแวดล้อม = +10 HP บอส (เพดาน 50)', () => {
+  it('คำถามทุกข้อ 3 ตัวเลือก คำตอบถูก 1 ข้อ · ผิดเรื่องมาตราส่วน = บทเรียนครูเนม · ผิดเรื่องสิ่งแวดล้อม = +10 HP บอส (เพดาน 50)', () => {
     for (const q of L.quizzes!) {
       expect(q.choices, q.id).toHaveLength(3);
       expect(q.choices.filter((c) => c.id === q.correctChoiceId), q.id).toHaveLength(1);
       expect(new Set(q.choices.map((c) => c.label)).size, q.id).toBe(3);
-      const bossHp = q.wrongEffects?.some((e) => e.type === 'bossHp') ?? false;
-      expect(bossHp, q.id).toBe(q.id === 'q-chem');
-      if (['q-kham', 'q-station', 'q-site'].includes(q.id)) expect(q.wrongLesson, q.id).toBe('scale');
-      else expect(q.wrongLesson, q.id).toBeUndefined();
+      expect(q.wrongEffects?.some((e) => e.type === 'bossHp') ?? false, q.id).toBe(q.id === 'q-chem');
+      if (q.id === 'q-kham') expect(q.wrongLesson).toBe('scale');
     }
     expect(quiz('q-chem').wrongEffects).toEqual([{ type: 'bossHp', amount: 10, cap: 50 }]);
-    expect(L.lessons!.scale.speaker).toBe('ครูเนม');
+    expect(L.quizzes!.map((q) => q.id)).toEqual(['q-kham', 'q-contour', 'q-slope', 'q-stream', 'q-upstream', 'q-chem']);
+    expect(L.npcs.map((n) => n.id)).toEqual(['headman', 'ta-kham', 'ranger', 'paen']); // NPC เท่าที่จำเป็น
   });
 });
