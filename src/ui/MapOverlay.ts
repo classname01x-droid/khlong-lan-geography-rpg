@@ -207,6 +207,17 @@ export class MapOverlay {
     }
     this.root.setVisible(true);
     this.layer.setVisible(true);
+    // เพิ่งได้รับแผนที่: เด้งขึ้นกลางจอ (เฟดเข้าสั้น ๆ)
+    if (opening && s.mapRevealTitle) {
+      const scene = this.root.scene;
+      for (const o of [this.root, this.layer]) {
+        o.setAlpha(0);
+        scene.tweens.add({ targets: o, alpha: 1, duration: 420, ease: 'Sine.easeOut' });
+      }
+    } else if (opening) {
+      this.root.setAlpha(1);
+      this.layer.setAlpha(1);
+    }
     // คอมพิวเตอร์: คำอธิบายสัญลักษณ์อยู่ข้างแผนที่เสมอ · จอสัมผัส: แผง DOM (เปิดจากปุ่ม)
     this.legendRoot.setVisible(!this.zp);
     if (this.zp) {
@@ -338,12 +349,27 @@ export class MapOverlay {
       }
     }
 
+    // ชื่อลำน้ำ (ลำน้ำ A / B / สายหลัก) — เมื่อได้รับแผนที่ภูมิประเทศ
+    if (topo) {
+      for (const w of s.level.waterways ?? []) {
+        if (!w.showName) continue;
+        const a = s.waterways.get(w.id);
+        if (!a) continue;
+        const t = a.tiles[Math.floor(a.tiles.length * 0.45)];
+        this.labels.add(
+          scene.add
+            .text(mx + (t.x + 2.2) * cell, my + (t.y + 0.5) * cell, w.name, { ...textStyle(this.labelSize(12), '#bfe3ff'), stroke: '#10141f', strokeThickness: 3 })
+            .setOrigin(0, 0.5),
+        );
+      }
+    }
     for (const lm of s.level.landmarks) {
       if (!s.isLandmarkOnMap(lm)) continue;
       const lx = mx + (lm.at.x + 0.5) * cell;
       const ly = my + (lm.at.y + 0.5) * cell;
       // รู้ตำแหน่งจากคำบอกเล่า แต่ยังไม่ได้ไป: วงกลมโปร่ง + "(ยังไม่ได้ไป)" — ไม่วาดเส้นทาง
-      const heard = !s.isLandmarkVisible(lm);
+      // เครื่องหมายบนแผนที่ภูมิประเทศ (mapMark) วาดเป็นสัญลักษณ์ปกติ ไม่ใช่ "ยังไม่ได้ไป"
+      const heard = !s.isLandmarkVisible(lm) && !lm.mapMark;
       if (heard) {
         g.lineStyle(2, 0xffd84d, 1).strokeCircle(lx, ly, 6);
         this.labels.add(

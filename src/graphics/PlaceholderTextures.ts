@@ -258,6 +258,8 @@ const APPEARANCE_PALETTE: Record<CharacterAppearance, Palette> = {
   // ตาคำ (ผู้เฒ่า): ผมขาว เสื้อน้ำตาล · เจ้าหน้าที่ป่าไม้: เครื่องแบบเขียว
   elder: { ...BASE_PALETTE, h: '#e6e6e6', c: '#8a6a43', p: '#4a3f2e', s: '#d9a066' },
   ranger: { ...BASE_PALETTE, h: '#4a3020', c: '#3f7a46', p: '#2f4a33' },
+  // นางแป้น: ผมดำ เสื้อม่วง ผ้าถุงน้ำเงินเข้ม
+  auntie: { ...BASE_PALETTE, h: '#141414', c: '#7a4fa3', p: '#33336a', s: '#e0b077' },
 };
 
 export function characterTextureKey(a: CharacterAppearance): string {

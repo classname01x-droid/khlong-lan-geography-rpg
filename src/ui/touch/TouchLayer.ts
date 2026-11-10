@@ -559,6 +559,7 @@ export class TouchLayer {
         pinStage: s.pinStage,
         tool: s.mapTool,
         canSwitchSheet: s.availableSheets().length > 0,
+        reveal: !!s.mapRevealTitle,
         wisdomChoices: (L.pinTask?.wisdomChoices ?? []).map((c) => s.resolveText(c.label)),
       },
       notebook: {

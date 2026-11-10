@@ -107,7 +107,7 @@ export interface TouchContextInput {
   /** ด่านนี้มีหน้าวิเคราะห์ (กระดานวิเคราะห์ หรือ เปรียบเทียบแผนที่) */
   analysis: { available: boolean; label: string } | null;
   dialogue: { kind: 'line' | 'quiz' | 'lesson'; choices: string[]; /** ป้ายปุ่มไปต่อของบรรทัดนี้ */ button?: string; /** บทเรียน: หน้าที่/จำนวนหน้า */ page?: number; pages?: number } | null;
-  map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; wisdomChoices: string[]; /** เครื่องมือบนแผนที่ (ไม่ระบุ = ปักหมุด) */ tool?: 'pin' | 'settlement' | null };
+  map: { pinStage: 'none' | 'cursor' | 'wisdom'; canSwitchSheet: boolean; /** เพิ่งได้รับแผนที่: ปุ่มปิดเป็น "ตกลง" */ reveal?: boolean; wisdomChoices: string[]; /** เครื่องมือบนแผนที่ (ไม่ระบุ = ปักหมุด) */ tool?: 'pin' | 'settlement' | null };
   notebook: { routeChoices: string[] };
   compareChoices: string[];
   grid: { choices: string[]; selected: number | null; solved: boolean };
@@ -229,7 +229,7 @@ export function buildTouchContext(i: TouchContextInput): TouchContext {
       if (i.view) actions.push(half(uiAct('legend', 'สัญลักษณ์', '📖', 'map-legend', true, i.view.legend)));
       if (i.map.canSwitchSheet) actions.push(half(act('sheet', 'สลับแผ่น', '🔁', ACTION_KEY.sheet)));
       if (i.analysis) actions.push(half(act('analysis', i.analysis.label, '🔍', ACTION_KEY.analysis, i.analysis.available)));
-      actions.push(half(act('close', 'ปิดแผนที่', '✕', 'KeyM')));
+      actions.push(half(act('close', i.map.reveal ? 'ตกลง' : 'ปิดแผนที่', i.map.reveal ? '✔' : '✕', 'KeyM')));
       return { ...none, actions };
     }
     case 'notebook':

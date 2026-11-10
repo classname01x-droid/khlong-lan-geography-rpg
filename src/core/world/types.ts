@@ -71,4 +71,6 @@ export type MapSymbol =
   | 'stones'
   | 'benchmark'
   | 'farm'
-  | 'hotspring';
+  | 'hotspring'
+  | 'peak'
+  | 'forest';

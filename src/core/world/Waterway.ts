@@ -8,6 +8,8 @@ export interface WaterwayDefinition {
   name: string;
   /** แนวลำน้ำ (ลำดับจุดไม่ได้บอกทิศน้ำไหล — ทิศคำนวณจากระดับความสูง) */
   points: TilePoint[];
+  /** แสดงชื่อลำน้ำบนแผนที่สำรวจ (เมื่อได้รับแผนที่ภูมิประเทศ) */
+  showName?: boolean;
 }
 
 export interface WaterwayAnalysis {

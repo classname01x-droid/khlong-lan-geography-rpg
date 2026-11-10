@@ -20,6 +20,8 @@ export const SYMBOL_LABEL: Record<MapSymbol, string> = {
   refmark: 'หมุดอ้างอิงพิกัด',
   farm: 'พื้นที่เกษตร',
   hotspring: 'บ่อน้ำร้อน',
+  peak: 'ภูเขา',
+  forest: 'ป่า',
 };
 
 const BLUE = 0x2f7fd0;
@@ -87,6 +89,15 @@ export function drawMapSymbol(g: Phaser.GameObjects.Graphics, symbol: MapSymbol,
         g.lineBetween(cx + dx, cy - 1, cx + dx - 2, cy - 4);
         g.lineBetween(cx + dx, cy - 1, cx + dx + 2, cy - 4);
       }
+      return;
+    case 'peak':
+      g.fillStyle(0x8a8f99, 1).fillTriangle(cx - 9, cy + 5, cx + 1, cy + 5, cx - 4, cy - 6);
+      g.fillStyle(0x6d727c, 1).fillTriangle(cx - 2, cy + 5, cx + 9, cy + 5, cx + 3, cy - 8);
+      g.fillStyle(0xffffff, 1).fillTriangle(cx + 1, cy - 4, cx + 5, cy - 4, cx + 3, cy - 8);
+      return;
+    case 'forest':
+      g.fillStyle(0x2d6a2d, 1);
+      for (const [dx, dy] of [[-4, 2], [4, 2], [0, -3]]) g.fillTriangle(cx + dx - 4, cy + dy + 4, cx + dx + 4, cy + dy + 4, cx + dx, cy + dy - 5);
       return;
     case 'refmark':
       // หมุดอ้างอิงพิกัด: สี่เหลี่ยมมีกากบาท (ต่างจากสามเหลี่ยมหมุดระดับ)

@@ -123,6 +123,13 @@ export class DialogueRunner {
         this.feedback = null;
         return false;
       }
+      if (quiz.wrongEndsDialogue) {
+        // คำใบ้เป็นบรรทัดสุดท้ายแล้วจบบทสนทนา (ผู้เล่นไปเปิดแผนที่/สังเกตใหม่ แล้วกลับมาคุยอีกครั้ง)
+        const hint: DialogueLine = { speaker: quiz.wrongSpeaker ?? quiz.speaker, text: choice.hint ?? quiz.fallbackHint };
+        this.nodes.splice(this.pos, this.nodes.length - this.pos, hint);
+        this.enter();
+        return false;
+      }
       this.feedback = choice.hint ?? quiz.fallbackHint;
       return false;
     }

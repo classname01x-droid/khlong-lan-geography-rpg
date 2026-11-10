@@ -4,6 +4,7 @@ import { GridSystem } from '../../core/world/GridSystem';
 
 /** ข้อความประกอบหน้าแผนที่ (M) — ใช้ร่วมกันระหว่าง MapOverlay (canvas) และแถบข้อความบนจอสัมผัส */
 export function mapTitle(s: GameSession): string {
+  if (s.mapRevealTitle) return s.mapRevealTitle;
   if (s.mapSheet !== 'current') {
     const sheet = s.level.baseMaps?.find((m) => m.id === s.mapSheet);
     if (sheet) return sheet.title;

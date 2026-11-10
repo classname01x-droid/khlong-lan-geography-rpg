@@ -13,7 +13,7 @@ import type { GridDefinition, GridRef } from '../core/world/GridSystem';
  */
 
 /** รูปลักษณ์ตัวละคร (ระบบกราฟิกจะเลือกชุดสีตามค่านี้) */
-export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager' | 'monk' | 'elder' | 'ranger';
+export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager' | 'monk' | 'elder' | 'ranger' | 'auntie';
 
 export interface Landmark {
   id: string;
@@ -201,6 +201,10 @@ export interface QuizDefinition {
   wrongLesson?: string;
   /** ผลทุกครั้งที่ตอบผิด (เช่น เพิ่ม HP พญาจระเข้) */
   wrongEffects?: Effect[];
+  /** ตอบผิด → คำใบ้แสดงเป็นบรรทัดสุดท้ายแล้วปิดบทสนทนา ให้ผู้เล่นไปเปิดแผนที่/สังเกตใหม่ แล้วคุยอีกครั้ง (ไม่ต้องเดินกลับไปหา NPC อื่น) */
+  wrongEndsDialogue?: boolean;
+  /** ผู้พูดคำใบ้เมื่อใช้ wrongEndsDialogue (ไม่ระบุ = ผู้ถาม) */
+  wrongSpeaker?: string;
   /**
    * ตรวจเนื้อหา: คำตอบที่ถูกต้องต้องตรงกับทิศน้ำไหลของลำน้ำนี้ ที่คำนวณจากระดับความสูง
    * (validateLevel จะล้มถ้าแก้แผนที่/ความสูงแล้วคำตอบไม่ตรง)
@@ -579,6 +583,13 @@ export interface LevelDefinition {
   contourLabelsFlag?: string;
   /** จุดระดับความสูง (spotHeights) แสดงเมื่อมี flag นี้ (ไม่ระบุ = แสดงเสมอ) */
   spotHeightsFlag?: string;
+  /**
+   * ได้รับแผนที่ → แผนที่เด้งขึ้นกลางจอทันทีหลังบทสนทนาจบ (หัวข้อ title + ปุ่ม "ตกลง") ครั้งเดียว · เปิดดูซ้ำได้จากปุ่มแผนที่
+   * flag = เงื่อนไขที่ทำให้ได้รับ · shownFlag = จดว่าแสดงแล้ว (อยู่ในบันทึกเดิม)
+   */
+  mapReveal?: { flag: string; shownFlag: string; title: string };
+  /** เปิดแผนที่แล้วจด flag (เมื่อเงื่อนไข when เป็นจริง ณ ตอนเปิด) — ใช้กับขั้น "เปิดแผนที่ดูแล้วค่อยตอบ" ซ้ำหลายครั้งได้ */
+  mapOpenMarks?: Array<{ when: Condition; flag: string }>;
   /** จดว่าผู้เล่นเปิดแผนที่แล้ว (flag "opened:map") ใช้กับขั้น "เปิดแผนที่ดูแล้วค่อยตอบ" — นับหลังได้รับแผนที่ภูมิประเทศ */
   trackMapOpen?: boolean;
   /** ช่วงของภารกิจหลัก (ขั้นย่อยที่มี phase นับความคืบหน้าแยกตามช่วง) เช่น รับภารกิจ → ตามหาแหล่งผ้าปัก */
