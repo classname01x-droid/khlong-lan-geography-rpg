@@ -86,14 +86,15 @@ describe('สักงาม: ทิศและระยะในแผนท�
     expect(findPath(grid, npc('jiao'), { x: SAKNGAM_MONK.x, y: SAKNGAM_MONK.y + 1 })).not.toBeNull();
   });
 
-  it('บ้านผู้ใหญ่บ้าน → กองขยะ (ฝั่งขวาของแผนที่): ทิศตะวันออก 2 ซม. = 200 ม. พอดี · เดินถึงได้ · ผ่านถนนที่แยกขึ้นเหนือ', () => {
+  it('บ้านผู้ใหญ่บ้าน → กองขยะ (ริมขอบขวาของแผนที่): ทิศตะวันออก 2.3 ซม. = 230 ม. พอดี · เดินถึงได้ · ผ่านถนนที่แยกขึ้นเหนือ', () => {
     const h = npc('headman');
     expect(h).toEqual(SAKNGAM_HEADMAN);
     expect(directionFromVector(SAKNGAM_TRASH.x - h.x, SAKNGAM_TRASH.y - h.y)).toBe('E');
     expect(SAKNGAM_TRASH.y).toBe(h.y);
-    expect(cm(h, SAKNGAM_TRASH)).toBeCloseTo(2, 5);
-    expect(defaultScale.tilesToMeters(SAKNGAM_TRASH.x - h.x)).toBe(200);
-    expect(SAKNGAM_TRASH.x).toBeGreaterThan(L.map.widthTiles * 0.75); // ฝั่งขวาของแผนที่
+    expect(cm(h, SAKNGAM_TRASH)).toBeCloseTo(2.3, 5);
+    expect(defaultScale.tilesToMeters(SAKNGAM_TRASH.x - h.x)).toBe(230);
+    expect(SAKNGAM_TRASH.x).toBe(L.map.widthTiles - 2); // ริมขอบขวาสุดของแผนที่ (ถัดไปคือแนวต้นไม้ขอบแผนที่)
+    expect(L.map.widthTiles - 1 - SAKNGAM_TRASH.x).toBe(1);
     const reach = reachableTiles(grid, L.spawn);
     expect(isPointReachable(grid, reach, SAKNGAM_TRASH, 0)).toBe(true); // ยืนบนจุดกองขยะได้
     expect(grid.getTerrain(SAKNGAM_TRASH.x, SAKNGAM_TRASH.y)).toBe('road');
@@ -103,10 +104,10 @@ describe('สักงาม: ทิศและระยะในแผนท�
     // ทางตะวันออกต้องตัดถนนที่แยกขึ้นเหนือ (x=60) · มีลำห้วยเล็กอยู่ข้างกองขยะ (ตามเรื่อง "ใกล้ลำธาร")
     expect(path.some((p) => (p.x === 60 || p.x === 61) && ['road', 'bridge'].includes(grid.getTerrain(p.x, p.y)!))).toBe(true);
     expect(grid.getTerrain(60, SAKNGAM_TRASH.y)).toBe('road');
-    expect(grid.getTerrain(SAKNGAM_TRASH.x + 2, SAKNGAM_TRASH.y)).toBe('water');
+    expect(grid.getTerrain(73, SAKNGAM_TRASH.y)).toBe('water');
     // ถนนหลักข้ามลำห้วยเล็กด้วยสะพาน ไม่ขาด
-    expect(grid.getTerrain(77, 48)).toBe('bridge');
-    expect(findPath(grid, { x: 70, y: 48 }, { x: 78, y: 48 })).not.toBeNull();
+    expect(grid.getTerrain(73, 48)).toBe('bridge');
+    expect(findPath(grid, { x: 68, y: 48 }, { x: 78, y: 48 })).not.toBeNull();
     expect(L.decor!.some((d) => d.kind === 'trash' && d.at.x === SAKNGAM_TRASH.x && d.at.y === SAKNGAM_TRASH.y)).toBe(true);
     // กองขยะเดิม (ใต้สำนักสงฆ์) ถูกย้ายออกแล้ว
     expect(L.decor!.filter((d) => d.kind === 'trash')).toHaveLength(1);
@@ -263,7 +264,8 @@ describe('สักงาม: ป้าเจียว → สำนักสง
     expect(lines[0]).toBe('ท่านผู้ใหญ่ครับ กองขยะอยู่ตรงไหนครับ?');
     expect(lines[1]).toBe('อ๋อ กองขยะอยู่ทางฝั่งตะวันออกของชุมชน เจ้าต้องเดินไปตามทางด้านขวาของแผนที่');
     expect(lines[2]).toContain('ทิศตะวันออก');
-    expect(lines[2]).toContain('2 เซนติเมตร');
+    expect(lines[2]).toContain('2.3 เซนติเมตร');
+    expect(lines[2]).toContain('สะพาน');
     expect(lines[2]).toContain('ถนนที่แยกขึ้นเหนือ'); // จุดสังเกตระหว่างทาง
     expect(lines).toHaveLength(3);
     expect(s.flags.has('trash-told')).toBe(true); // บอกทางก่อนถาม
@@ -271,8 +273,8 @@ describe('สักงาม: ป้าเจียว → สำนักสง
     expect(q.kind).toBe('quiz');
     expect(q.question).toContain('จากบ้านผู้ใหญ่บ้านไปกองขยะ ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?');
     expect(q.question).toContain('1:10,000');
-    expect(q.question).toContain('2 ซม.');
-    expect(q.choices).toEqual(['ตะวันออก 200 เมตร', 'ตะวันตก 200 เมตร', 'ตะวันออก 2,000 เมตร']);
+    expect(q.question).toContain('2.3 ซม.');
+    expect(q.choices).toEqual(['ตะวันออก 230 เมตร', 'ตะวันตก 230 เมตร', 'ตะวันออก 2,300 เมตร']);
     expect(s.flags.has('trash-route')).toBe(false);
     s.answerQuiz(wrongIdx('q-trash'));
     expect(kind(s)).toBe('lesson'); // กลับไปเรียนมาตราส่วนกับครูเนม
@@ -469,13 +471,13 @@ describe('สักงาม: เล่นตามภารกิจ — ไม
     s.flags.add('go-wat');
     s.updateQuests(true);
     expect(text(s)).toContain('สำนักสงฆ์เขาแสงเพชร');
-    expect(text(s)).not.toContain('200 เมตร');
+    expect(text(s)).not.toContain('230 เมตร');
     s.flags.add('monk-talked');
     s.updateQuests(true);
     expect(text(s)).toContain('กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ');
-    expect(text(s)).not.toContain('200 เมตร'); // ยังไม่เฉลยคำตอบก่อนตอบถูก
+    expect(text(s)).not.toContain('230 เมตร'); // ยังไม่เฉลยคำตอบก่อนตอบถูก
     s.flags.add('trash-route');
     s.updateQuests(true);
-    expect(text(s)).toContain('ตะวันออก 2 ซม. บนแผนที่ = 200 เมตร');
+    expect(text(s)).toContain('ตะวันออก 2.3 ซม. บนแผนที่ = 230 เมตร');
   });
 });

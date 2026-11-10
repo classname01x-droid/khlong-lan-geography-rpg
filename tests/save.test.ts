@@ -61,7 +61,7 @@ describe('บันทึกการเล่นกลางด่าน (snaps
     talk(b, 'monk');
     expect(b.flags.has('monk-talked')).toBe(true);
     talk(b, 'headman', [rightOf('q-trash', b)]);
-    expect(b.checkArrivals({ x: 75, y: 44 })).toBe(true); // กองขยะฝั่งขวา
+    expect(b.checkArrivals({ x: 78, y: 44 })).toBe(true); // กองขยะฝั่งขวา
     runDialogue(b);
     talk(b, 'jiao', [rightOf('q-adv1', b), rightOf('q-adv2', b)]);
     while (b.inDialogue) b.advanceDialogue();

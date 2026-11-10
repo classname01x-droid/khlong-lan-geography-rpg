@@ -168,7 +168,7 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await noGuide('หลังคุยกับพระ');
 
   // 6) กองขยะยังเก็บไม่ได้ก่อนถึงลำดับ: เดินไปยืนที่กองขยะก่อนตอบโจทย์ → ไม่เกิดอะไร (ตรวจแบบ session)
-  const premature = await ev(() => { const s = window.__TEST__.session; return s.checkArrivals({ x: 75, y: 44 }); });
+  const premature = await ev(() => { const s = window.__TEST__.session; return s.checkArrivals({ x: 78, y: 44 }); });
   check('ยืนที่กองขยะก่อนตอบโจทย์ผู้ใหญ่บ้าน: ไม่เกิดข้อความ/ไม่ผ่านขั้น', premature === false && !(await sess()).flags.includes('trash-found'));
 
   // 7) กลับไปผู้ใหญ่บ้าน → ได้ทิศ+ระยะ → โจทย์ (ผิด → บทเรียนครูเนม → ถูก)
@@ -176,8 +176,8 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await talkKey();
   const hl = await drive([]);
   const hq = await ev(() => window.__TEST__.session.dialogueView);
-  check('ผู้ใหญ่บ้านบอกทิศ+ระยะ+จุดสังเกตก่อนถามโจทย์', hl.lines.length === 3 && hl.lines[1].includes('ฝั่งตะวันออก') && hl.lines[2].includes('2 เซนติเมตร') && hl.lines[2].includes('ถนนที่แยกขึ้นเหนือ'), JSON.stringify(hl.lines));
-  check('โจทย์: จากบ้านผู้ใหญ่บ้านไปกองขยะ ทิศใด ระยะจริงเท่าไร (3 ตัวเลือก ตะวันออก 200 ถูก)', hq.kind === 'quiz' && hq.question.includes('จากบ้านผู้ใหญ่บ้านไปกองขยะ ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?') && hq.choices.join('|') === 'ตะวันออก 200 เมตร|ตะวันตก 200 เมตร|ตะวันออก 2,000 เมตร', JSON.stringify(hq));
+  check('ผู้ใหญ่บ้านบอกทิศ+ระยะ+จุดสังเกตก่อนถามโจทย์', hl.lines.length === 3 && hl.lines[1].includes('ฝั่งตะวันออก') && hl.lines[2].includes('2.3 เซนติเมตร') && hl.lines[2].includes('ถนนที่แยกขึ้นเหนือ'), JSON.stringify(hl.lines));
+  check('โจทย์: จากบ้านผู้ใหญ่บ้านไปกองขยะ ทิศใด ระยะจริงเท่าไร (3 ตัวเลือก ตะวันออก 230 ถูก)', hq.kind === 'quiz' && hq.question.includes('จากบ้านผู้ใหญ่บ้านไปกองขยะ ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?') && hq.choices.join('|') === 'ตะวันออก 230 เมตร|ตะวันตก 230 เมตร|ตะวันออก 2,300 เมตร', JSON.stringify(hq));
   await shot('06-quiz-trash');
   await pick(1);
   check('ตอบผิด: กลับไปเรียนมาตราส่วนกับครูเนม (บทเรียน) ไม่ติด', (await kindNow()) === 'lesson' && (await ev(() => window.__TEST__.session.dialogueView.speaker)) === 'ครูเนม');
@@ -186,13 +186,13 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await pick(0);
   await drive([]);
   s = await sess();
-  check('ตอบถูก (ตะวันออก 200 เมตร) → ผ่านขั้น 5 แล้วเดินต่อได้เอง', s.flags.includes('trash-route') && s.step === 6 && s.mode === 'explore', JSON.stringify(s));
+  check('ตอบถูก (ตะวันออก 230 เมตร) → ผ่านขั้น 5 แล้วเดินต่อได้เอง', s.flags.includes('trash-route') && s.step === 6 && s.mode === 'explore', JSON.stringify(s));
   await noGuide('หลังตอบโจทย์ผู้ใหญ่บ้าน (ไม่มีลูกศร/หมุดไปกองขยะ)');
 
   // 8) เดินไปทางตะวันออกเอง (ฝั่งขวาของแผนที่) → พบกองขยะ → "พบกองขยะแล้ว!" [ตกลง]
   s = await sess();
   check('ยังไม่ถึงกองขยะ: ไม่มีข้อความพบกองขยะ', !s.flags.includes('trash-found'));
-  await walkBg(75, 45);
+  await walkBg(77, 45);
   check('ถึงกองขยะ → หยุดเดินและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView, 60000));
   const tv = await ev(() => window.__TEST__.session.dialogueView);
   check('"พบกองขยะแล้ว!" พร้อมปุ่ม "ตกลง"', tv.text === 'พบกองขยะแล้ว!' && tv.button === 'ตกลง', JSON.stringify(tv));
@@ -200,7 +200,7 @@ const KEY = 'khlonglan-geo-rpg:progress';
   const okBtn = await ev(() => [...document.querySelectorAll('.tl-sheet .tl-option')].map((b) => b.innerText.trim()));
   check('ปุ่ม "ตกลง" แสดงบนจอ', okBtn.some((t) => t.includes('ตกลง')), JSON.stringify(okBtn));
   const trashPos = await pos();
-  check('กองขยะอยู่ฝั่งขวาของแผนที่ (ห่างจากบ้านผู้ใหญ่บ้าน ~20 ช่องตะวันออก)', trashPos.x >= 70, JSON.stringify(trashPos));
+  check('กองขยะอยู่ริมขอบขวาของแผนที่ (ห่างจากบ้านผู้ใหญ่บ้านตะวันออก ~23 ช่อง)', trashPos.x >= 76, JSON.stringify(trashPos));
   await shot('07-trash-found');
   await tapDom('.tl-sheet .tl-option', 'ตกลง');
   await wait(400);
@@ -210,7 +210,7 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await wait(400);
   s = await sess();
   check('เก็บขยะเสร็จ → ผ่านขั้น 6 และไม่แสดงซ้ำ', s.flags.includes('trash-found') && s.step === 7 && !s.dlg, JSON.stringify(s));
-  await walk(70, 45); await walk(75, 45);
+  await walk(72, 47); await walk(77, 45);
   check('ยืนที่กองขยะอีกครั้ง: ไม่แสดงซ้ำ', !(await sess()).dlg);
   await noGuide('ที่กองขยะ');
 

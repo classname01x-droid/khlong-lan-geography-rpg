@@ -202,9 +202,9 @@ const check = (n, ok, extra = '') => {
     check('sakngam: ถึงสำนักสงฆ์ → หยุดและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView));
     await drive([]);
     await walkTo(29, 18); await talkKey(); await drive([]); // คุยกับพระ
-    await walkTo(55, 45); await talkKey(); await drive([0]); // ผู้ใหญ่บ้านบอกทาง + โจทย์ตะวันออก 200 ม.
-    await walkBg(75, 45);
-    check('sakngam: พบกองขยะฝั่งขวา → ข้อความ + ปุ่มตกลง', await waitFor(() => !!window.__TEST__.session.dialogueView, 60000));
+    await walkTo(55, 45); await talkKey(); await drive([0]); // ผู้ใหญ่บ้านบอกทาง + โจทย์ตะวันออก 230 ม.
+    await walkBg(77, 45);
+    check('sakngam: พบกองขยะริมขอบขวา → ข้อความ + ปุ่มตกลง', await waitFor(() => !!window.__TEST__.session.dialogueView, 60000));
     await drive([]);
     await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await drive([1, 2]);
     await wait(500);
