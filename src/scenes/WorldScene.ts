@@ -3,7 +3,7 @@ import { CAMERA_ZOOM, INTERACT_RADIUS_TILES, TILE_SIZE_PX } from '../config/cons
 import { DEFAULT_LEVEL_ID, getLevel, getLevelSlot } from '../content/registry';
 import { IN_DEVELOPMENT_MESSAGE, isCampaignComplete } from '../core/campaign/Campaign';
 import { CHAPTERS, getChapter } from '../content/story/chapters';
-import type { NpcDefinition } from '../content/types';
+import type { Condition, NpcDefinition } from '../content/types';
 import type { ProgressStore } from '../core/progress/ProgressStore';
 import { defaultScale } from '../core/scale/ScaleSystem';
 import { GameSession, type SessionSnapshot } from '../core/session/GameSession';
@@ -101,6 +101,7 @@ export class WorldScene extends Phaser.Scene {
   private cueDebug: unknown = null;
   /** ตำแหน่ง y ปกติของป้ายชื่อสถานที่ */
   private readonly labelBaseY = new Map<string, number>();
+  private readonly conditionalDecor: Array<{ img: Phaser.GameObjects.Image; when: Condition }> = [];
   /** จัดป้ายชื่อใหม่ทุก ~120 ms หรือทันทีเมื่อมีการเปลี่ยนแปลง */
   private layoutInMs = 0;
   private layoutDirty = true;
@@ -200,8 +201,10 @@ export class WorldScene extends Phaser.Scene {
 
     // ---- ของตกแต่ง (เช่น ศาลพญาจระเข้) — ภาพอย่างเดียว ไม่มีการชน ไม่มีผลต่อภารกิจ ----
     for (const d of level.decor ?? []) {
-      this.add.image((d.at.x + 0.5) * S, (d.at.y + 0.5) * S, d.kind).setDepth(DEPTH.characters - 1);
+      const img = this.add.image((d.at.x + 0.5) * S, (d.at.y + 0.5) * S, d.kind).setDepth(DEPTH.characters - 1);
+      if (d.showWhen) this.conditionalDecor.push({ img, when: d.showWhen });
     }
+    this.refreshDecor();
 
     // ---- ตัวละคร ----
     const kb = this.input.keyboard!;
@@ -381,6 +384,12 @@ export class WorldScene extends Phaser.Scene {
   private refreshLabels(): void {
     for (const lm of this.session.level.landmarks) this.labels.get(lm.id)?.setVisible(this.session.isLandmarkVisible(lm));
     this.layoutDirty = true;
+    this.refreshDecor();
+  }
+
+  /** ของตกแต่งที่มีเงื่อนไข (เช่น ถังสารเคมีหลังเดินถึงจุดตรวจสอบ) */
+  private refreshDecor(): void {
+    for (const d of this.conditionalDecor) d.img.setVisible(this.session.matches(d.when));
   }
 
   /** เริ่มด่านนี้ใหม่ (ลบความคืบหน้ากลางด่าน) — กด Delete 2 ครั้งในหน้า หลักฐาน/ข้อความ */
@@ -1223,7 +1232,7 @@ export class WorldScene extends Phaser.Scene {
     const s = this.session;
     s.pinFeedback = null;
     // บทที่ 3: จดว่าเปิดแผนที่ภูมิประเทศแล้ว (ขั้น "เปิดแผนที่ดูเส้นชั้นความสูง") — นับเฉพาะหลังได้รับแผนที่จากครูเนม
-    if (s.level.settlementAnalysis && (!s.level.topoMapFlag || s.flags.has(s.level.topoMapFlag))) s.noteOpened('map');
+    if ((s.level.settlementAnalysis || s.level.trackMapOpen) && (!s.level.topoMapFlag || s.flags.has(s.level.topoMapFlag))) s.noteOpened('map');
     if (s.isPinAvailable()) {
       s.pinStage = 'cursor';
       s.pinCursor = s.pinCursor ?? { ...s.playerTile };

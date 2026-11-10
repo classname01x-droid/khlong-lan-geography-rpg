@@ -13,7 +13,7 @@ import type { GridDefinition, GridRef } from '../core/world/GridSystem';
  */
 
 /** รูปลักษณ์ตัวละคร (ระบบกราฟิกจะเลือกชุดสีตามค่านี้) */
-export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager' | 'monk';
+export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager' | 'monk' | 'elder' | 'ranger';
 
 export interface Landmark {
   id: string;
@@ -34,6 +34,8 @@ export interface Landmark {
    * ไม่แสดงเส้นทาง · ใช้ไม่ได้กับจุดลับ (revealFlag)
    */
   knownWhen?: Condition;
+  /** เครื่องหมายบนแผนที่ภูมิประเทศ (เช่น จุดตรวจ A, B, C) ไม่ใช่สถานที่ให้เดินไป — ไม่ต่อท้าย "(ยังไม่ได้ไป)" */
+  mapMark?: boolean;
   /** ตำแหน่งป้ายชื่อบนแผนที่สำรวจ (ค่าเริ่มต้น above) */
   mapLabelAt?: 'above' | 'below' | 'left' | 'right';
   /** สิ่งที่พบได้จากการสำรวจจริง ณ จุดนี้ (เช่น ไอน้ำร้อน หินปูนสีขาว) ใช้ตรวจหลักฐานภาคสนาม */
@@ -493,8 +495,10 @@ export interface StoryStep {
 /** ของตกแต่งในฉาก (ภาพ placeholder ไม่มีการชน ไม่มีผลต่อภารกิจ) เช่น ศาลพญาจระเข้ข้างครูเนม */
 export interface DecorDefinition {
   id: string;
-  kind: 'shrine' | 'trash';
+  kind: 'shrine' | 'trash' | 'barrel';
   at: TilePoint;
+  /** (ไม่บังคับ) แสดงเมื่อเงื่อนไขเป็นจริง เช่น ถังสารเคมีปรากฏหลังเดินถึงจุดตรวจสอบ */
+  showWhen?: Condition;
 }
 
 /* ---------------- วิเคราะห์ความเหมาะสมของพื้นที่ตั้งถิ่นฐาน (บทที่ 3: เมืองโบราณใต้ผืนดิน) ---------------- */
@@ -571,6 +575,12 @@ export interface LevelDefinition {
   contourIntervalMeters?: number;
   /** แผนที่ภูมิประเทศที่ได้รับ: เมื่อมี flag นี้ แผนที่สำรวจแสดงเส้นชั้นความสูงทั้งแผ่น (ไม่ต้องเดินสำรวจก่อน) */
   topoMapFlag?: string;
+  /** ตัวเลขระดับความสูงบนเส้นชั้นความสูง แสดงเมื่อมี flag นี้ (ไม่ระบุ = ไม่แสดงตัวเลขบนเส้น) */
+  contourLabelsFlag?: string;
+  /** จุดระดับความสูง (spotHeights) แสดงเมื่อมี flag นี้ (ไม่ระบุ = แสดงเสมอ) */
+  spotHeightsFlag?: string;
+  /** จดว่าผู้เล่นเปิดแผนที่แล้ว (flag "opened:map") ใช้กับขั้น "เปิดแผนที่ดูแล้วค่อยตอบ" — นับหลังได้รับแผนที่ภูมิประเทศ */
+  trackMapOpen?: boolean;
   /** ช่วงของภารกิจหลัก (ขั้นย่อยที่มี phase นับความคืบหน้าแยกตามช่วง) เช่น รับภารกิจ → ตามหาแหล่งผ้าปัก */
   guidePhases?: Array<{ id: string; title: string }>;
   /** ลำน้ำที่ใช้วิเคราะห์ทิศน้ำไหล (แนวเดียวกับ feature ในแผนที่) */

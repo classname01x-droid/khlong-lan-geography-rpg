@@ -304,12 +304,12 @@ describe('คำแนะนำแบบเป็นระดับ (ไม่�
     const s = sessionAtStep(L2, 1);
     const t0 = buildQuestTracker(s, { hintTier: 0, touch: true });
     expect(t0.hint).toBeNull();
-    expect(t0.steps.join(' ')).toContain('ยายคำ');
+    expect(t0.steps.join(' ')).toContain('ตาคำ');
     const t1 = buildQuestTracker(s, { hintTier: 1, touch: true });
     expect(t1.hint).toContain('แผนที่');
     const t2 = buildQuestTracker(s, { hintTier: 2 });
     expect(t2.hint).toBeTruthy();
-    expect(t0.target?.id).toBe('villager-hom');
+    expect(t0.target).toBeNull(); // ด่านสำรวจ: ไม่มีลูกศร/เป้าหมายนำทาง
   });
 
   it('ไม่เฉลย: คำแนะนำทุกระดับของทุกบทไม่ระบุสถานที่คำตอบ', () => {

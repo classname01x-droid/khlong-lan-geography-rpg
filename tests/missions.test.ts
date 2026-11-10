@@ -6,8 +6,9 @@ import { ProgressStore } from '../src/core/progress/ProgressStore';
 import { ElevationModel } from '../src/core/world/Elevation';
 import { newSession, talk } from './helpers';
 
-// ด่าน 2–4 ใช้ตัวสร้างภารกิจแบบ 1 NPC = 1 คำถาม · ด่าน 1 (สักงาม) เป็นด่านสำรวจด้วยทิศ+มาตราส่วน — ทดสอบใน tests/sakngam.test.ts
-const LEVELS = ALL.filter((l) => l.id !== 'sakngam');
+// ด่าน 3–4 ใช้ตัวสร้างภารกิจแบบ 1 NPC = 1 คำถาม · ด่าน 1 (สักงาม) และด่าน 2 (ปริศนาสารพิษแห่งต้นน้ำ) เป็นด่านสำรวจด้วยทิศ+มาตราส่วน
+// — ทดสอบใน tests/sakngam.test.ts และ tests/khlongnamlai.test.ts
+const LEVELS = ALL.filter((l) => l.id !== 'sakngam' && l.id !== 'level-2');
 const store = () => new ProgressStore(null, 'sakngam');
 
 /** ตอบถูกทุกข้อของด่าน (รู้คำตอบจากข้อมูลด่าน) */
@@ -97,7 +98,7 @@ describe('ภารกิจแบบเรียบง่าย: 1 NPC = 1 ป�
 });
 
 describe('รางวัลทั้งเกม: รหัสรางวัลไม่ซ้ำข้ามด่าน (ทุกภารกิจได้ 100 เหรียญ + 10 ศรัทธา ครบ)', () => {
-  it('เล่นด่าน 2–4 ด้วยบันทึกเดียวกัน: 9 ภารกิจ = 900 เหรียญ + 90 ศรัทธา', () => {
+  it('เล่นด่าน 3–4 ด้วยบันทึกเดียวกัน: 6 ภารกิจ = 600 เหรียญ + 60 ศรัทธา', () => {
     const p = store();
     const ids = new Set<string>();
     for (const level of LEVELS) {
@@ -106,9 +107,9 @@ describe('รางวัลทั้งเกม: รหัสรางวั�
       for (const q of level.quizzes!) for (const e of q.effects) if (e.type === 'reward') ids.add(e.id);
       solve(level, s);
     }
-    expect(ids.size).toBe(9);
-    expect(p.rpg.coins).toBe(900);
-    expect(p.rpg.faith).toBe(90);
+    expect(ids.size).toBe(6);
+    expect(p.rpg.coins).toBe(600);
+    expect(p.rpg.faith).toBe(60);
   });
 });
 
@@ -129,15 +130,13 @@ describe('คำตอบมาจากแผนที่จริง (แก�
       expect(correct(l, quizId)).toBe(names[hs[0].id]);
     };
     const abc = { 'site-a': 'จุด A', 'site-b': 'จุด B', 'site-c': 'จุด C' };
-    check('level-2', 'q-house', ['site-a', 'site-b', 'site-c'], 'max', abc);
-    check('level-2', 'q-gather', ['site-a', 'site-b', 'site-c'], 'min', abc);
     check('level-4', 'q-shelter', ['site-a', 'site-b', 'site-c'], 'max', abc);
     check('level-3', 'q-gather', ['camp', 'hall', 'bridge'], 'min', { camp: 'ค่ายสำรวจ', hall: 'ศาลาประชาคม', bridge: 'สะพานข้ามลำห้วย' });
   });
 
   it('คำถามอ้างถึงจุดที่มีป้ายบนแผนที่ตั้งแต่เริ่ม (knownWhen) และมีตัวเลขความสูงให้อ่าน', () => {
     for (const l of LEVELS) for (const lm of l.landmarks) expect(lm.knownWhen).toBeDefined();
-    for (const id of ['level-2', 'level-3', 'level-4']) {
+    for (const id of ['level-3', 'level-4']) {
       const l = byId[id];
       expect(l.spotHeights!.length).toBeGreaterThanOrEqual(3);
     }

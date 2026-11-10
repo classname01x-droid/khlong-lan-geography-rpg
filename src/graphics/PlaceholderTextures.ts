@@ -255,6 +255,9 @@ const APPEARANCE_PALETTE: Record<CharacterAppearance, Palette> = {
   villager: { ...BASE_PALETTE, h: '#141414', c: '#2e3f8f', p: '#2e3f8f' },
   // พระสงฆ์: ศีรษะโล้น (สีผิว) จีวรสีเหลืองส้ม
   monk: { ...BASE_PALETTE, h: '#f1c27d', c: '#e3891b', p: '#c46a12' },
+  // ตาคำ (ผู้เฒ่า): ผมขาว เสื้อน้ำตาล · เจ้าหน้าที่ป่าไม้: เครื่องแบบเขียว
+  elder: { ...BASE_PALETTE, h: '#e6e6e6', c: '#8a6a43', p: '#4a3f2e', s: '#d9a066' },
+  ranger: { ...BASE_PALETTE, h: '#4a3020', c: '#3f7a46', p: '#2f4a33' },
 };
 
 export function characterTextureKey(a: CharacterAppearance): string {
@@ -329,6 +332,20 @@ export function generatePlaceholderTextures(scene: Phaser.Scene): void {
   px(t, 0, 10, '#6b6b5a', 12, 2); // พื้นเปียก
   px(t, 3, 3, '#e8e2c8', 1, 1);
   trash.refresh();
+
+  // ถังสารเคมี (ถังเหล็กสีน้ำเงิน ฝาเหลือง สัญลักษณ์อันตราย) ที่ถูกทิ้งริมลำธาร — 12×12 px
+  const barrel = createCanvas(scene, 'barrel', 12, 12);
+  const q = barrel.context;
+  px(q, 0, 10, '#4a5a3a', 12, 2); // พื้นเปียก
+  px(q, 1, 3, '#2f5fa8', 5, 8); // ถังตั้ง
+  px(q, 1, 2, '#d9c13a', 5, 1); // ฝา
+  px(q, 1, 6, '#1f3f78', 5, 1); // แถบ
+  px(q, 3, 4, '#ffd84d', 1, 1); // ป้ายอันตราย
+  px(q, 6, 6, '#2f5fa8', 5, 4); // ถังล้ม
+  px(q, 6, 5, '#d9c13a', 1, 4);
+  px(q, 7, 8, '#1f3f78', 4, 1);
+  px(q, 10, 9, '#7ee07a', 2, 2); // ของเหลวรั่ว
+  barrel.refresh();
 }
 
 /** สร้าง animation เดินของตัวละครทุกแบบ */

@@ -285,29 +285,54 @@ export class MapOverlay {
         g.lineStyle(index ? 2.5 : 1.3, index ? 0xffd27a : 0xf0c27a, index ? 1 : 0.85);
         g.lineBetween(x1, y1, x2, y2);
       };
+      // ตัวเลขบนเส้นชั้นความสูง: แสดงเมื่อได้ข้อมูลระดับความสูงแล้ว (contourLabelsFlag) — เลือกตำแหน่งกระจาย ไม่ทับกัน
+      const labelFlag = s.level.contourLabelsFlag;
+      const showContourNumbers = !!labelFlag && s.flags.has(labelFlag);
+      const contourSpots: Array<{ meters: number; x: number; y: number }> = [];
+      const noteContour = (a: number, b: number, px: number, py: number) => {
+        if (!showContourNumbers) return;
+        const meters = Math.max(a, b) * interval;
+        const tooClose = contourSpots.some((c) => c.meters === meters && Math.hypot(c.x - px, c.y - py) < 16 * cell);
+        const crowded = contourSpots.some((c) => Math.hypot(c.x - px, c.y - py) < 4 * cell);
+        if (!tooClose && !crowded) contourSpots.push({ meters, x: px, y: py });
+      };
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           if (!seen(x, y)) continue;
           const b = elev.band(x + 0.5, y + 0.5, interval);
           if (x + 1 < width && seen(x + 1, y)) {
             const b2 = elev.band(x + 1.5, y + 0.5, interval);
-            if (b2 !== b) line(b, b2, mx + (x + 1) * cell, my + y * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+            if (b2 !== b) {
+              line(b, b2, mx + (x + 1) * cell, my + y * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+              noteContour(b, b2, mx + (x + 1) * cell, my + (y + 0.5) * cell);
+            }
           }
           if (y + 1 < height && seen(x, y + 1)) {
             const b2 = elev.band(x + 0.5, y + 1.5, interval);
-            if (b2 !== b) line(b, b2, mx + x * cell, my + (y + 1) * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+            if (b2 !== b) {
+              line(b, b2, mx + x * cell, my + (y + 1) * cell, mx + (x + 1) * cell, my + (y + 1) * cell);
+              noteContour(b, b2, mx + (x + 0.5) * cell, my + (y + 1) * cell);
+            }
           }
         }
       }
-      // จุดระดับความสูง (▲ + ค่าความสูงที่คำนวณจากแบบจำลอง)
-      for (const p of s.level.spotHeights ?? []) {
+      for (const c of contourSpots) {
+        this.labels.add(
+          scene.add
+            .text(c.x, c.y, `${c.meters}`, { ...textStyle(this.labelSize(11), '#fff6d5'), backgroundColor: '#2b2118', padding: { x: 2, y: 0 } })
+            .setOrigin(0.5),
+        );
+      }
+      // จุดระดับความสูง (▲ + ค่าความสูงที่คำนวณจากแบบจำลอง) — ด่านที่ใช้ spotHeightsFlag แสดงเมื่อได้ข้อมูลครบแล้ว
+      const spotsShown = !s.level.spotHeightsFlag || s.flags.has(s.level.spotHeightsFlag);
+      for (const p of spotsShown ? (s.level.spotHeights ?? []) : []) {
         if (!seen(p.x, p.y)) continue;
         const px = mx + (p.x + 0.5) * cell;
         const py = my + (p.y + 0.5) * cell;
         g.fillStyle(0x10141f, 1).fillTriangle(px - 4, py + 3, px + 4, py + 3, px, py - 4);
         this.labels.add(
           scene.add
-            .text(px + 5, py - 2, `${elev.meters(p)}`, { ...textStyle(this.labelSize(11), '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
+            .text(px + 5, py + 7, `${elev.meters(p)}`, { ...textStyle(this.labelSize(11), '#fff6d5'), stroke: '#10141f', strokeThickness: 3 })
             .setOrigin(0, 0.5),
         );
       }
@@ -323,7 +348,7 @@ export class MapOverlay {
         g.lineStyle(2, 0xffd84d, 1).strokeCircle(lx, ly, 6);
         this.labels.add(
           scene.add
-            .text(lx, ly - 9, `${lm.name} (ยังไม่ได้ไป)`, { ...textStyle(this.labelSize(12), '#ffe9a8'), stroke: '#10141f', strokeThickness: 3 })
+            .text(lx, ly - 9, lm.mapMark ? lm.name : `${lm.name} (ยังไม่ได้ไป)`, { ...textStyle(this.labelSize(12), '#ffe9a8'), stroke: '#10141f', strokeThickness: 3 })
             .setOrigin(0.5, 1),
         );
         continue;

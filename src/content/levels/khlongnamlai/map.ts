@@ -1,113 +1,106 @@
 import type { MapDefinition, TilePoint, TileRect } from '../../../core/world/types';
 
 /**
- * แผนที่ต้นแบบ ตำบลคลองน้ำไหล — 80 × 60 ช่อง = 800 × 600 เมตร (1 ช่อง = 10 ม., แผนที่ 1:10,000)
- * ทิศเหนืออยู่ด้านบนจอ — แต่ "ด้านบนจอ" ไม่ได้แปลว่า "สูงกว่า"
+ * แผนที่ ตำบลคลองน้ำไหล (ด่านที่ 2 "ปริศนาสารพิษแห่งต้นน้ำ") — 80 × 60 ช่อง = 800 × 600 เมตร
+ * 1 ช่อง = 10 ม. · แผนที่ 1:10,000 (1 ซม. = 100 ม. = 10 ช่อง) · ทิศเหนืออยู่ด้านบนจอ
  *
  * หมายเหตุ: ผังนี้เป็นข้อมูลสมมติเพื่อการออกแบบเกม ยังไม่ใช่ตำแหน่งจริงของสถานที่ในตำบลคลองน้ำไหล
  *
- * ภูมิประเทศ (ดู ELEVATION): พื้นที่ทางใต้เป็นเนินป่าสูง ลาดลงไปทางเหนือ
- *   → ลำห้วยไหลจาก "ตาน้ำ" ทางใต้ ขึ้นไปทางเหนือ (ขึ้นด้านบนจอ) ไปลงหนองท้ายน้ำ
- *   ผู้เล่นที่เดาว่าน้ำไหล "จากบนลงล่างของจอ" จะเข้าใจผิดว่าหนองทางเหนือคือต้นน้ำ
+ * ภูมิประเทศ (ดู ELEVATION): ที่ราบทางเหนือ (74–92 ม.) ลาดขึ้นไปทางใต้เป็นภูเขา 2 ลูกติดกัน
+ *   - ภูเขาตะวันตก: ชันและเล็ก (เส้นชั้นความสูงชิดกัน)   - ไหล่เขาตะวันออก: กว้างและลาดน้อย (เส้นชั้นความสูงห่างกัน)
+ *   ช่วงต่างระดับ 50 ม. → มีเส้นชั้นความสูงเพียง 3 เส้น: 100, 150 และ 200 ม. (ยอดสูงสุดราว 238 ม. ไม่ถึง 250)
+ *   แผนที่นี้ไม่มีลำน้ำถูกขุดเป็นร่อง — น้ำไหลลงตามความลาดเอียงของพื้นที่ (ตรวจด้วย tests/khlongnamlai.test.ts)
  *
- * จุดสำรวจ 3 แห่งบนลำห้วยสายเดียวกัน (ระดับความสูงคำนวณจาก ELEVATION — ไม่ได้พิมพ์ตัวเลขตายตัว):
- *   จุด A (22,52) แอ่งน้ำใต้เนิน   y=52 → 113.8 + 0.6·52 = 145 ม.   ใกล้หินใหญ่สามก้อน
- *   จุด B (30,27) ฝายกั้นลำห้วย    y=27 → 113.8 + 0.6·27 = 130 ม.
- *   จุด C (33,2)  หนองน้ำท้ายหมู่บ้าน y=2  → 113.8 + 0.6·2  = 115 ม.   (อยู่ด้านบนจอ แต่เป็นปลายน้ำ)
- *   → น้ำไหล A → B → C (ไปทางเหนือ) · บ่อในไร่ทางตะวันออกไม่ได้อยู่บนลำห้วย
- * เนินตะวันออก: ยอดเนิน (70,51) ใช้ในภารกิจปริศนา (อ่านเส้นชั้นความสูง)
+ * ลำน้ำ 2 สายไหลลงจากภูเขาไปทางเหนือ (ขึ้นด้านบนจอ) มาบรรจบกันที่ (40,14) แล้วไหลต่อเป็นลำน้ำสายหลักไปปลายน้ำ:
+ *   ลำน้ำ A  (30,33) → (30,24) → (36,18) → (40,14)    ไหล่เขาตะวันตก · จุดตรวจ A (30,29) สูง ≈128 ม. (ระหว่างเส้น 100–150)
+ *   ลำน้ำ B  (56,38) → (56,27) → (50,22) → (43,16) → (40,14)   ไหล่เขาตะวันออก · จุดตรวจ B (56,34) สูง ≈170 ม. (ระหว่างเส้น 150–200)
+ *   ลำน้ำสายหลัก (40,14) → (40,0)               จุด C (40,6) สูง ≈76 ม. (ต่ำกว่าเส้น 100) — อยู่ด้านบนจอแต่เป็นปลายน้ำ
+ *   ต้นน้ำ B (56,38) ไม่ใช่ยอดเขา (ยอดสูงสุดอยู่ที่ราว (42,39) ทางตะวันตกของลำน้ำ B)
+ *
+ * เส้นทางหลัก (ถนนดินกว้าง 2 ช่อง): บ้านผู้ใหญ่บ้าน (14,10) → ตะวันออก 4 ซม. (สะพานข้ามลำน้ำสายหลักที่ x=40) → บ้านตาคำ (54,10)
+ *   → ตะวันออก 2 ซม. → สถานีป่าไม้ (74,10) → ใต้ 3 ซม. → กระท่อมเฝ้าป่า (74,40) → ตะวันตก 2 ซม. → จุดตรวจสอบต้นน้ำ B (54,40)
  */
 
-/** แนวลำห้วย — ลำดับจุดไม่ได้กำหนดทิศน้ำไหล (ระบบคำนวณจากระดับความสูง) */
-export const STREAM_POINTS: TilePoint[] = [
-  { x: 22, y: 52 },
-  { x: 24, y: 46 },
-  { x: 28, y: 40 },
-  { x: 31, y: 33 },
-  { x: 30, y: 26 },
-  { x: 33, y: 18 },
-  { x: 31, y: 10 },
-  { x: 33, y: 0 },
+/** จุดที่ต้องตรวจในเนื้อหาด่าน (ใช้ร่วมกับ index.ts และ test) */
+export const A_POINTS: TilePoint[] = [
+  { x: 30, y: 33 },
+  { x: 30, y: 24 },
+  { x: 36, y: 18 },
+  { x: 40, y: 14 },
+];
+export const B_POINTS: TilePoint[] = [
+  { x: 56, y: 38 },
+  { x: 56, y: 27 },
+  { x: 50, y: 22 },
+  { x: 43, y: 16 },
+  { x: 40, y: 14 },
+];
+export const MAIN_POINTS: TilePoint[] = [
+  { x: 40, y: 14 },
+  { x: 40, y: 0 },
 ];
 
-export const SCHOOL_GROUNDS: TileRect = { x: 4, y: 4, w: 15, h: 12 };
-const SPRING_AREA: TileRect = { x: 17, y: 48, w: 13, h: 10 };
-const OFFICE_PLAZA: TileRect = { x: 42, y: 36, w: 8, h: 3 };
+const HEADMAN_YARD: TileRect = { x: 10, y: 4, w: 9, h: 6 };
+const KHAM_YARD: TileRect = { x: 50, y: 4, w: 9, h: 6 };
+const STATION_YARD: TileRect = { x: 70, y: 4, w: 9, h: 6 };
+const SITE_CLEARING: TileRect = { x: 49, y: 34, w: 10, h: 9 };
+const HUT_YARD: TileRect = { x: 72, y: 37, w: 7, h: 7 };
 
 export const khlongNamLaiMap: MapDefinition = {
   widthTiles: 80,
   heightTiles: 60,
   seed: 3030,
   baseTerrain: 'grass',
-  // ระดับความสูง (เมตร จากระดับทะเลปานกลาง): สูงขึ้นไปทางใต้ 0.6 ม./ช่อง (6 ม. ต่อ 100 ม.)
-  // + เนินป่าตะวันตกเฉียงใต้ (ไม่แตะลำห้วย) + เนินตะวันออก
+  // ระดับความสูง (เมตร): ที่ราบเอียงลงทางเหนือ 0.3 ม./ช่อง + ภูเขาตะวันตก (ชัน) + ไหล่เขาตะวันออก (กว้าง ลาดน้อย)
   elevation: {
-    baseMeters: 113.8,
-    slope: { dx: 0, dy: 0.6 },
+    baseMeters: 74,
+    slope: { dx: 0, dy: 0.3 },
     hills: [
-      { at: { x: 8, y: 54 }, radiusTiles: 10, meters: 12 },
-      { at: { x: 70, y: 48 }, radiusTiles: 12, meters: 15 },
+      { at: { x: 36, y: 40 }, radiusTiles: 17, meters: 100 },
+      { at: { x: 54, y: 37 }, radiusTiles: 24, meters: 88 },
     ],
   },
   features: [
-    // ลำห้วยคลองน้ำไหล และตาน้ำต้นลำห้วย
-    { kind: 'path', terrain: 'water', width: 2, points: STREAM_POINTS },
-    { kind: 'rect', terrain: 'water', area: { x: 21, y: 52, w: 3, h: 2 } },
-    // หนองท้ายน้ำ (ทางเหนือ)
-    { kind: 'rect', terrain: 'water', area: { x: 28, y: 1, w: 10, h: 3 } },
+    // ลำน้ำ A, ลำน้ำ B และลำน้ำสายหลักหลังจุดบรรจบ
+    { kind: 'path', terrain: 'water', width: 2, points: A_POINTS },
+    { kind: 'path', terrain: 'water', width: 2, points: B_POINTS },
+    { kind: 'path', terrain: 'water', width: 2, points: MAIN_POINTS },
+    // หนองน้ำปลายน้ำ (ริมขอบเหนือของแผนที่)
+    { kind: 'rect', terrain: 'water', area: { x: 37, y: 0, w: 7, h: 2 } },
 
-    // พื้นที่เกษตร: ไร่ทางตะวันออกเฉียงใต้ และนาทางตะวันตก
-    { kind: 'rect', terrain: 'rice', area: { x: 54, y: 40, w: 20, h: 12 } },
-    { kind: 'rect', terrain: 'rice', area: { x: 2, y: 22, w: 6, h: 10 } },
-    // บ่อน้ำในไร่ (เพิ่งขุด)
-    { kind: 'rect', terrain: 'water', area: { x: 61, y: 44, w: 4, h: 3 } },
+    // ถนนดินสายหลัก: บ้านผู้ใหญ่บ้าน → บ้านตาคำ → สถานีป่าไม้ (ข้ามลำน้ำสายหลักเป็นสะพานอัตโนมัติ)
+    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 10, y: 10 }, { x: 76, y: 10 }] },
+    // สถานีป่าไม้ → ลงใต้ → กระท่อมเฝ้าป่า → เลี้ยวตะวันตกไปทางต้นน้ำ B
+    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 74, y: 10 }, { x: 74, y: 40 }, { x: 54, y: 40 }] },
 
-    // ถนน: ถนนหลักตะวันตก–ตะวันออก (ข้ามลำห้วยเป็นสะพาน) และถนนจากโรงเรียน
-    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 0, y: 34 }, { x: 79, y: 34 }] },
-    { kind: 'path', terrain: 'road', width: 2, points: [{ x: 10, y: 15 }, { x: 10, y: 34 }] },
-    // ทางแยกเข้าไร่
-    { kind: 'path', terrain: 'road', width: 1, points: [{ x: 57, y: 36 }, { x: 57, y: 48 }] },
-    // ทางแยกขึ้นเหนือไปวัด
-    { kind: 'path', terrain: 'road', width: 1, points: [{ x: 62, y: 33 }, { x: 62, y: 31 }] },
-    // สันฝายข้ามลำห้วยที่จุด B (ถนนทับน้ำ → กลายเป็นทางข้ามอัตโนมัติ)
-    { kind: 'path', terrain: 'road', width: 1, points: [{ x: 27, y: 27 }, { x: 35, y: 27 }] },
+    // บ้านผู้ใหญ่บ้าน
+    { kind: 'rect', terrain: 'paving', area: { x: 11, y: 8, w: 7, h: 2 } },
+    { kind: 'building', area: { x: 12, y: 5, w: 5, h: 3 }, roof: 'roofBlue', door: { x: 14, y: 7 } },
+    // บ้านตาคำ
+    { kind: 'rect', terrain: 'paving', area: { x: 51, y: 8, w: 7, h: 2 } },
+    { kind: 'building', area: { x: 52, y: 5, w: 5, h: 3 }, roof: 'roofRed', door: { x: 54, y: 7 } },
+    // สถานีป่าไม้
+    { kind: 'rect', terrain: 'paving', area: { x: 71, y: 8, w: 7, h: 2 } },
+    { kind: 'building', area: { x: 72, y: 5, w: 5, h: 3 }, roof: 'roofOrange', door: { x: 74, y: 7 } },
+    // กระท่อมเฝ้าป่า (จุดเลี้ยว)
+    { kind: 'building', area: { x: 76, y: 40, w: 3, h: 3 }, roof: 'roofOrange', door: { x: 76, y: 41 } },
 
-    // โรงเรียนบ้านคลองน้ำไหล (จุดเริ่มต้น)
-    { kind: 'rect', terrain: 'paving', area: { x: 7, y: 10, w: 9, h: 4 } },
-    { kind: 'building', area: { x: 6, y: 6, w: 10, h: 3 }, roof: 'roofRed', door: { x: 10, y: 8 } },
-    { kind: 'object', object: 'flagpole', at: { x: 13, y: 11 } },
-    { kind: 'fence', area: SCHOOL_GROUNDS, gaps: [{ x: 10, y: 15 }, { x: 11, y: 15 }] },
-
-    // ชุมชน: บ้านเรือนริมถนน
-    { kind: 'building', area: { x: 38, y: 29, w: 4, h: 3 }, roof: 'roofRed', door: { x: 39, y: 31 } },
-    { kind: 'building', area: { x: 44, y: 29, w: 4, h: 3 }, roof: 'roofBlue', door: { x: 45, y: 31 } },
-    { kind: 'building', area: { x: 50, y: 29, w: 4, h: 3 }, roof: 'roofRed', door: { x: 51, y: 31 } },
-    // ศาลาจัดการน้ำชุมชน
-    { kind: 'rect', terrain: 'paving', area: OFFICE_PLAZA },
-    { kind: 'building', area: { x: 43, y: 39, w: 6, h: 3 }, roof: 'roofOrange', door: { x: 45, y: 39 } },
-    // วัด
-    { kind: 'rect', terrain: 'paving', area: { x: 59, y: 31, w: 7, h: 2 } },
-    { kind: 'building', area: { x: 60, y: 27, w: 5, h: 4 }, roof: 'roofOrange', door: { x: 62, y: 30 } },
-
-    // หมุดหลักฐานระดับ (BM) 2 หมุด
-    { kind: 'object', object: 'rock', at: { x: 36, y: 12 } },
-    { kind: 'object', object: 'rock', at: { x: 27, y: 46 } },
-
-    // ป่าบนเนินตะวันตกเฉียงใต้ และต้นไม้ทั่วพื้นที่
-    { kind: 'scatter', object: 'tree', area: { x: 1, y: 38, w: 22, h: 21 }, density: 0.28, exclude: [SPRING_AREA] },
+    // ป่าบนภูเขา และต้นไม้ทั่วพื้นที่ (ถนน/น้ำไม่ถูกทับ · ลานบ้านและพื้นที่ตรวจสอบเว้นไว้)
+    {
+      kind: 'scatter',
+      object: 'tree',
+      area: { x: 18, y: 23, w: 58, h: 36 },
+      density: 0.22,
+      exclude: [SITE_CLEARING, HUT_YARD],
+    },
     {
       kind: 'scatter',
       object: 'tree',
       area: { x: 0, y: 0, w: 80, h: 60 },
       density: 0.04,
-      exclude: [SCHOOL_GROUNDS, SPRING_AREA, OFFICE_PLAZA],
+      exclude: [HEADMAN_YARD, KHAM_YARD, STATION_YARD, SITE_CLEARING, HUT_YARD],
     },
-    { kind: 'scatter', object: 'rock', area: { x: 0, y: 0, w: 80, h: 60 }, density: 0.006, exclude: [SCHOOL_GROUNDS, SPRING_AREA] },
+    { kind: 'scatter', object: 'rock', area: { x: 0, y: 0, w: 80, h: 60 }, density: 0.006, exclude: [HEADMAN_YARD, KHAM_YARD, STATION_YARD, SITE_CLEARING, HUT_YARD] },
     { kind: 'border', object: 'tree', thickness: 1 },
-
-    // หินสามก้อน ใกล้ตาน้ำ (วางหลังโปรยต้นไม้ เพื่อให้ตำแหน่งแน่นอน)
-    { kind: 'object', object: 'rock', at: { x: 25, y: 53 } },
-    { kind: 'object', object: 'rock', at: { x: 26, y: 53 } },
-    { kind: 'object', object: 'rock', at: { x: 25, y: 54 } },
   ],
 };

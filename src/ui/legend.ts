@@ -21,7 +21,7 @@ export function legendLabel(item: LegendItem): string {
     case 'pinned':
       return 'หมุดที่ปักแล้ว';
     case 'contour':
-      return contourInterval === 10 ? 'เส้นชั้นความสูง 10 ม.' : `เส้นชั้นความสูงทุก ${contourInterval} ม. (เส้นหนาทุก ${contourInterval * 5} ม.)`;
+      return contourInterval === 10 ? 'เส้นชั้นความสูง 10 ม.' : contourInterval >= 50 ? `เส้นชั้นความสูงทุก ${contourInterval} ม.` : `เส้นชั้นความสูงทุก ${contourInterval} ม. (เส้นหนาทุก ${contourInterval * 5} ม.)`;
     case 'spot':
       return 'ระดับความสูง (ม.)';
     case 'flow':
