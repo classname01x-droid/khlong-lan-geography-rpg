@@ -253,6 +253,8 @@ const APPEARANCE_PALETTE: Record<CharacterAppearance, Palette> = {
   teacher: { ...BASE_PALETTE, h: '#141414', c: '#b5579b', p: '#2b2b3a' },
   headman: { ...BASE_PALETTE, h: '#9a9a9a', c: '#a8925c', p: '#4a3b28', s: '#d9a066' },
   villager: { ...BASE_PALETTE, h: '#141414', c: '#2e3f8f', p: '#2e3f8f' },
+  // พระสงฆ์: ศีรษะโล้น (สีผิว) จีวรสีเหลืองส้ม
+  monk: { ...BASE_PALETTE, h: '#f1c27d', c: '#e3891b', p: '#c46a12' },
 };
 
 export function characterTextureKey(a: CharacterAppearance): string {

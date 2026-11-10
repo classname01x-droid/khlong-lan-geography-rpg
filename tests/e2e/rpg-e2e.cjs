@@ -198,11 +198,13 @@ const check = (n, ok, extra = '') => {
     await wait(300);
     await walkTo(55, 45); await talkKey(); await drive([1, 1]);
     await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await drive([]);
-    await walkBg(28, 18);
-    check('sakngam: ถึงสำนักสงฆ์ → หยุดและถามโจทย์', await waitFor(() => !!window.__TEST__.session.dialogueView));
-    await drive([2]);
-    await walkBg(28, 46);
-    check('sakngam: พบกองขยะ → ข้อความ + ปุ่มตกลง', await waitFor(() => !!window.__TEST__.session.dialogueView));
+    await walkBg(29, 21);
+    check('sakngam: ถึงสำนักสงฆ์ → หยุดและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView));
+    await drive([]);
+    await walkTo(29, 18); await talkKey(); await drive([]); // คุยกับพระ
+    await walkTo(55, 45); await talkKey(); await drive([0]); // ผู้ใหญ่บ้านบอกทาง + โจทย์ตะวันออก 200 ม.
+    await walkBg(75, 45);
+    check('sakngam: พบกองขยะฝั่งขวา → ข้อความ + ปุ่มตกลง', await waitFor(() => !!window.__TEST__.session.dialogueView, 60000));
     await drive([]);
     await walkTo(25, 48); await walkTo(25, 29); await talkKey(); await drive([1, 2]);
     await wait(500);

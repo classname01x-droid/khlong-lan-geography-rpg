@@ -56,9 +56,12 @@ describe('บันทึกการเล่นกลางด่าน (snaps
     talk(b, 'headman', [rightOf('q-west', b), rightOf('q-north', b)]);
     talk(b, 'jiao');
     expect(b.flags.has('go-wat')).toBe(true);
-    expect(b.checkArrivals({ x: 28, y: 17 })).toBe(true);
-    runDialogue(b, [rightOf('q-wat', b)]);
-    expect(b.checkArrivals({ x: 28, y: 47 })).toBe(true);
+    expect(b.checkArrivals({ x: 30, y: 18 })).toBe(true); // ถึงสำนักสงฆ์
+    runDialogue(b);
+    talk(b, 'monk');
+    expect(b.flags.has('monk-talked')).toBe(true);
+    talk(b, 'headman', [rightOf('q-trash', b)]);
+    expect(b.checkArrivals({ x: 75, y: 44 })).toBe(true); // กองขยะฝั่งขวา
     runDialogue(b);
     talk(b, 'jiao', [rightOf('q-adv1', b), rightOf('q-adv2', b)]);
     while (b.inDialogue) b.advanceDialogue();

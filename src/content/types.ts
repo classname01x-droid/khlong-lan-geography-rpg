@@ -13,7 +13,7 @@ import type { GridDefinition, GridRef } from '../core/world/GridSystem';
  */
 
 /** รูปลักษณ์ตัวละคร (ระบบกราฟิกจะเลือกชุดสีตามค่านี้) */
-export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager';
+export type CharacterAppearance = 'student' | 'teacher' | 'headman' | 'villager' | 'monk';
 
 export interface Landmark {
   id: string;

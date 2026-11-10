@@ -240,7 +240,7 @@ describe('Quest Tracker (ทุกบท ดึงจาก GameSession)', () =>
     const t = buildQuestTracker(s, { chapterOrder: 1 });
     expect(t.chapterLabel).toBe('บทที่ 1: ตามหาป้าเจียว');
     expect(t.objective).toBe('พบครูเนมที่โรงเรียน');
-    expect(t.progress).toEqual({ done: 0, total: 7, label: 'ขั้น' });
+    expect(t.progress).toEqual({ done: 0, total: 9, label: 'ขั้น' });
     expect(t.micro).toBe(true);
     expect(t.steps.join(' ')).toContain('เรียนเรื่องมาตราส่วน');
     expect(t.tools.length).toBeGreaterThan(0);

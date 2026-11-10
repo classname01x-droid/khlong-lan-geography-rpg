@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sakNgamLevel as L, SAKNGAM_TEACH_SPOT, SAKNGAM_TRASH, SAKNGAM_WAT } from '../src/content/levels/sakngam';
+import { sakNgamLevel as L, SAKNGAM_HEADMAN, SAKNGAM_MONK, SAKNGAM_TEACH_SPOT, SAKNGAM_TRASH, SAKNGAM_WAT } from '../src/content/levels/sakngam';
 import { validateLevel } from '../src/content/validateLevel';
 import { directionFromVector } from '../src/core/direction/Compass';
 import { guideTarget } from '../src/core/guide/Navigation';
@@ -34,7 +34,7 @@ describe('สักงาม: ทิศและระยะในแผนท�
   it('ข้อมูลด่านผ่านการตรวจสอบ และจุดหมายทุกจุดเดินถึงได้', () => {
     expect(validateLevel(L)).toEqual([]);
     const reach = reachableTiles(grid, L.spawn);
-    for (const id of ['teacher-nem', 'headman', 'grandma', 'jiao']) expect(isPointReachable(grid, reach, npc(id), 2), id).toBe(true);
+    for (const id of ['teacher-nem', 'headman', 'grandma', 'jiao', 'monk']) expect(isPointReachable(grid, reach, npc(id), 2), id).toBe(true);
     for (const p of [SAKNGAM_WAT, SAKNGAM_TRASH, SAKNGAM_TEACH_SPOT]) {
       expect(isPointReachable(grid, reach, p, 2), JSON.stringify(p)).toBe(true);
       expect(grid.getTerrain(p.x, p.y)).not.toBe('water');
@@ -70,17 +70,46 @@ describe('สักงาม: ทิศและระยะในแผนท�
     expect(findPath(grid, g, { x: j.x, y: j.y + 1 })).not.toBeNull();
   });
 
-  it('ป้าเจียว → สำนักสงฆ์เขาแสงเพชร: ทิศเหนือ ≈ 1 ซม. · สำนักสงฆ์ → กองขยะ: ทิศใต้ 3 ซม. = 300 ม. พอดี', () => {
+  it('ป้าเจียว → สำนักสงฆ์เขาแสงเพชร: ทิศเหนือ ≈ 1 ซม. · พระยืนบนลานสำนักสงฆ์ เดินเข้าไปคุยได้', () => {
     const j = npc('jiao');
     expect(directionFromVector(SAKNGAM_WAT.x - j.x, SAKNGAM_WAT.y - j.y)).toBe('N');
     expect(cm(j, SAKNGAM_WAT)).toBeGreaterThan(0.9);
     expect(cm(j, SAKNGAM_WAT)).toBeLessThan(1.2);
-    expect(directionFromVector(SAKNGAM_TRASH.x - SAKNGAM_WAT.x, SAKNGAM_TRASH.y - SAKNGAM_WAT.y)).toBe('S');
-    expect(cm(SAKNGAM_WAT, SAKNGAM_TRASH)).toBeCloseTo(3, 5);
-    expect(defaultScale.tilesToMeters(SAKNGAM_TRASH.y - SAKNGAM_WAT.y)).toBe(300);
-    expect(findPath(grid, SAKNGAM_WAT, SAKNGAM_TRASH)).not.toBeNull();
-    // กองขยะอยู่ใกล้ลำธาร (ตามเรื่อง) และมีของตกแต่งกองขยะตรงจุดนั้น
+    expect(npc('monk')).toEqual(SAKNGAM_MONK);
+    expect(grid.getTerrain(SAKNGAM_MONK.x, SAKNGAM_MONK.y)).toBe('paving'); // ลานหน้าสำนักสงฆ์
+    expect(grid.getObject(SAKNGAM_MONK.x, SAKNGAM_MONK.y)).toBeNull();
+    expect(Math.hypot(SAKNGAM_MONK.x - SAKNGAM_WAT.x, SAKNGAM_MONK.y - SAKNGAM_WAT.y)).toBeLessThan(3);
+    expect(L.npcs.find((n) => n.id === 'monk')!.appearance).toBe('monk');
+    const reach = reachableTiles(grid, L.spawn);
+    // ยืนติดพระ (ห่าง ≤ 2 ช่อง ตามระยะคุย) ได้จริง
+    expect(isPointReachable(grid, reach, SAKNGAM_MONK, 2)).toBe(true);
+    expect(findPath(grid, npc('jiao'), { x: SAKNGAM_MONK.x, y: SAKNGAM_MONK.y + 1 })).not.toBeNull();
+  });
+
+  it('บ้านผู้ใหญ่บ้าน → กองขยะ (ฝั่งขวาของแผนที่): ทิศตะวันออก 2 ซม. = 200 ม. พอดี · เดินถึงได้ · ผ่านถนนที่แยกขึ้นเหนือ', () => {
+    const h = npc('headman');
+    expect(h).toEqual(SAKNGAM_HEADMAN);
+    expect(directionFromVector(SAKNGAM_TRASH.x - h.x, SAKNGAM_TRASH.y - h.y)).toBe('E');
+    expect(SAKNGAM_TRASH.y).toBe(h.y);
+    expect(cm(h, SAKNGAM_TRASH)).toBeCloseTo(2, 5);
+    expect(defaultScale.tilesToMeters(SAKNGAM_TRASH.x - h.x)).toBe(200);
+    expect(SAKNGAM_TRASH.x).toBeGreaterThan(L.map.widthTiles * 0.75); // ฝั่งขวาของแผนที่
+    const reach = reachableTiles(grid, L.spawn);
+    expect(isPointReachable(grid, reach, SAKNGAM_TRASH, 0)).toBe(true); // ยืนบนจุดกองขยะได้
+    expect(grid.getTerrain(SAKNGAM_TRASH.x, SAKNGAM_TRASH.y)).toBe('road');
+    expect(grid.getObject(SAKNGAM_TRASH.x, SAKNGAM_TRASH.y)).toBeNull();
+    const path = findPath(grid, { x: h.x, y: h.y + 1 }, SAKNGAM_TRASH)!;
+    expect(path).not.toBeNull();
+    // ทางตะวันออกต้องตัดถนนที่แยกขึ้นเหนือ (x=60) · มีลำห้วยเล็กอยู่ข้างกองขยะ (ตามเรื่อง "ใกล้ลำธาร")
+    expect(path.some((p) => (p.x === 60 || p.x === 61) && ['road', 'bridge'].includes(grid.getTerrain(p.x, p.y)!))).toBe(true);
+    expect(grid.getTerrain(60, SAKNGAM_TRASH.y)).toBe('road');
+    expect(grid.getTerrain(SAKNGAM_TRASH.x + 2, SAKNGAM_TRASH.y)).toBe('water');
+    // ถนนหลักข้ามลำห้วยเล็กด้วยสะพาน ไม่ขาด
+    expect(grid.getTerrain(77, 48)).toBe('bridge');
+    expect(findPath(grid, { x: 70, y: 48 }, { x: 78, y: 48 })).not.toBeNull();
     expect(L.decor!.some((d) => d.kind === 'trash' && d.at.x === SAKNGAM_TRASH.x && d.at.y === SAKNGAM_TRASH.y)).toBe(true);
+    // กองขยะเดิม (ใต้สำนักสงฆ์) ถูกย้ายออกแล้ว
+    expect(L.decor!.filter((d) => d.kind === 'trash')).toHaveLength(1);
   });
 });
 
@@ -153,59 +182,194 @@ describe('สักงาม: บทเรียนครูเนม 5 หั�
   });
 });
 
-describe('สักงาม: สำนักสงฆ์เขาแสงเพชร → กองขยะ', () => {
-  function atWat() {
+describe('สักงาม: ป้าเจียว → สำนักสงฆ์ → พระ → ผู้ใหญ่บ้าน → โจทย์ → กองขยะ', () => {
+  const FLAGS_TO_JIAO = ['q-school', 'met-headman', 'route-known'];
+  function at(...flags: string[]) {
     const s = newSession(L);
-    s.flags.add('go-wat');
+    for (const f of [...FLAGS_TO_JIAO, ...flags]) s.flags.add(f);
     return s;
   }
 
-  it('ถึงสำนักสงฆ์ → แจ้ง "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!" หยุดเดินแล้วถามโจทย์ 3 ซม. (ตอบผิดเรียนก่อน)', () => {
-    const s = newSession(L);
-    expect(s.checkArrivals(SAKNGAM_WAT)).toBe(false); // ยังไม่ได้รับบอกทางจากป้าเจียว
+  it('ถึงสำนักสงฆ์ → แจ้ง "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว" ครั้งเดียว (ต้องได้รับบอกทางจากป้าเจียวก่อน)', () => {
+    const s = at();
+    expect(s.checkArrivals(SAKNGAM_MONK)).toBe(false); // ยังไม่ได้คุยกับป้าเจียว
     s.flags.add('go-wat');
-    expect(s.checkArrivals(SAKNGAM_WAT)).toBe(true);
-    expect(s.mode).toBe('dialogue');
-    expect(s.dialogueView).toMatchObject({ kind: 'line', text: 'ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!' });
+    expect(s.checkArrivals({ x: SAKNGAM_MONK.x, y: SAKNGAM_MONK.y + 7 })).toBe(false); // ยังไม่ถึง
+    expect(s.checkArrivals({ x: SAKNGAM_MONK.x - 2, y: SAKNGAM_MONK.y + 3 })).toBe(true);
+    expect(s.dialogueView).toMatchObject({ kind: 'line', text: 'ถึงสำนักสงฆ์เขาแสงเพชรแล้ว', button: 'ตกลง' });
     s.advanceDialogue();
-    const q = s.dialogueView as { kind: string; question: string; choices: string[] };
-    expect(q.kind).toBe('quiz');
-    expect(q.question).toContain('3 ซม.');
-    expect(q.question).toContain('ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?');
-    expect(q.choices).toEqual(['เหนือ 300 เมตร', 'ใต้ 30 เมตร', 'ใต้ 300 เมตร']);
-    s.answerQuiz(0);
-    expect(kind(s)).toBe('lesson');
-    for (let g = 0; g < 8 && kind(s) === 'lesson'; g++) s.advanceDialogue();
-    expect(kind(s)).toBe('quiz');
-    expect(s.flags.has('wat-quiz')).toBe(false);
-    s.answerQuiz(2);
-    finish(s);
-    expect(s.flags.has('wat-quiz')).toBe(true);
     expect(s.mode).toBe('explore');
-    expect(s.checkArrivals(SAKNGAM_WAT)).toBe(false); // ผ่านแล้วไม่ถามซ้ำ
+    expect(s.flags.has('at-wat')).toBe(true);
+    expect(s.flags.has('monk-talked')).toBe(false); // ต้องเดินไปคุยกับพระเอง
+    expect(s.checkArrivals(SAKNGAM_MONK)).toBe(false);
   });
 
-  it('ปิดเกมกลางคำถาม (ยังไม่ตอบถูก) → ยืนที่สำนักสงฆ์แล้วเรียกคำถามซ้ำได้ ไม่ติด', () => {
-    const s = atWat();
-    s.checkArrivals(SAKNGAM_WAT);
+  it('ยืนคุยกับพระได้ทุกตำแหน่งที่อยู่ในระยะคุย (ห่าง ≤ 2 ช่อง) ก็อยู่ในระยะที่ข้อความ "ถึงสำนักสงฆ์" ทำงานแล้ว', () => {
+    const radius = L.arrivals!.find((a) => a.id === 'wat')!;
+    expect(radius.at).toEqual(SAKNGAM_MONK);
+    expect(radius.radiusTiles).toBeGreaterThanOrEqual(3);
+  });
+
+  it('คุยกับพระ: บทสนทนาตามเรื่อง → อัปเดตภารกิจ "กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ"', () => {
+    const s = at('go-wat');
+    // ยังไม่ถึงสำนักสงฆ์ → พระทักทายเฉย ๆ ไม่ข้ามขั้น
+    talk(s, 'monk');
+    expect(s.dialogueView).toMatchObject({ kind: 'line', speaker: 'พระ' });
+    finish(s);
+    expect(s.flags.has('monk-talked')).toBe(false);
+
+    s.checkArrivals(SAKNGAM_MONK);
+    finish(s);
+    talk(s, 'monk');
+    expect(s.dialogueView).toMatchObject({ kind: 'line', speaker: 'ผู้กล้า', text: 'หลวงพ่อครับ ผมกำลังตามหากองขยะที่อยู่ใกล้ลำธารครับ' });
+    s.advanceDialogue();
+    expect(s.dialogueView).toMatchObject({ kind: 'line', speaker: 'พระ', text: 'เรื่องนี้ลองกลับไปถามผู้ใหญ่บ้านดูนะ ท่านรู้ว่ากองขยะอยู่ตรงไหน' });
+    s.advanceDialogue();
+    expect(s.flags.has('monk-talked')).toBe(true);
+    s.updateQuests(true);
+    const t = buildQuestTracker(s, {});
+    expect([t.objective, ...t.steps].join(' ')).toContain('กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ');
+    // คุยซ้ำ: ไม่เล่นบทสนทนาแรกซ้ำ
+    talk(s, 'monk');
+    expect(s.dialogueView).toMatchObject({ kind: 'line', speaker: 'พระ' });
+    expect((s.dialogueView as { text: string }).text).not.toContain('หลวงพ่อ');
+  });
+
+  it('ผู้ใหญ่บ้านก่อนคุยกับพระ: ไม่บอกทางกองขยะ ไม่ถามโจทย์ (ห้ามข้ามขั้น)', () => {
+    for (const flags of [[], ['go-wat'], ['go-wat', 'at-wat']]) {
+      const s = at(...flags);
+      talk(s, 'headman');
+      const texts: string[] = [];
+      for (let g = 0; g < 10 && s.inDialogue; g++) {
+        expect(kind(s)).not.toBe('quiz');
+        texts.push((s.dialogueView as { text: string }).text);
+        s.advanceDialogue();
+      }
+      expect(texts.join(' ')).not.toContain('กองขยะ');
+      expect(s.flags.has('trash-told')).toBe(false);
+    }
+  });
+
+  it('ผู้ใหญ่บ้านหลังคุยกับพระ: บอกทิศ+ระยะ+จุดสังเกต ก่อนถามโจทย์ · ตอบผิดเรียนกับครูเนมก่อน · ตอบถูกปลดล็อก', () => {
+    const s = at('go-wat', 'at-wat', 'monk-talked');
+    const p = new ProgressStore(null, 'sakngam');
+    s.wallet = p;
+    talk(s, 'headman');
+    const lines: string[] = [];
+    while (s.inDialogue && kind(s) === 'line') {
+      lines.push((s.dialogueView as { text: string }).text);
+      s.advanceDialogue();
+    }
+    expect(lines[0]).toBe('ท่านผู้ใหญ่ครับ กองขยะอยู่ตรงไหนครับ?');
+    expect(lines[1]).toBe('อ๋อ กองขยะอยู่ทางฝั่งตะวันออกของชุมชน เจ้าต้องเดินไปตามทางด้านขวาของแผนที่');
+    expect(lines[2]).toContain('ทิศตะวันออก');
+    expect(lines[2]).toContain('2 เซนติเมตร');
+    expect(lines[2]).toContain('ถนนที่แยกขึ้นเหนือ'); // จุดสังเกตระหว่างทาง
+    expect(lines).toHaveLength(3);
+    expect(s.flags.has('trash-told')).toBe(true); // บอกทางก่อนถาม
+    const q = s.dialogueView as { kind: string; question: string; choices: string[] };
+    expect(q.kind).toBe('quiz');
+    expect(q.question).toContain('จากบ้านผู้ใหญ่บ้านไปกองขยะ ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?');
+    expect(q.question).toContain('1:10,000');
+    expect(q.question).toContain('2 ซม.');
+    expect(q.choices).toEqual(['ตะวันออก 200 เมตร', 'ตะวันตก 200 เมตร', 'ตะวันออก 2,000 เมตร']);
+    expect(s.flags.has('trash-route')).toBe(false);
+    s.answerQuiz(wrongIdx('q-trash'));
+    expect(kind(s)).toBe('lesson'); // กลับไปเรียนมาตราส่วนกับครูเนม
+    expect((s.dialogueView as { speaker: string }).speaker).toBe('ครูเนม');
+    for (let g = 0; g < 8 && kind(s) === 'lesson'; g++) s.advanceDialogue();
+    expect(kind(s)).toBe('quiz');
+    expect(s.flags.has('trash-route')).toBe(false);
+    expect(p.rpg.bossHpBonus).toBe(0);
+    s.answerQuiz(rightIdx('q-trash'));
+    finish(s);
+    expect(s.flags.has('trash-route')).toBe(true);
+    expect(s.mode).toBe('explore');
+    // คุยซ้ำ: ย้ำทางสั้น ๆ ไม่ถามซ้ำ
+    talk(s, 'headman');
+    expect(kind(s)).toBe('line');
+    expect((s.dialogueView as { text: string }).text).toContain('ตะวันออก');
+    expect(s.inDialogue).toBe(true);
+    s.advanceDialogue();
+    expect(s.inDialogue).toBe(false);
+  });
+
+  it('ปิดเกมกลางคำถามผู้ใหญ่บ้าน → โหลดแล้วคุยใหม่ได้ ไม่ค้าง', () => {
+    const s = at('go-wat', 'at-wat', 'monk-talked');
+    talk(s, 'headman');
+    toQuiz(s);
     const s2 = newSession(L);
     expect(s2.restore(JSON.parse(JSON.stringify(s.toSnapshot())))).toBe(true);
     expect(s2.mode).toBe('explore');
-    expect(s2.checkArrivals(SAKNGAM_WAT)).toBe(true);
-    expect(s2.mode).toBe('dialogue');
+    talk(s2, 'headman');
+    toQuiz(s2);
+    expect(kind(s2)).toBe('quiz');
+    s2.answerQuiz(rightIdx('q-trash'));
+    finish(s2);
+    expect(s2.flags.has('trash-route')).toBe(true);
   });
 
-  it('พบกองขยะ: ได้เฉพาะหลังตอบโจทย์ · ข้อความ "พบเศษขยะแล้ว!" ปุ่ม "ตกลง" · แสดงครั้งเดียว', () => {
-    const s = newSession(L);
-    expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(false);
-    s.flags.add('wat-quiz');
-    expect(s.checkArrivals({ x: SAKNGAM_TRASH.x, y: SAKNGAM_TRASH.y - 6 })).toBe(false); // ยังไม่ถึง
-    expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(true);
-    expect(s.dialogueView).toMatchObject({ kind: 'line', text: 'พบเศษขยะแล้ว!', button: 'ตกลง' });
+  it('พบกองขยะ: ได้เฉพาะหลังตอบโจทย์ · "พบกองขยะแล้ว!" ปุ่ม "ตกลง" · แล้วเก็บขยะ · แสดงครั้งเดียว', () => {
+    const s = at('go-wat', 'at-wat', 'monk-talked', 'trash-told');
+    expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(false); // ยังไม่ตอบโจทย์ → เดินไปถึงก็ไม่เกิดอะไร
+    expect(s.flags.has('trash-found')).toBe(false);
+    s.flags.add('trash-route');
+    expect(s.checkArrivals({ x: SAKNGAM_TRASH.x - 6, y: SAKNGAM_TRASH.y })).toBe(false); // ยังไม่ถึง
+    expect(s.checkArrivals({ x: SAKNGAM_TRASH.x - 1, y: SAKNGAM_TRASH.y })).toBe(true);
+    expect(s.dialogueView).toMatchObject({ kind: 'line', text: 'พบกองขยะแล้ว!', button: 'ตกลง' });
+    s.advanceDialogue();
+    expect(s.dialogueView).toMatchObject({ kind: 'line', text: 'เก็บขยะใส่ถุงเรียบร้อย กลับไปรายงานป้าเจียวกันเถอะ' });
     s.advanceDialogue();
     expect(s.mode).toBe('explore');
     expect(s.flags.has('trash-found')).toBe(true);
     expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(false);
+  });
+
+  it('ป้าเจียวระหว่างทาง: บอกขั้นต่อไป ไม่ถามคำแนะนำก่อนพบกองขยะ · ไม่มีกองขยะใต้สำนักสงฆ์อีก', () => {
+    for (const [flags, expected] of [
+      [['go-wat'], 'สำนักสงฆ์'],
+      [['go-wat', 'at-wat', 'monk-talked', 'trash-told', 'trash-route'], 'ตามหากองขยะ'],
+    ] as Array<[string[], string]>) {
+      const s = at(...flags);
+      talk(s, 'jiao');
+      expect(kind(s)).toBe('line');
+      expect((s.dialogueView as { text: string }).text).toContain(expected);
+      s.advanceDialogue();
+      expect(s.inDialogue).toBe(false);
+      expect(s.flags.has('m-report')).toBe(false);
+    }
+    const s = at('go-wat', 'at-wat', 'monk-talked', 'trash-route');
+    expect(s.checkArrivals({ x: 28, y: 47 })).toBe(false);
+  });
+
+  it('ลำดับเต็ม ตั้งแต่ป้าเจียวถึงรายงาน: แต่ละขั้นขึ้นเมื่อถึงลำดับเท่านั้น', () => {
+    const s = at();
+    const p = new ProgressStore(null, 'sakngam');
+    s.wallet = p;
+    talk(s, 'jiao'); // 1) ป้าเจียวบอกให้ไปสำนักสงฆ์
+    finish(s);
+    expect(s.flags.has('go-wat')).toBe(true);
+    s.checkArrivals(SAKNGAM_MONK); // 2) ถึงสำนักสงฆ์
+    finish(s);
+    talk(s, 'monk'); // 3) คุยกับพระ
+    finish(s);
+    expect(s.flags.has('monk-talked')).toBe(true);
+    expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(false);
+    talk(s, 'headman'); // 4) ผู้ใหญ่บ้าน + 5) โจทย์
+    toQuiz(s);
+    s.answerQuiz(rightIdx('q-trash'));
+    finish(s);
+    expect(s.checkArrivals(SAKNGAM_TRASH)).toBe(true); // 6) กองขยะ
+    finish(s);
+    expect(s.flags.has('trash-found')).toBe(true);
+    talk(s, 'jiao'); // 7) รายงานป้าเจียว
+    toQuiz(s);
+    s.answerQuiz(rightIdx('q-adv1'));
+    toQuiz(s);
+    s.answerQuiz(rightIdx('q-adv2'));
+    finish(s);
+    expect(s.flags.has('m-report')).toBe(true);
+    expect(p.rpg.coins).toBe(100);
   });
 });
 
@@ -214,7 +378,7 @@ describe('สักงาม: ให้คำแนะนำป้าเจี�
     const s = newSession(L);
     const p = new ProgressStore(null, 'sakngam');
     s.wallet = p;
-    for (const f of ['q-school', 'met-headman', 'route-known', 'go-wat', 'wat-quiz', 'trash-found']) s.flags.add(f);
+    for (const f of ['q-school', 'met-headman', 'route-known', 'go-wat', 'at-wat', 'monk-talked', 'trash-told', 'trash-route', 'trash-found']) s.flags.add(f);
     talk(s, 'jiao');
     return { s, p };
   }
@@ -279,7 +443,7 @@ describe('สักงาม: เล่นตามภารกิจ — ไม
   it('ไม่มีลูกศร/เป้าหมายนำทาง/จุดลับบนแผนที่ ในทุกขั้น', () => {
     expect(L.exploreMode).toBe(true);
     const s = newSession(L);
-    for (const f of ['start', 'q-school', 'met-headman', 'route-known', 'go-wat', 'wat-quiz', 'trash-found', 'm-report']) {
+    for (const f of ['start', 'q-school', 'met-headman', 'route-known', 'go-wat', 'at-wat', 'monk-talked', 'trash-route', 'trash-found', 'm-report']) {
       if (f !== 'start') s.flags.add(f);
       expect(guideTarget(s), f).toBeNull();
       expect(buildQuestTracker(s, {}).target, f).toBeNull();
@@ -305,10 +469,13 @@ describe('สักงาม: เล่นตามภารกิจ — ไม
     s.flags.add('go-wat');
     s.updateQuests(true);
     expect(text(s)).toContain('สำนักสงฆ์เขาแสงเพชร');
-    expect(text(s)).not.toContain('ใต้');
-    s.flags.add('wat-quiz');
+    expect(text(s)).not.toContain('200 เมตร');
+    s.flags.add('monk-talked');
     s.updateQuests(true);
-    expect(text(s)).toContain('300 เมตร');
-    expect(text(s)).toContain('ใต้');
+    expect(text(s)).toContain('กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ');
+    expect(text(s)).not.toContain('200 เมตร'); // ยังไม่เฉลยคำตอบก่อนตอบถูก
+    s.flags.add('trash-route');
+    s.updateQuests(true);
+    expect(text(s)).toContain('ตะวันออก 2 ซม. บนแผนที่ = 200 เมตร');
   });
 });

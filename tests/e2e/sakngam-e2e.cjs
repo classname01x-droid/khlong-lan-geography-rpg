@@ -138,48 +138,83 @@ const KEY = 'khlonglan-geo-rpg:progress';
   await talkKey();
   await drive([]);
   s = await sess();
-  check('ป้าเจียว: ให้ไปสำนักสงฆ์เขาแสงเพชรก่อน (ยังไม่ให้เก็บขยะ)', s.flags.includes('go-wat') && !s.flags.includes('wat-quiz') && s.step === 4, JSON.stringify(s));
+  check('ป้าเจียว: ให้ไปสำนักสงฆ์เขาแสงเพชรก่อน (ยังไม่ให้เก็บขยะ)', s.flags.includes('go-wat') && !s.flags.includes('monk-talked') && s.step === 4, JSON.stringify(s));
   await noGuide('ที่บ้านป้าเจียว');
 
-  // 4) สำนักสงฆ์ → โจทย์ 3 ซม. (ใต้ 300 เมตร)
-  await walkBg(28, 18);
-  check('ถึงสำนักสงฆ์ → หยุดเดินและขึ้นบทสนทนา', await waitFor(() => !!window.__TEST__.session.dialogueView, 30000));
+  // 4) ผู้ใหญ่บ้านก่อนถึงลำดับ: ต้องไม่ข้ามขั้น (ยังไม่บอกทางกองขยะ) — ตรวจด้วย session ตรง ๆ
+  const early = await ev(() => { const s = window.__TEST__.session; const n = s.level.npcs.find((x) => x.id === 'headman'); s.talkTo(n); const v = s.dialogueView; const r = { kind: v.kind, text: v.text }; while (s.inDialogue) s.advanceDialogue(); return r; });
+  check('ผู้ใหญ่บ้านก่อนคุยกับพระ: ไม่ถามโจทย์/ไม่พูดเรื่องกองขยะ (ห้ามข้ามขั้น)', early.kind === 'line' && !early.text.includes('กองขยะ') && !(await sess()).flags.includes('trash-told'), JSON.stringify(early));
+  await shot('04b-headman-early');
+
+  // 5) เดินไปสำนักสงฆ์เอง → ข้อความ "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว" → เดินไปคุยกับพระ
+  await walkBg(29, 21);
+  check('ถึงสำนักสงฆ์ → หยุดเดินและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView, 30000));
   const l0 = await ev(() => window.__TEST__.session.dialogueView.text);
-  check('แจ้ง "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!"', l0 === 'ถึงสำนักสงฆ์เขาแสงเพชรแล้ว!', l0);
+  check('แจ้ง "ถึงสำนักสงฆ์เขาแสงเพชรแล้ว"', l0 === 'ถึงสำนักสงฆ์เขาแสงเพชรแล้ว', l0);
   await shot('05-wat-arrive');
-  await nextLine();
-  const qv = await ev(() => window.__TEST__.session.dialogueView);
-  check('โจทย์ 3 ซม.: เหนือ 300 / ใต้ 30 / ใต้ 300', qv.kind === 'quiz' && qv.choices.join('|') === 'เหนือ 300 เมตร|ใต้ 30 เมตร|ใต้ 300 เมตร', JSON.stringify(qv));
-  await shot('05-quiz-wat');
-  await pick(0);
-  check('ตอบผิด: เปิดบทเรียนก่อน (ไม่ติด)', (await kindNow()) === 'lesson');
-  for (let i = 0; i < 5; i++) { if ((await kindNow()) !== 'lesson') break; await tapDom('.tl-sheet .tl-option', (await ev(() => window.__TEST__.session.dialogueView.page)) === 5 ? 'เข้าใจแล้ว' : 'ถัดไป'); }
-  await pick(2);
   await drive([]);
   s = await sess();
-  check('ตอบถูก (ใต้ 300 เมตร) → ผ่านขั้น 4 แล้วเดินต่อได้เอง', s.flags.includes('wat-quiz') && s.step === 5 && s.mode === 'explore', JSON.stringify(s));
-  await noGuide('หลังตอบโจทย์ที่สำนักสงฆ์ (ไม่มีลูกศร/หมุดไปกองขยะ)');
-
-  // 5) เดินลงใต้เอง → พบกองขยะ → "พบเศษขยะแล้ว!" [ตกลง]
+  check('ถึงสำนักสงฆ์แล้วยังต้องไปคุยกับพระเอง (ยังไม่ผ่านขั้น)', s.flags.includes('at-wat') && !s.flags.includes('monk-talked') && s.mode === 'explore', JSON.stringify(s));
+  const monkVis = await ev(() => { const w = window.__GAME__.scene.getScene('WorldScene'); const n = w.npcs.find((x) => x.def.id === 'monk'); const cam = w.cameras.main; return n ? { has: true, x: n.sprite.x, y: n.sprite.y, tex: n.sprite.texture.key, inView: n.sprite.x > cam.worldView.x && n.sprite.x < cam.worldView.right && n.sprite.y > cam.worldView.y && n.sprite.y < cam.worldView.bottom } : { has: false }; });
+  check('พระ (Pixel Art) ยืนอยู่ที่ลานสำนักสงฆ์ และอยู่ในจอตอนมาถึง', monkVis.has && monkVis.tex === 'char-monk' && monkVis.inView, JSON.stringify(monkVis));
+  await walk(29, 18);
+  await shot('05b-monk');
+  await talkKey();
+  const mk = await ev(() => window.__TEST__.session.dialogueView && window.__TEST__.session.dialogueView.speaker + ': ' + window.__TEST__.session.dialogueView.text);
+  check('คุยกับพระ: ผู้กล้าถามหากองขยะใกล้ลำธาร', mk === 'ผู้กล้า: หลวงพ่อครับ ผมกำลังตามหากองขยะที่อยู่ใกล้ลำธารครับ', mk);
+  const mseen = await drive([]);
   s = await sess();
-  check('ยังไม่ถึงกองขยะ: ไม่มีข้อความพบเศษขยะ', !s.flags.includes('trash-found'));
-  await walkBg(28, 46);
-  check('ถึงกองขยะ → หยุดเดินและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView, 40000));
+  check('พระบอกให้ไปถามผู้ใหญ่บ้าน → ผ่านขั้น 4 · อัปเดตภารกิจ "กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ"', mseen.lines.some((x) => x.includes('กลับไปถามผู้ใหญ่บ้าน')) && s.flags.includes('monk-talked') && s.step === 5 && (await trackerText()).includes('กลับไปพบผู้ใหญ่บ้านเพื่อสอบถามตำแหน่งกองขยะ'), JSON.stringify([mseen.lines, s]));
+  await noGuide('หลังคุยกับพระ');
+
+  // 6) กองขยะยังเก็บไม่ได้ก่อนถึงลำดับ: เดินไปยืนที่กองขยะก่อนตอบโจทย์ → ไม่เกิดอะไร (ตรวจแบบ session)
+  const premature = await ev(() => { const s = window.__TEST__.session; return s.checkArrivals({ x: 75, y: 44 }); });
+  check('ยืนที่กองขยะก่อนตอบโจทย์ผู้ใหญ่บ้าน: ไม่เกิดข้อความ/ไม่ผ่านขั้น', premature === false && !(await sess()).flags.includes('trash-found'));
+
+  // 7) กลับไปผู้ใหญ่บ้าน → ได้ทิศ+ระยะ → โจทย์ (ผิด → บทเรียนครูเนม → ถูก)
+  await walk(55, 45);
+  await talkKey();
+  const hl = await drive([]);
+  const hq = await ev(() => window.__TEST__.session.dialogueView);
+  check('ผู้ใหญ่บ้านบอกทิศ+ระยะ+จุดสังเกตก่อนถามโจทย์', hl.lines.length === 3 && hl.lines[1].includes('ฝั่งตะวันออก') && hl.lines[2].includes('2 เซนติเมตร') && hl.lines[2].includes('ถนนที่แยกขึ้นเหนือ'), JSON.stringify(hl.lines));
+  check('โจทย์: จากบ้านผู้ใหญ่บ้านไปกองขยะ ทิศใด ระยะจริงเท่าไร (3 ตัวเลือก ตะวันออก 200 ถูก)', hq.kind === 'quiz' && hq.question.includes('จากบ้านผู้ใหญ่บ้านไปกองขยะ ต้องเดินทางทิศใด และระยะทางจริงเท่าไร?') && hq.choices.join('|') === 'ตะวันออก 200 เมตร|ตะวันตก 200 เมตร|ตะวันออก 2,000 เมตร', JSON.stringify(hq));
+  await shot('06-quiz-trash');
+  await pick(1);
+  check('ตอบผิด: กลับไปเรียนมาตราส่วนกับครูเนม (บทเรียน) ไม่ติด', (await kindNow()) === 'lesson' && (await ev(() => window.__TEST__.session.dialogueView.speaker)) === 'ครูเนม');
+  for (let i = 0; i < 5; i++) { if ((await kindNow()) !== 'lesson') break; await tapDom('.tl-sheet .tl-option', (await ev(() => window.__TEST__.session.dialogueView.page)) === 5 ? 'เข้าใจแล้ว' : 'ถัดไป'); }
+  check('จบบทเรียนแล้วกลับมาที่โจทย์เดิม', (await kindNow()) === 'quiz' && !(await sess()).flags.includes('trash-route'));
+  await pick(0);
+  await drive([]);
+  s = await sess();
+  check('ตอบถูก (ตะวันออก 200 เมตร) → ผ่านขั้น 5 แล้วเดินต่อได้เอง', s.flags.includes('trash-route') && s.step === 6 && s.mode === 'explore', JSON.stringify(s));
+  await noGuide('หลังตอบโจทย์ผู้ใหญ่บ้าน (ไม่มีลูกศร/หมุดไปกองขยะ)');
+
+  // 8) เดินไปทางตะวันออกเอง (ฝั่งขวาของแผนที่) → พบกองขยะ → "พบกองขยะแล้ว!" [ตกลง]
+  s = await sess();
+  check('ยังไม่ถึงกองขยะ: ไม่มีข้อความพบกองขยะ', !s.flags.includes('trash-found'));
+  await walkBg(75, 45);
+  check('ถึงกองขยะ → หยุดเดินและขึ้นข้อความ', await waitFor(() => !!window.__TEST__.session.dialogueView, 60000));
   const tv = await ev(() => window.__TEST__.session.dialogueView);
-  check('"พบเศษขยะแล้ว!" พร้อมปุ่ม "ตกลง"', tv.text === 'พบเศษขยะแล้ว!' && tv.button === 'ตกลง', JSON.stringify(tv));
+  check('"พบกองขยะแล้ว!" พร้อมปุ่ม "ตกลง"', tv.text === 'พบกองขยะแล้ว!' && tv.button === 'ตกลง', JSON.stringify(tv));
   await wait(400);
   const okBtn = await ev(() => [...document.querySelectorAll('.tl-sheet .tl-option')].map((b) => b.innerText.trim()));
   check('ปุ่ม "ตกลง" แสดงบนจอ', okBtn.some((t) => t.includes('ตกลง')), JSON.stringify(okBtn));
-  await shot('06-trash-found');
+  const trashPos = await pos();
+  check('กองขยะอยู่ฝั่งขวาของแผนที่ (ห่างจากบ้านผู้ใหญ่บ้าน ~20 ช่องตะวันออก)', trashPos.x >= 70, JSON.stringify(trashPos));
+  await shot('07-trash-found');
+  await tapDom('.tl-sheet .tl-option', 'ตกลง');
+  await wait(400);
+  const tv2 = await ev(() => window.__TEST__.session.dialogueView);
+  check('จากนั้นเก็บขยะ: แจ้งให้กลับไปรายงานป้าเจียว', tv2 && tv2.text.includes('เก็บขยะ') && tv2.text.includes('ป้าเจียว'), JSON.stringify(tv2));
   await tapDom('.tl-sheet .tl-option', 'ตกลง');
   await wait(400);
   s = await sess();
-  check('กดตกลง → เข้าสู่ขั้นตอนถัดไป (ผ่านขั้น 5) และไม่แสดงซ้ำ', s.flags.includes('trash-found') && s.step === 6 && !s.dlg, JSON.stringify(s));
-  await walk(28, 40); await walk(28, 46);
+  check('เก็บขยะเสร็จ → ผ่านขั้น 6 และไม่แสดงซ้ำ', s.flags.includes('trash-found') && s.step === 7 && !s.dlg, JSON.stringify(s));
+  await walk(70, 45); await walk(75, 45);
   check('ยืนที่กองขยะอีกครั้ง: ไม่แสดงซ้ำ', !(await sess()).dlg);
   await noGuide('ที่กองขยะ');
 
-  // 6) กลับไปป้าเจียว: คำแนะนำ 2 ข้อ (ผิดครั้งแรกของข้อ 1 → HP บอส +10)
+  // 9) กลับไปป้าเจียว (ถนนหลักตะวันตก → ทางขึ้นเหนือ): คำแนะนำ 2 ข้อ (ผิดครั้งแรกของข้อ 1 → HP บอส +10)
   await walk(25, 48); await walk(25, 29);
   await talkKey();
   await drive([0]);
